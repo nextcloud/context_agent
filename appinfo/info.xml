@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<info>
+	<id>context_agent</id>
+	<name>Nextcloud Context Agent</name>
+	<summary>Let Nextcloud assistant take off tasks from your todo list.</summary>
+	<description>
+	<![CDATA[Let Nextcloud assistant take off tasks from your todo list.]]>
+	</description>
+	<version>1.0.0</version>
+	<licence>MIT</licence>
+	<author mail="mklehr@gmx.net" homepage="https://marcelklehr.de">Marcel Klehr</author>
+	<namespace>ContextAgent</namespace>
+	<category>tools</category>
+	<website>https://github.com/nextcloud/context_agent</website>
+	<bugs>https://github.com/nextcloud/context_agent/issues</bugs>
+	<repository type="git">https://github.com/nextcloud/context_agent</repository>
+	<dependencies>
+		<nextcloud min-version="31" max-version="31"/>
+	</dependencies>
+	<external-app>
+		<docker-install>
+			<registry>ghcr.io</registry>
+			<image>nextcloud/context_agent</image>
+			<image-tag>1.0.0</image-tag>
+		</docker-install>
+	</external-app>
+</info>
