@@ -1,0 +1,10 @@
+nc_py_api[app]>=0.17.1
+langgraph
+langchain
+langchain_openai
+ics
+pytz
+langchain-huggingface
+langchain_community
+huggingface_hub
+accelerate>=0.26.0
