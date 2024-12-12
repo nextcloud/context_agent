@@ -11,8 +11,6 @@ from graph import AgentState, get_graph
 from nc_model import model
 from tools import get_tools
 
-cloud_nc_com = Nextcloud(nextcloud_url="https://cloud.nextcloud.com", nc_auth_user="", nc_auth_pass="")
-
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
 
