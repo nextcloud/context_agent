@@ -5,6 +5,8 @@ from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langgraph.checkpoint.memory import MemorySaver
 from nc_py_api import Nextcloud
 
+from signature import verify_signature
+from signature import add_signature
 from graph import AgentState, get_graph
 from nc_model import model
 from tools import get_tools
@@ -14,16 +16,15 @@ cloud_nc_com = Nextcloud(nextcloud_url="https://cloud.nextcloud.com", nc_auth_us
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
 
+key = 'CHANGEME'
 
-# TODO: Add signature
 def load_conversation(checkpointer, conversation_token: str):
 	if conversation_token == '' or conversation_token == '{}':
 		return
-	checkpointer.storage = checkpointer.serde.loads(conversation_token.encode())
+	checkpointer.storage = checkpointer.serde.loads(verify_signature(conversation_token, key).encode())
 
-# TODO: Add signature
 def export_conversation(checkpointer):
-	return checkpointer.serde.dumps(checkpointer.storage).decode('utf-8')
+	return add_signature(checkpointer.serde.dumps(checkpointer.storage).decode('utf-8'), key)
 
 
 def react(task, nc: Nextcloud):
