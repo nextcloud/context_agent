@@ -3,5 +3,4 @@ langgraph
 langchain
 ics
 pytz
-langchain-huggingface
 langchain_community
