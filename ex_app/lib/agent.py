@@ -1,9 +1,13 @@
 import json
+import os
+import string
+import random
 
 from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langgraph.checkpoint.memory import MemorySaver
 from nc_py_api import Nextcloud
+from nc_py_api.ex_app import persistent_storage
 
 from signature import verify_signature
 from signature import add_signature
@@ -14,7 +18,18 @@ from tools import get_tools
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
 
-key = 'CHANGEME'
+key_file_path = persistent_storage() + '/secret_key.txt'
+
+if not os.path.exists(key_file_path):
+	with open(key_file_path, "w") as file:
+		# generate random string of 256 chars
+		random_string = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=256))
+		file.write(random_string)
+	print(f"The file '{key_file_path}' has been created.")
+
+with open(key_file_path, "r") as file:
+	print(f"Reading file '{key_file_path}'.")
+	key = file.read()
 
 def load_conversation(checkpointer, conversation_token: str):
 	if conversation_token == '' or conversation_token == '{}':
@@ -26,7 +41,7 @@ def export_conversation(checkpointer):
 
 
 def react(task, nc: Nextcloud):
-	safe_tools, dangerous_tools = get_tools(cloud_nc_com)
+	safe_tools, dangerous_tools = get_tools(nc)
 
 	bound_model = model.bind_tools(
 		dangerous_tools
