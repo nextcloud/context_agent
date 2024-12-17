@@ -46,6 +46,7 @@ class ChatWithNextcloud(BaseChatModel):
 			task_input['system_prompt'] = messages[0].content
 			messages = messages[1:]
 
+		task_input['input'] = ''
 		task_input['tool_message'] = ''
 		task_input['tools'] = json.dumps(self.tools)
 
