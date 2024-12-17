@@ -90,7 +90,7 @@ You can check which calendars exist using the list_calendars tool, if a calendar
 		else:
 			new_input = None
 	else:
-		new_input = {"messages": [("user", task['input']['message'])]}
+		new_input = {"messages": [("user", task['input']['input'])]}
 
 	for event in graph.stream(new_input, thread, stream_mode="values"):
 		last_message = event['messages'][-1]
