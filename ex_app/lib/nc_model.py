@@ -1,21 +1,22 @@
 import json
-import re
 import time
 import typing
-from random import randint
 from typing import Optional, Any, Sequence, Union, Callable
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import BaseMessage, AIMessage, SystemMessage, HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.outputs import ChatResult, ChatGeneration
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from nc_py_api import Nextcloud
+from nc_py_api import Nextcloud, NextcloudApp
+from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 
 from langchain_core.language_models.chat_models import BaseChatModel
+
+from ex_app.lib.logger import log
 
 
 class Task(BaseModel):
@@ -29,6 +30,7 @@ class Response(BaseModel):
 
 # Custom formatting for chat inputs
 class ChatWithNextcloud(BaseChatModel):
+	nc: Nextcloud = NextcloudApp()
 	tools: Sequence[
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
 
@@ -39,7 +41,7 @@ class ChatWithNextcloud(BaseChatModel):
 			run_manager: Optional[CallbackManagerForLLMRun] = None,
 			**kwargs: Any,
 	) -> ChatResult:
-		nc = Nextcloud()
+		nc = self.nc
 		task_input = dict()
 
 		if messages[0].type == 'system':
@@ -73,7 +75,7 @@ class ChatWithNextcloud(BaseChatModel):
 
 		task_input['history'] = history
 
-		print(task_input)
+		log(nc, LogLvl.DEBUG, task_input)
 
 		response = nc.ocs(
 			"POST",
@@ -83,7 +85,7 @@ class ChatWithNextcloud(BaseChatModel):
 
 		try:
 			task = Response.model_validate(response).task
-			print(task)
+			log(nc, LogLvl.DEBUG, task)
 
 			i = 0
 			# wait for 30 minutes
@@ -92,7 +94,7 @@ class ChatWithNextcloud(BaseChatModel):
 				i += 1
 				response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 				task = Response.model_validate(response).task
-				print(task)
+				log(nc, LogLvl.DEBUG, task)
 		except ValidationError as e:
 			raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
 
@@ -118,6 +120,10 @@ class ChatWithNextcloud(BaseChatModel):
 	) -> Runnable[LanguageModelInput, BaseMessage]:
 		self.tools = [convert_to_openai_tool(tool) for tool in tools]
 		return self
+
+	def bind_nextcloud(self,
+					   nc: Nextcloud):
+		self.nc = nc
 
 	def _llm_type(self) -> str:
 		return "nextcloud-context-agent"

@@ -43,6 +43,8 @@ def export_conversation(checkpointer):
 def react(task, nc: Nextcloud):
 	safe_tools, dangerous_tools = get_tools(nc)
 
+	model.bind_nextcloud(nc)
+
 	bound_model = model.bind_tools(
 		dangerous_tools
 		+ safe_tools

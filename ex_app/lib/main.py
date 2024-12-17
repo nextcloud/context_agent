@@ -1,4 +1,3 @@
-import os
 import traceback
 from contextlib import asynccontextmanager
 from json import JSONDecodeError
@@ -11,6 +10,7 @@ from nc_py_api import NextcloudApp, NextcloudException
 from nc_py_api.ex_app import AppAPIAuthMiddleware, LogLvl, run_app, set_handlers
 
 from agent import react
+from logger import log
 from provider import provider
 
 
@@ -33,15 +33,15 @@ APP.add_middleware(AppAPIAuthMiddleware)  # set global AppAPI authentication mid
 def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
     # This will be called each time application is `enabled` or `disabled`
     # NOTE: `user` is unavailable on this step, so all NC API calls that require it will fail as unauthorized.
-    print(f"enabled={enabled}")
+    log(nc, LogLvl.INFO, f"enabled={enabled}")
     if enabled:
         nc.providers.task_processing.register(provider)
         app_enabled.set()
-        nc.log(LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
+        log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
     else:
         nc.providers.task_processing.unregister(provider.id)
         app_enabled.clear()
-        nc.log(LogLvl.WARNING, f"App disabled: {nc.app_cfg.app_name}")
+        log(nc, LogLvl.WARNING, f"App disabled: {nc.app_cfg.app_name}")
     # In case of an error, a non-empty short string should be returned, which will be shown to the NC administrator.
     return ""
 
@@ -60,33 +60,38 @@ def background_thread_task():
                 sleep(2)
                 continue
         except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
-            print("Error fetching the next task", e, flush=True)
+            tb_str = ''.join(traceback.format_exception(e))
+            log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
             sleep(5)
             continue
 
         task = response["task"]
-        print(task, flush=True)
+        log(nc, LogLvl.INFO, task)
+        log(nc, LogLvl.INFO, {'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>'})
 
         try:
-            output = react(task, nc)
+            nextcloud = NextcloudApp()
+            if task['userId']:
+                nextcloud.set_user(task['userId'])
+            output = react(task, nextcloud)
         except Exception as e:  # noqa
             tb_str = ''.join(traceback.format_exception(e))
-            print("Error:", tb_str, flush=True)
+            log(nc, LogLvl.ERROR,"Error: " + tb_str)
             try:
-                nc = NextcloudApp()
-                nc.log(LogLvl.ERROR, tb_str)
                 nc.providers.task_processing.report_result(task["id"], error_message=str(e))
             except (NextcloudException, httpx.RequestError) as net_err:
-                print("Network error in reporting the error:", net_err, flush=True)
-
+                tb_str = ''.join(traceback.format_exception(net_err))
+                log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
             sleep(5)
+            continue
         try:
             NextcloudApp().providers.task_processing.report_result(
                 task["id"],
                 output,
             )
         except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
-            print("Network trying to report the task result:", e, flush=True)
+            tb_str = ''.join(traceback.format_exception(e))
+            log(nc, LogLvl.ERROR,"Network error trying to report the task result: " + tb_str)
             sleep(5)
 
 
