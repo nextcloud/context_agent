@@ -4,6 +4,7 @@ import string
 import random
 
 from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage
+from langchain_core.messages.tool import tool_call
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langgraph.checkpoint.memory import MemorySaver
 from nc_py_api import Nextcloud
@@ -84,9 +85,10 @@ You can check which calendars exist using the list_calendars tool, if a calendar
 			new_input = {
 				"messages": [
 					ToolMessage(
-						tool_call_id=state_snapshot.values['messages'][-1].tool_calls[0]["id"],
+						tool_call_id=tool_call["id"],
 						content=f"API call denied by user. Reasoning: '{task['input']['input']}'. Continue assisting, accounting for the user's input.",
 					)
+					for tool_call in state_snapshot.values['messages'][-1].tool_calls
 				]
 			}
 		else:
