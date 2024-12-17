@@ -52,7 +52,10 @@ class ChatWithNextcloud(BaseChatModel):
 		history = []
 		for message in messages:
 			if message.type == 'ai':
-				history.append(json.dumps({"role": "assistant", "content": message.content}))
+				msg = {"role": "assistant", "content": message.content}
+				if 'tool_calls' in message:
+					msg['tool_calls'] = message.tool_calls
+				history.append(json.dumps(msg))
 			elif message.type == 'human':
 				history.append(json.dumps({"role": "human", "content": message.content}))
 				task_input['input'] = message.content
