@@ -11,7 +11,7 @@ from nc_py_api import NextcloudApp, NextcloudException
 from nc_py_api.ex_app import AppAPIAuthMiddleware, LogLvl, run_app, set_handlers
 
 from agent import react
-from provider import provider, task_type
+from provider import provider
 
 
 app_enabled = Event()
@@ -35,7 +35,7 @@ def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
     # NOTE: `user` is unavailable on this step, so all NC API calls that require it will fail as unauthorized.
     print(f"enabled={enabled}")
     if enabled:
-        nc.providers.task_processing.register(provider, task_type)
+        nc.providers.task_processing.register(provider)
         app_enabled.set()
         nc.log(LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
     else:
