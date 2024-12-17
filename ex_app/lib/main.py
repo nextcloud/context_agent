@@ -69,13 +69,6 @@ def background_thread_task():
 
         try:
             output = react(task, nc)
-            NextcloudApp().providers.task_processing.report_result(
-                task["id"],
-                output,
-            )
-        except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
-            print("Network error:", e, flush=True)
-            sleep(5)
         except Exception as e:  # noqa
             tb_str = ''.join(traceback.format_exception(e))
             print("Error:", tb_str, flush=True)
@@ -87,6 +80,15 @@ def background_thread_task():
                 print("Network error in reporting the error:", net_err, flush=True)
 
             sleep(5)
+        try:
+            NextcloudApp().providers.task_processing.report_result(
+                task["id"],
+                output,
+            )
+        except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
+            print("Network trying to report the task result:", e, flush=True)
+            sleep(5)
+
 
 
 def start_bg_task():
