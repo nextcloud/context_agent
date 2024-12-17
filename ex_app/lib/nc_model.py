@@ -50,27 +50,25 @@ class ChatWithNextcloud(BaseChatModel):
 		task_input['tools'] = json.dumps(self.tools)
 
 		history = []
-		for message in messages:
+		for i, message in enumerate(messages):
 			if message.type == 'ai':
 				msg = {"role": "assistant", "content": message.content}
 				if  len(message.tool_calls) > 0:
 					msg['tool_calls'] = message.tool_calls
 				history.append(json.dumps(msg))
 			elif message.type == 'human':
-				history.append(json.dumps({"role": "human", "content": message.content}))
-				task_input['input'] = message.content
+				if len(messages)-1 != i:
+					history.append(json.dumps({"role": "human", "content": message.content}))
+				else:
+					task_input['input'] = message.content
 			elif message.type == 'tool':
-				history.append(json.dumps({"role": "tool", "content": message.content, "tool_call_id": message.tool_call_id}))
-				task_input['tool_message'] = json.dumps({"name": message.name, "content": message.content, "tool_call_id": message.tool_call_id})
+				if len(messages)-1 != i:
+					history.append(json.dumps({"role": "tool", "content": message.content, "name": message.name, "tool_call_id": message.tool_call_id}))
+				else:
+					task_input['tool_message'] = json.dumps({"name": message.name, "content": message.content, "tool_call_id": message.tool_call_id})
 			else:
 				print(message)
 				raise Exception("Message type not found")
-
-		if len(history) > 0 and history[-1].startswith('{"role":"human"'):
-			history = history[:-1]
-
-		if len(history) > 0 and history[-1].startswith('{"role":"tool"'):
-			history = history[:-1]
 
 		task_input['history'] = history
 
