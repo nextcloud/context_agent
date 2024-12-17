@@ -85,7 +85,7 @@ You can check which calendars exist using the list_calendars tool, if a calendar
 				"messages": [
 					ToolMessage(
 						tool_call_id=state_snapshot.values['messages'][-1].tool_calls[0]["id"],
-						content=f"API call denied by user. Reasoning: '{task['input']['message']}'. Continue assisting, accounting for the user's input.",
+						content=f"API call denied by user. Reasoning: '{task['input']['input']}'. Continue assisting, accounting for the user's input.",
 					)
 				]
 			}
