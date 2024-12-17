@@ -102,7 +102,7 @@ class ChatWithNextcloud(BaseChatModel):
 		if not isinstance(task.output, dict) or "output" not in task.output:
 			raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
 
-		if 'tool_calls' in task.output:
+		if 'tool_calls' in task.output and task.output['tool_calls'] != '':
 			message = AIMessage(task.output['output'], tool_calls=json.loads(task.output['tool_calls']))
 		else:
 			message = AIMessage(task.output['content'])
