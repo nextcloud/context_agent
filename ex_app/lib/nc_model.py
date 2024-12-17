@@ -61,7 +61,7 @@ class ChatWithNextcloud(BaseChatModel):
 				task_input['input'] = message.content
 			elif message.type == 'tool':
 				history.append(json.dumps({"role": "tool", "content": message.content, "tool_call_id": message.tool_call_id}))
-				task_input['tool_message'] = json.dumps({"name": message.name, "content": message, "tool_call_id": message.tool_call_id})
+				task_input['tool_message'] = json.dumps({"name": message.name, "content": message.content, "tool_call_id": message.tool_call_id})
 			else:
 				print(message)
 				raise Exception("Message type not found")
