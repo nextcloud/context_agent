@@ -66,7 +66,8 @@ def background_thread_task():
             continue
 
         task = response["task"]
-        log(nc, LogLvl.INFO, task)
+        log(nc, LogLvl.INFO, 'New Task incoming')
+        log(nc, LogLvl.DEBUG, task)
         log(nc, LogLvl.INFO, {'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>'})
 
         try:
