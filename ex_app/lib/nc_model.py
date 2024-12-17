@@ -60,12 +60,16 @@ class ChatWithNextcloud(BaseChatModel):
 				history.append(json.dumps({"role": "human", "content": message.content}))
 				task_input['input'] = message.content
 			elif message.type == 'tool':
-				task_input['tool_message'] = json.dumps({"name": message.name, "content": message.content})
+				history.append(json.dumps({"role": "tool", "content": message.content, "tool_call_id": message.tool_call_id}))
+				task_input['tool_message'] = json.dumps({"name": message.name, "content": message, "tool_call_id": message.tool_call_id})
 			else:
 				print(message)
 				raise Exception("Message type not found")
 
 		if len(history) > 0 and history[-1].startswith('{"role":"human"'):
+			history = history[:-1]
+
+		if len(history) > 0 and history[-1].startswith('{"role":"tool"'):
 			history = history[:-1]
 
 		task_input['history'] = history
