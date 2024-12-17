@@ -101,7 +101,7 @@ You can check which calendars exist using the list_calendars tool, if a calendar
 		actions = json.dumps(last_message.tool_calls)
 
 	return {
-		'response': last_message.content,
+		'output': last_message.content,
 		'actions': actions,
 		'conversation_token': export_conversation(checkpointer)
 	}
