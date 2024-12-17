@@ -105,7 +105,7 @@ class ChatWithNextcloud(BaseChatModel):
 		if 'tool_calls' in task.output and task.output['tool_calls'] != '':
 			message = AIMessage(task.output['output'], tool_calls=json.loads(task.output['tool_calls']))
 		else:
-			message = AIMessage(task.output['content'])
+			message = AIMessage(task.output['output'])
 
 		return ChatResult(generations=[ChatGeneration(message=message)])
 
