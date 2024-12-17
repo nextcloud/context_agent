@@ -55,7 +55,7 @@ def background_thread_task():
             continue
 
         try:
-            response = nc.providers.task_processing.next_task([provider.id], [task_type.id])
+            response = nc.providers.task_processing.next_task([provider.id], [provider.task_type])
             if not response or not 'task' in response:
                 sleep(2)
                 continue
