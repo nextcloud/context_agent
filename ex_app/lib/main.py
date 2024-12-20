@@ -67,8 +67,8 @@ def background_thread_task():
 
         task = response["task"]
         log(nc, LogLvl.INFO, 'New Task incoming')
-        log(nc, LogLvl.DEBUG, task)
-        log(nc, LogLvl.INFO, {'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>'})
+        log(nc, LogLvl.DEBUG, str(task))
+        log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>'}))
 
         try:
             nextcloud = NextcloudApp()
