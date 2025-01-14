@@ -122,7 +122,8 @@ def get_tools(nc: Nextcloud):
 	safe_tools = [
 		list_calendars,
 		list_talk_conversations,
-		list_messages_in_conversation
+		list_messages_in_conversation,
+		ask_context_chat,
 	]
 
 	return safe_tools, dangerous_tools
