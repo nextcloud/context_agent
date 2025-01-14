@@ -1,10 +1,17 @@
+import time
+import typing
 from datetime import datetime
 from typing import Optional
 
+import httpx
 import pytz
 from ics import Calendar, Event
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
+from nc_py_api.ex_app import LogLvl
+from pydantic import BaseModel, ValidationError
+
+from logger import log
 
 
 def get_tools(nc: Nextcloud):
@@ -115,6 +122,91 @@ def get_tools(nc: Nextcloud):
 		conversation = {conv.display_name: conv for conv in conversations}[conversation_name]
 		return [f"{m.timestamp} {m.actor_display_name}: {m.message}" for m in nc.talk.receive_messages(conversation, False, n_messages)]
 
+	@tool
+	def get_coordinates_for_address(address: str) -> (str, str):
+		"""
+		Calculates the coordinates for a given address
+		:param address: the address to calculate the coordinates for
+		:return: a tuple of latitude and longitude
+		"""
+		res = httpx.get('https://nominatim.openstreetmap.org/search', params={'q': address, 'format': 'json', 'addressdetails': '1', 'extratags': '1', 'namedetails': '1', 'limit': '1'})
+		json = res.json()
+		if 'error' in json:
+			raise Exception(json['error'])
+		if len(json) == 0:
+			raise Exception(f'No results for address {address}')
+		return json[0]['lat'], json[0]['lon']
+
+
+	@tool
+	def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:
+		"""
+		Retrieve the current weather for a given latitude and longitude
+		:param lat: Latitude
+		:param lon: Longitude
+		:return:
+		"""
+		res = httpx.get('https://api.met.no/weatherapi/locationforecast/2.0/compact', params={
+			'lat': lat,
+			'lon': lon,
+		})
+		json = res.json()
+		if not 'properties' in json or not 'timeseries' in json['properties'] or not json['properties']['timeseries']:
+			raise Exception('Could not retrieve weather for coordinates')
+		return json['properties']['timeseries'][0]['data']['instant']['details']
+
+
+	class Task(BaseModel):
+		id: int
+		status: str
+		output: dict[str, typing.Any] | None = None
+
+	class Response(BaseModel):
+		task: Task
+
+	@tool
+	def ask_context_chat(question: str):
+		"""
+		Ask the context chat oracle, which knows all of the user's documents, a question about them
+		:param question: The question to ask
+		:return: the answer from context chat
+		"""
+
+		task_input = {
+			'prompt': question,
+			'scopeType': 'none',
+			'scopeList': [],
+			'scopeListMeta': '',
+		}
+		response = nc.ocs(
+			"POST",
+			"/ocs/v1.php/taskprocessing/schedule",
+			json={"type": "context_chat:context_chat", "appId": "context_agent", "input": task_input},
+		)
+
+		try:
+			task = Response.model_validate(response).task
+			log(nc, LogLvl.DEBUG, task)
+
+			i = 0
+			# wait for 30 minutes
+			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 6:
+				time.sleep(5)
+				i += 1
+				response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
+				task = Response.model_validate(response).task
+				log(nc, LogLvl.DEBUG, task)
+		except ValidationError as e:
+			raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
+
+		if task.status != "STATUS_SUCCESSFUL":
+			raise Exception("Nextcloud TaskProcessing Task failed")
+
+		if not isinstance(task.output, dict) or "output" not in task.output:
+			raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
+
+		return task.output['output']
+
 	dangerous_tools = [
 		schedule_event,
 		send_message_to_conversation
@@ -124,6 +216,8 @@ def get_tools(nc: Nextcloud):
 		list_talk_conversations,
 		list_messages_in_conversation,
 		ask_context_chat,
+		get_coordinates_for_address,
+		get_current_weather_for_coordinates,
 	]
 
 	return safe_tools, dangerous_tools
