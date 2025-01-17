@@ -149,6 +149,9 @@ def get_tools(nc: Nextcloud):
 		res = httpx.get('https://api.met.no/weatherapi/locationforecast/2.0/compact', params={
 			'lat': lat,
 			'lon': lon,
+		},
+		headers={
+			'User-Agent': 'NextcloudWeatherStatus/ContextAgent nextcloud.com'
 		})
 		json = res.json()
 		if not 'properties' in json or not 'timeseries' in json['properties'] or not json['properties']['timeseries']:
