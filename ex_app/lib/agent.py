@@ -2,9 +2,9 @@ import json
 import os
 import string
 import random
+from datetime import date
 
 from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage
-from langchain_core.messages.tool import tool_call
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langgraph.checkpoint.memory import MemorySaver
 from nc_py_api import Nextcloud
@@ -55,17 +55,17 @@ def react(task, nc: Nextcloud):
 			state: AgentState,
 			config: RunnableConfig,
 	):
+		current_date = date.today().strftime("%Y-%m-%d")
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
 """
 You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools! If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
-Today is 2024-12-02.
-The user's timezone is Europe/London.
+Today is {CURRENT_DATE}.
 Detect the language the user is using. Reply in the same language.
 You can check which conversations exist using the list_talk_conversations tool, if a conversation cannot be found.
 You can check which calendars exist using the list_calendars tool, if a calendar can not be found.
-"""
+""".replace("{CURRENT_DATE}", current_date)
 		)
 
 		response = bound_model.invoke([system_prompt] + state["messages"], config)
