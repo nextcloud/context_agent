@@ -10,6 +10,8 @@ from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
+import xml.etree.ElementTree as ET
+import vobject
 
 from logger import log
 
