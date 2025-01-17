@@ -123,6 +123,56 @@ def get_tools(nc: Nextcloud):
 		return [f"{m.timestamp} {m.actor_display_name}: {m.message}" for m in nc.talk.receive_messages(conversation, False, n_messages)]
 
 	@tool
+	def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:
+		"""
+		Retrieve all vcards in the current user's contacts that contain the given name
+		:param name: the name to search for
+		:return: the CardDAV xml response from the CardDAV addressbook-query for contacts matching the given name with their Full Name
+		"""
+		# XML body for the search
+		xml_body = """<?xml version="1.0" encoding="UTF-8" ?>
+<C:addressbook-query xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:prop xmlns:D="DAV:">
+    <D:getetag/>
+    <C:address-data/>
+  </D:prop>
+  <C:filter>
+    <C:prop-filter name="FN">
+      <C:text-match collation="i;unicode-casemap" match-type="contains">{NAME}</C:text-match>
+    </C:prop-filter>
+  </C:filter>
+</C:addressbook-query>
+""".replace('{NAME}', name)
+		username = nc._session.user
+		response = nc._session._create_adapter(True).request('REPORT', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/contacts/", headers={
+			"Content-Type": "application/xml; charset=utf-8",
+			"Depth": "1",
+		}, content=xml_body)
+		print(response.text)
+		if response.status_code != 207:  # Multi-Status
+			raise Exception(f"Error: {response.status_code} - {response.reason_phrase}")
+
+		# Parse the XML response to extract vCard data
+		namespace = {"DAV": "urn:ietf:params:xml:ns:carddav"}  # Define the namespace
+		root = ET.fromstring(response.text)
+		vcard_elements = root.findall(".//DAV:address-data", namespace)
+		# Parse vCard strings into dictionaries
+		contacts = []
+		for vcard_element in vcard_elements:
+			vcard_text = vcard_element.text.strip()  # Get the raw vCard data
+			vcard = vobject.readOne(vcard_text)      # Parse vCard using vobject
+
+			# Extract fields and add to the contacts list
+			contact = {
+				"full_name": getattr(vcard, "fn", None).value if hasattr(vcard, "fn") else None,
+				"email": getattr(vcard.email, "value", None) if hasattr(vcard, "email") else None,
+				"phone": getattr(vcard.tel, "value", None) if hasattr(vcard, "tel") else None,
+				"address": getattr(vcard.adr, "value", None) if hasattr(vcard, "adr") else None,
+			}
+			contacts.append(contact)
+		return contacts
+
+	@tool
 	def get_coordinates_for_address(address: str) -> (str, str):
 		"""
 		Calculates the coordinates for a given address

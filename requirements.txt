@@ -4,3 +4,4 @@ langchain
 ics
 pytz
 langchain_community
+vobject
