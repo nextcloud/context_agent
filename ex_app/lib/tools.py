@@ -5,13 +5,14 @@ from typing import Optional
 
 import httpx
 import pytz
-from ics import Calendar, Event
+from ics import Calendar, Event, Attendee, Organizer
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 import xml.etree.ElementTree as ET
 import vobject
+from ics.grammar.parse import ContentLine
 
 from logger import log
 
@@ -29,7 +30,7 @@ def get_tools(nc: Nextcloud):
 		return ", ".join([cal.name for cal in calendars])
 
 	@tool
-	def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
+	def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
 		"""
 		Crete a new event in a calendar. Omit start_time and end_time parameters to create an all-day event.
 		:param calendar_name: The name of the calendar to add the event to
@@ -37,6 +38,7 @@ def get_tools(nc: Nextcloud):
 		:param description: The description of the event
 		:param start_date: the start date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
 		:param end_date: the end date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
+		:param attendees: the list of attendees to add to the event (as email addresses)
 		:param start_time: the start time in the following form: HH:MM AM/PM e.g. '3:00 PM'
 		:param end_time: the start time in the following form: HH:MM AM/PM e.g. '4:00 PM'
 		:param location: The location of the event
@@ -73,6 +75,15 @@ def get_tools(nc: Nextcloud):
 		e.end = end_datetime
 		e.description = description
 		e.location = location
+		if attendees is not None:
+			for attendee in attendees:
+				e.add_attendee(Attendee(common_name=attendee, email=attendee, partstat='NEEDS-ACTION', role='REQ-PARTICIPANT', cutype='INDIVIDUAL'))
+
+		# let's check who we are...
+		json = nc.ocs('GET', '/ocs/v2.php/cloud/user')
+
+		# ...and set the organizer
+		e.organizer = Organizer(common_name=json['displayname'], email=json['email'])
 
 		# Add event to calendar
 		c.events.add(e)
@@ -210,6 +221,23 @@ def get_tools(nc: Nextcloud):
 			raise Exception('Could not retrieve weather for coordinates')
 		return json['properties']['timeseries'][0]['data']['instant']['details']
 
+	@tool
+	def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
+		"""
+		Send an email to a list of emails
+		:param subject: The subject of the email
+		:param body: The body of the email
+		:param account_id: The id of the account to send from
+		:param to_emails: The emails to send
+		"""
+		return nc.ocs('POST', '/ocs/v2.php/apps/mail/message/send', json={
+			'accountId': account_id,
+			'fromEmail': from_email,
+			'subject': subject,
+			'body': body,
+			'isHtml': False,
+			'to': [{'label': '', 'email': email} for email in to_emails],
+		})
 
 	class Task(BaseModel):
 		id: int
@@ -264,7 +292,8 @@ def get_tools(nc: Nextcloud):
 
 	dangerous_tools = [
 		schedule_event,
-		send_message_to_conversation
+		send_message_to_conversation,
+		send_email,
 	]
 	safe_tools = [
 		list_calendars,
@@ -273,6 +302,7 @@ def get_tools(nc: Nextcloud):
 		ask_context_chat,
 		get_coordinates_for_address,
 		get_current_weather_for_coordinates,
+		find_person_in_contacts,
 	]
 
 	return safe_tools, dangerous_tools

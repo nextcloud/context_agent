@@ -1,4 +1,5 @@
 nc_py_api[app]>=0.17.1
+nc_py_api[calendar]>=0.17.1
 langgraph
 langchain
 ics
