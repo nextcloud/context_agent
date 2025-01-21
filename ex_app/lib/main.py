@@ -70,7 +70,7 @@ def background_thread_task():
                 httpx.LocalProtocolError,
                 httpx.PoolTimeout,
         ) as e:
-            log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
+            log(nc, LogLvl.DEBUG, "Ignored error during task polling")
             sleep(2)
             continue
 

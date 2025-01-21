@@ -106,7 +106,7 @@ class ChatWithNextcloud(BaseChatModel):
 						httpx.LocalProtocolError,
 						httpx.PoolTimeout,
 				) as e:
-					log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
+					log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 					time.sleep(5)
 					i += 1
 					continue
