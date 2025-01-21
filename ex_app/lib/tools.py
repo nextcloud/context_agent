@@ -94,7 +94,7 @@ def get_tools(nc: Nextcloud):
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
 				i += 1
-				sleep(5)
+				sleep(1)
 				continue
 
 		# ...and set the organizer
@@ -264,7 +264,7 @@ def get_tools(nc: Nextcloud):
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
 				i += 1
-				sleep(5)
+				sleep(1)
 				continue
 
 	class Task(BaseModel):
