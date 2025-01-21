@@ -8,6 +8,14 @@
 Let Nextcloud assistant take off tasks from your todo list.
 
 Read [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).
+
+## Ethical AI Rating
+
+### Rating: 🟢
+
+Positive:
+
+* The software for this app is open source, no trained AI model is used
 ]]>
 	</description>
 	<version>1.0.1</version>
