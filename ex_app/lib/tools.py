@@ -1,6 +1,7 @@
 import time
 import typing
 from datetime import datetime
+from time import sleep
 from typing import Optional
 
 import httpx
@@ -80,7 +81,21 @@ def get_tools(nc: Nextcloud):
 				e.add_attendee(Attendee(common_name=attendee, email=attendee, partstat='NEEDS-ACTION', role='REQ-PARTICIPANT', cutype='INDIVIDUAL'))
 
 		# let's check who we are...
-		json = nc.ocs('GET', '/ocs/v2.php/cloud/user')
+		i = 0
+		while i < 20:
+			try:
+				json = nc.ocs('GET', '/ocs/v2.php/cloud/user')
+				break
+			except (
+					httpx.RemoteProtocolError,
+					httpx.ReadError,
+					httpx.LocalProtocolError,
+					httpx.PoolTimeout,
+			) as e:
+				log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
+				i += 1
+				sleep(5)
+				continue
 
 		# ...and set the organizer
 		e.organizer = Organizer(common_name=json['displayname'], email=json['email'])
@@ -230,14 +245,27 @@ def get_tools(nc: Nextcloud):
 		:param account_id: The id of the account to send from
 		:param to_emails: The emails to send
 		"""
-		return nc.ocs('POST', '/ocs/v2.php/apps/mail/message/send', json={
-			'accountId': account_id,
-			'fromEmail': from_email,
-			'subject': subject,
-			'body': body,
-			'isHtml': False,
-			'to': [{'label': '', 'email': email} for email in to_emails],
-		})
+		i = 0
+		while i < 20:
+			try:
+				return nc.ocs('POST', '/ocs/v2.php/apps/mail/message/send', json={
+					'accountId': account_id,
+					'fromEmail': from_email,
+					'subject': subject,
+					'body': body,
+					'isHtml': False,
+					'to': [{'label': '', 'email': email} for email in to_emails],
+				})
+			except (
+					httpx.RemoteProtocolError,
+					httpx.ReadError,
+					httpx.LocalProtocolError,
+					httpx.PoolTimeout,
+			) as e:
+				log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
+				i += 1
+				sleep(5)
+				continue
 
 	class Task(BaseModel):
 		id: int
