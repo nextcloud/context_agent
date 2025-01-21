@@ -64,6 +64,15 @@ def background_thread_task():
             log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
             sleep(5)
             continue
+        except (
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+                httpx.LocalProtocolError,
+                httpx.PoolTimeout,
+        ) as e:
+            log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
+            sleep(2)
+            continue
 
         task = response["task"]
         log(nc, LogLvl.INFO, 'New Task incoming')
