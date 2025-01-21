@@ -7,7 +7,7 @@ import httpx
 import pytz
 from ics import Calendar, Event, Attendee, Organizer
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import Nextcloud, NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 import xml.etree.ElementTree as ET
@@ -272,11 +272,29 @@ def get_tools(nc: Nextcloud):
 			log(nc, LogLvl.DEBUG, task)
 
 			i = 0
-			# wait for 30 minutes
-			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 6:
+			# wait for 5 seconds * 60 * 2 = 10 minutes (one i ^= 5 sec)
+			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 2:
 				time.sleep(5)
 				i += 1
-				response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
+				try:
+					response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
+				except (
+					httpx.RemoteProtocolError,
+					httpx.ReadError,
+					httpx.LocalProtocolError,
+					httpx.PoolTimeout,
+				) as e:
+					log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
+					time.sleep(5)
+					i += 1
+					continue
+				except NextcloudException as e:
+					if e.status_code == 429:
+						log(nc, LogLvl.INFO, "Rate limited during task polling, waiting 10s more")
+						time.sleep(10)
+						i += 2
+						continue
+					raise Exception("Nextcloud error when polling task") from e
 				task = Response.model_validate(response).task
 				log(nc, LogLvl.DEBUG, task)
 		except ValidationError as e:
