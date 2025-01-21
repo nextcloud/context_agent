@@ -71,7 +71,7 @@ def background_thread_task():
                 httpx.PoolTimeout,
         ) as e:
             log(nc, LogLvl.DEBUG, "Ignored error during task polling: "+e.message)
-            sleep(5)
+            sleep(2)
             continue
 
         task = response["task"]
