@@ -10,6 +10,7 @@ from ics import Calendar, Event, Attendee, Organizer
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud, NextcloudException
 from nc_py_api.ex_app import LogLvl
+from nc_py_api.talk import ConversationType
 from pydantic import BaseModel, ValidationError
 import xml.etree.ElementTree as ET
 import vobject
@@ -122,6 +123,17 @@ def get_tools(nc: Nextcloud):
 		conversations = nc.talk.get_user_conversations()
 
 		return ", ".join([conv.display_name for conv in conversations])
+
+	@tool
+	def create_public_conversation(conversation_name: str) -> str:
+		"""
+		Create a new talk conversation
+		:param conversation_name: The name of the conversation to create
+		:return: The URL of the new conversation
+		"""
+		conversation = nc.talk.create_conversation(ConversationType.PUBLIC, room_name=conversation_name)
+
+		return f"{nc.app_cfg.endpoint}/index.php/call/{conversation.token}"
 
 
 	@tool
@@ -354,6 +366,7 @@ def get_tools(nc: Nextcloud):
 		schedule_event,
 		send_message_to_conversation,
 		send_email,
+		create_public_conversation,
 	]
 	safe_tools = [
 		list_calendars,
