@@ -60,6 +60,7 @@ def get_graph(call_model, safe_tools, dangerous_tools, checkpointer):
 		# This assumes single tool calls. To handle parallel tool calling, you'd want to
 		# use an ANY condition
 		first_tool_call = ai_message.tool_calls[0]
+		print('Tool call: ', first_tool_call)
 		if first_tool_call["name"] in dangerous_tool_names:
 			return "dangerous_tools"
 		return "safe_tools"
