@@ -1,6 +1,6 @@
 import time
 import typing
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from time import sleep
 from typing import Optional
 
@@ -14,8 +14,8 @@ from nc_py_api.talk import ConversationType
 from pydantic import BaseModel, ValidationError
 import xml.etree.ElementTree as ET
 import vobject
-from ics.grammar.parse import ContentLine
 
+from freebusy_finder import find_available_slots, round_to_nearest_half_hour
 from logger import log
 
 
@@ -112,6 +112,76 @@ def get_tools(nc: Nextcloud):
 		return True
 
 
+	@tool
+	def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str]):
+		"""
+		Finds a free time slot where all participants have time
+		:param participants: The list of participants to find a free slot for (These should be email addresses. If possible use the email addresses from contacts)
+		:param slot_duration: How long the time slot should be in hours, defaults to one hour
+		:param start_time: the start time of the range within which to check for free slots (by default this will be now; use the following format: 2025-01-31)
+		:param end_time: the end time of the range within which to check for free slots (by default this will be 7 days after start_time; use the following format: 2025-01-31)
+		:return:
+		"""
+		me = nc.ocs('GET', '/ocs/v2.php/cloud/user')
+
+		attendees = 'ORGANIZER:mailto:'+me['email']+'\n'
+		attendees += 'ATTENDEE:mailto:'+me['email']+'\n'
+		for attendee in participants:
+			attendees += f"ATTENDEE:mailto:{attendee}\n"
+
+		if start_time is None:
+			start_time = round_to_nearest_half_hour(datetime.now(timezone.utc))
+		else:
+			start_time = datetime.combine(datetime.strptime(start_time, "%Y-%m-%d").date(), datetime.min.time(), timezone.utc)
+		if end_time is None:
+			end_time = start_time + timedelta(days=7)
+		else:
+			end_time = datetime.combine(datetime.strptime(end_time, "%Y-%m-%d").date(), datetime.min.time(), timezone.utc)
+			if start_time >= end_time:
+				end_time = start_time + timedelta(days=7)
+
+		dtstart = start_time.strftime("%Y%m%dT%H%M%SZ")
+		dtend = end_time.strftime("%Y%m%dT%H%M%SZ")
+
+		freebusyRequest = """
+BEGIN:VCALENDAR
+PRODID:-//IDN nextcloud.com//Calendar app 5.1.0-beta.2//EN
+CALSCALE:GREGORIAN
+VERSION:2.0
+METHOD:REQUEST
+BEGIN:VFREEBUSY
+DTSTAMP:20250131T123029Z
+UID:03c8f220-d313-4c86-ae06-19fbae157079
+DTSTART:{DTSTART}
+DTEND:{DTEND}
+{ATTENDEES}END:VFREEBUSY
+END:VCALENDAR
+""".replace('{ATTENDEES}', attendees).replace('{DTSTART}', dtstart).replace('{DTEND}', dtend)
+		username = nc._session.user
+		response = nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{username}/outbox/", headers={
+			"Content-Type": "text/calendar; charset=utf-8",
+			"Depth": "0",
+		}, content=freebusyRequest)
+		print(freebusyRequest)
+		print(response.text)
+
+		# Parse the XML response to extract vCard data
+		namespace = {"CAL": "urn:ietf:params:xml:ns:caldav"}  # Define the namespace
+		root = ET.fromstring(response.text)
+		vcal_elements = root.findall(".//CAL:calendar-data", namespace)
+		# Parse vcal strings into dictionaries
+		busy_times = []
+		for vcal_element in vcal_elements:
+			vcal_text = vcal_element.text.strip()
+			vcal = vobject.readOne(vcal_text)
+			for fb in vcal.vfreebusy.contents.get("freebusy", []):
+				busy_times.append(fb.value[0])
+		print('busy times', busy_times)
+		available_slots = find_available_slots(start_time, end_time, busy_times, timedelta(hours=slot_duration))
+		print('available_slots', available_slots)
+		return available_slots
+
+
 	## Talk
 
 	@tool
@@ -165,9 +235,9 @@ def get_tools(nc: Nextcloud):
 	@tool
 	def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:
 		"""
-		Retrieve all vcards in the current user's contacts that contain the given name
+		Find a person's contact information from their name
 		:param name: the name to search for
-		:return: the CardDAV xml response from the CardDAV addressbook-query for contacts matching the given name with their Full Name
+		:return: a dictionary with the person's email, phone and address
 		"""
 		username = nc._session.user
 		response = nc._session._create_adapter(True).request('PROPFIND', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/", headers={
@@ -376,6 +446,7 @@ def get_tools(nc: Nextcloud):
 		get_coordinates_for_address,
 		get_current_weather_for_coordinates,
 		find_person_in_contacts,
+		find_free_time_slot_in_calendar,
 	]
 
 	return safe_tools, dangerous_tools

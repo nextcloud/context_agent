@@ -65,6 +65,7 @@ Today is {CURRENT_DATE}.
 Detect the language the user is using. Reply in the same language.
 You can check which conversations exist using the list_talk_conversations tool, if a conversation cannot be found.
 You can check which calendars exist using the list_calendars tool, if a calendar can not be found.
+you can find out a user's email address by using the find_person_in_contacts tool.
 """.replace("{CURRENT_DATE}", current_date)
 		)
 
