@@ -10,11 +10,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import persistent_storage
 
-from signature import verify_signature
-from signature import add_signature
-from graph import AgentState, get_graph
-from nc_model import model
-from tools import get_tools
+from ex_app.lib.signature import verify_signature
+from ex_app.lib.signature import add_signature
+from ex_app.lib.graph import AgentState, get_graph
+from ex_app.lib.nc_model import model
+from ex_app.lib.tools import get_tools
 
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}

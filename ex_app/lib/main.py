@@ -9,9 +9,9 @@ from fastapi import FastAPI
 from nc_py_api import NextcloudApp, NextcloudException
 from nc_py_api.ex_app import AppAPIAuthMiddleware, LogLvl, run_app, set_handlers
 
-from agent import react
-from logger import log
-from provider import provider
+from ex_app.lib.agent import react
+from ex_app.lib.logger import log
+from ex_app.lib.provider import provider
 
 
 app_enabled = Event()

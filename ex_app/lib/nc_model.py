@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from logger import log
+from ex_app.lib.logger import log
 
 
 class Task(BaseModel):

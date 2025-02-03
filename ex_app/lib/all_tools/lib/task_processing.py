@@ -6,7 +6,7 @@ from nc_py_api import NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 
-from logger import log
+from ex_app.lib.logger import log
 
 
 class Task(BaseModel):
