@@ -14,6 +14,7 @@ def get_tools(nc: Nextcloud):
 	def get_coordinates_for_address(address: str) -> (str, str):
 		"""
 		Calculates the coordinates for a given address
+		When using this tool, you must let the user know that the internet service Open Street Map was used.
 		:param address: the address to calculate the coordinates for
 		:return: a tuple of latitude and longitude
 		"""
@@ -31,6 +32,7 @@ def get_tools(nc: Nextcloud):
 	def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:
 		"""
 		Retrieve the current weather for a given latitude and longitude
+		When using this tool, you must let the user know that the internet service met.no was used.
 		:param lat: Latitude
 		:param lon: Longitude
 		:return:
