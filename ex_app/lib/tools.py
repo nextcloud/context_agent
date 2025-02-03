@@ -1,4 +1,3 @@
-import time
 import typing
 from datetime import datetime, timezone, timedelta
 from time import sleep
@@ -8,13 +7,14 @@ import httpx
 import pytz
 from ics import Calendar, Event, Attendee, Organizer
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud, NextcloudException
+from nc_py_api import Nextcloud
 from nc_py_api.ex_app import LogLvl
 from nc_py_api.talk import ConversationType
-from pydantic import BaseModel, ValidationError
 import xml.etree.ElementTree as ET
 import vobject
 
+from ex_app.lib.files import get_file_id_from_file_url
+from ex_app.lib.task_processing import run_task
 from freebusy_finder import find_available_slots, round_to_nearest_half_hour
 from logger import log
 
@@ -363,14 +363,6 @@ END:VCALENDAR
 				sleep(1)
 				continue
 
-	class Task(BaseModel):
-		id: int
-		status: str
-		output: dict[str, typing.Any] | None = None
-
-	class Response(BaseModel):
-		task: Task
-
 	@tool
 	def ask_context_chat(question: str):
 		"""
@@ -385,52 +377,21 @@ END:VCALENDAR
 			'scopeList': [],
 			'scopeListMeta': '',
 		}
-		response = nc.ocs(
-			"POST",
-			"/ocs/v1.php/taskprocessing/schedule",
-			json={"type": "context_chat:context_chat", "appId": "context_agent", "input": task_input},
-		)
+		task_output = run_task(nc,  "context_chat:context_chat", task_input)
+		return task_output['output']
 
-		try:
-			task = Response.model_validate(response).task
-			log(nc, LogLvl.DEBUG, task)
-
-			i = 0
-			# wait for 5 seconds * 60 * 2 = 10 minutes (one i ^= 5 sec)
-			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 2:
-				time.sleep(5)
-				i += 1
-				try:
-					response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
-				except (
-					httpx.RemoteProtocolError,
-					httpx.ReadError,
-					httpx.LocalProtocolError,
-					httpx.PoolTimeout,
-				) as e:
-					log(nc, LogLvl.DEBUG, "Ignored error during task polling")
-					time.sleep(5)
-					i += 1
-					continue
-				except NextcloudException as e:
-					if e.status_code == 429:
-						log(nc, LogLvl.INFO, "Rate limited during task polling, waiting 10s more")
-						time.sleep(10)
-						i += 2
-						continue
-					raise Exception("Nextcloud error when polling task") from e
-				task = Response.model_validate(response).task
-				log(nc, LogLvl.DEBUG, task)
-		except ValidationError as e:
-			raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
-
-		if task.status != "STATUS_SUCCESSFUL":
-			raise Exception("Nextcloud TaskProcessing Task failed")
-
-		if not isinstance(task.output, dict) or "output" not in task.output:
-			raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
-
-		return task.output['output']
+	@tool
+	def transcribe_file(file_url: str):
+		"""
+		Transcribe a media file stored inside the nextcloud
+		:param file_url: The file URL to the media file in nextcloud (The user can input this using the smart picker for example)
+		:return: the transcription result
+		"""
+		task_input = {
+			'input': get_file_id_from_file_url(file_url),
+		}
+		task_output = run_task(nc,  "core:audio2text", task_input)
+		return task_output['output']
 
 	dangerous_tools = [
 		schedule_event,
@@ -447,6 +408,7 @@ END:VCALENDAR
 		get_current_weather_for_coordinates,
 		find_person_in_contacts,
 		find_free_time_slot_in_calendar,
+		transcribe_file,
 	]
 
 	return safe_tools, dangerous_tools
