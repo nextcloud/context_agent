@@ -74,6 +74,17 @@ def get_tools(nc: Nextcloud):
 				contacts.append(contact)
 		return contacts
 
+	@tool
+	@safe_tool
+	def find_details_of_current_user() -> dict[str, typing.Any]:
+		"""
+		Find the user's personal information
+		:return: a dictionary with the person's personal information
+		"""
+
+		return nc.ocs('GET', '/ocs/v2.php/cloud/user')
+
+
 	return [
-		find_person_in_contacts,
+		find_person_in_contacts, find_details_of_current_user
 	]

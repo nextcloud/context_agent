@@ -62,10 +62,12 @@ def react(task, nc: Nextcloud):
 You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools! If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
 Today is {CURRENT_DATE}.
-Detect the language the user is using. Reply in the same language.
+Detect the language the user is using. Reply in the detected language.
 You can check which conversations exist using the list_talk_conversations tool, if a conversation cannot be found.
 You can check which calendars exist using the list_calendars tool, if a calendar can not be found.
-you can find out a user's email address by using the find_person_in_contacts tool.
+you can find out a user's email address and location by using the find_person_in_contacts tool.
+you can find out the current user's location by using the find_details_of_current_user tool.
+Always let the user know where you got the information.
 """.replace("{CURRENT_DATE}", current_date)
 		)
 
