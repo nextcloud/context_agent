@@ -2,6 +2,8 @@ FROM python:3.11-slim-bookworm
 
 COPY requirements.txt /
 
+
+
 RUN \
   python3 -m pip install -r requirements.txt && rm -rf ~/.cache && rm requirements.txt
 
@@ -14,5 +16,6 @@ ADD /ex_app/li[b] /ex_app/lib
 COPY --chmod=775 healthcheck.sh /
 
 WORKDIR /ex_app/lib
+ENV PYTHONPATH="/"
 ENTRYPOINT ["python3", "main.py"]
 HEALTHCHECK --interval=2s --timeout=2s --retries=300 CMD /healthcheck.sh
