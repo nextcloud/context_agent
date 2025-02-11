@@ -4,7 +4,7 @@ from typing import Optional
 
 import httpx
 import pytz
-from ics import Calendar, Event, Attendee, Organizer
+from ics import Calendar, Event, Attendee, Organizer, Todo
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import LogLvl
@@ -181,8 +181,37 @@ END:VCALENDAR
 		print('available_slots', available_slots)
 		return available_slots
 
+
+	@tool
+	@dangerous_tool
+	def add_task(calendar_name: str, title: str, description: str):
+		"""
+		Crete a new task in a calendar. 
+		:param calendar_name: The name of the calendar to add the task to
+		:param title: The title of the task
+		:param description: The description of the task
+		:return: bool
+		"""
+
+		# Create task
+		c = Calendar()
+		t = Todo()
+		t.name = title
+		t.description = description
+		
+		# Add event to calendar
+		c.todos.add(t)
+
+		principal = nc.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+		calendar.add_todo(t.serialize())
+
+		return True
+
 	return [
 		list_calendars,
 		schedule_event,
 		find_free_time_slot_in_calendar,
+		add_task
 	]
