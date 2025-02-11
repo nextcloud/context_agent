@@ -16,6 +16,8 @@ from ex_app.lib.graph import AgentState, get_graph
 from ex_app.lib.nc_model import model
 from ex_app.lib.tools import get_tools
 
+from langchain_community.tools import YouTubeSearchTool
+
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
 
@@ -43,6 +45,7 @@ def export_conversation(checkpointer):
 
 def react(task, nc: Nextcloud):
 	safe_tools, dangerous_tools = get_tools(nc)
+	safe_tools.append(YouTubeSearchTool())
 
 	model.bind_nextcloud(nc)
 
