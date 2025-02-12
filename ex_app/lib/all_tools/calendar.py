@@ -63,9 +63,10 @@ def get_tools(nc: Nextcloud):
 			end_datetime = end_date
 
 		# Set timezone
-		tz = pytz.timezone(timezone)
-		start_datetime = tz.localize(start_datetime)
-		end_datetime = tz.localize(end_datetime)
+		if timezone != None:
+			tz = pytz.timezone(timezone)
+			start_datetime = tz.localize(start_datetime)
+			end_datetime = tz.localize(end_datetime)
 
 
 		# Create event
