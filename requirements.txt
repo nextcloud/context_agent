@@ -6,3 +6,4 @@ ics
 pytz
 langchain_community
 vobject
+youtube_search
