@@ -185,12 +185,15 @@ END:VCALENDAR
 
 	@tool
 	@dangerous_tool
-	def add_task(calendar_name: str, title: str, description: str):
+	def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: Optional[str],):
 		"""
 		Crete a new task in a calendar. 
 		:param calendar_name: The name of the calendar to add the task to
 		:param title: The title of the task
 		:param description: The description of the task
+		:param due_date: the due date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
+		:param due_time: the due time in the following form: HH:MM AM/PM e.g. '3:00 PM'
+		:param timezone: Timezone (e.g., 'America/New_York').
 		:return: bool
 		"""
 
@@ -199,6 +202,25 @@ END:VCALENDAR
 		t = Todo()
 		t.name = title
 		t.description = description
+
+		# Parse date and times
+		if due_date:
+			due_date = datetime.strptime(due_date, "%Y-%m-%d")
+
+			# Combine date and time
+			if due_time:
+				due_time = datetime.strptime(due_time, "%I:%M %p").time()
+
+				due_datetime = datetime.combine(due_date, due_time)
+			else:
+				due_datetime = due_date
+
+			# Set timezone
+			if timezone != None:
+				tz = pytz.timezone(timezone)
+				due_datetime = tz.localize(due_datetime)
+
+			t.due = due_datetime
 		
 		# Add event to calendar
 		c.todos.add(t)
