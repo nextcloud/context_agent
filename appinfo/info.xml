@@ -31,6 +31,7 @@ Positive:
 	<category>tools</category>
 	<website>https://github.com/nextcloud/context_agent</website>
 	<bugs>https://github.com/nextcloud/context_agent/issues</bugs>
+	<screenshot>https://github.com/nextcloud/context_agent/blob/main/img/screenshot.png?raw=true</screenshot>
 	<repository type="git">https://github.com/nextcloud/context_agent</repository>
 	<dependencies>
 		<nextcloud min-version="31" max-version="31"/>

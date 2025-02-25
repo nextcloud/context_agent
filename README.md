@@ -10,6 +10,8 @@ and much more.
 This app needs Nextcloud Assistant and an AI provider to work.
 Read [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).
 
+![1](https://github.com/nextcloud/context_agent/blob/main/img/screenshot.png?raw=true)
+
 ## Ethical AI Rating
 
 ### Rating: 🟢
