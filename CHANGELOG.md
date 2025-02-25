@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.1.0] - 2025-02-25
+
+### Added
+- create_conversations tool (Talk)
+- search through addressbooks (Contacts)
+- find_details_of_current_user tool (Contacts)
+- find_free_time_slot_in_calendar tool (Calendar)
+- transcribe_file tool (Files)
+. add task tool (Calendar/Tasks)
+- YouTube search tool
+- add card tool (Deck)
+
+- log statements for each tool
+
+### Fixed
+- Make it tell user about 3rd party network services
+- add pythonpath to Dockerfile
+
 ## [1.0.4] - 2025-01-21
 
 ### Fixed
