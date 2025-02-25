@@ -193,7 +193,7 @@ END:VCALENDAR
 		:param description: The description of the task
 		:param due_date: the due date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
 		:param due_time: the due time in the following form: HH:MM AM/PM e.g. '3:00 PM'
-		:param timezone: Timezone (e.g., 'America/New_York').
+		:param timezone: Timezone (e.g., 'America/New_York'). Is required if there is a specified due date. 
 		:return: bool
 		"""
 
