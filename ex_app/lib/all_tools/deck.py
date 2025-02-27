@@ -28,8 +28,6 @@ def get_tools(nc: Nextcloud):
 			"Content-Type": "application/json",
 		})
 
-		print(response.text)
-
 		return response.text
 
 	
@@ -53,8 +51,6 @@ def get_tools(nc: Nextcloud):
 					'type': 'plain',
 					'order': 999,
 				})
-
-		print(response.text)
 
 
 		return True
