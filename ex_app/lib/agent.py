@@ -70,6 +70,7 @@ You can check which conversations exist using the list_talk_conversations tool, 
 You can check which calendars exist using the list_calendars tool, if a calendar can not be found.
 you can find out a user's email address and location by using the find_person_in_contacts tool.
 you can find out the current user's location by using the find_details_of_current_user tool.
+If an item should be added to a list, check list_calendars for a fitting calendar and add the item as a task there.
 Always let the user know where you got the information.
 """.replace("{CURRENT_DATE}", current_date)
 		)

@@ -33,7 +33,7 @@ def get_tools(nc: Nextcloud):
 	@dangerous_tool
 	def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
 		"""
-		Crete a new event in a calendar. Omit start_time and end_time parameters to create an all-day event.
+		Crete a new event or meeting in a calendar. Omit start_time and end_time parameters to create an all-day event.
 		:param calendar_name: The name of the calendar to add the event to
 		:param title: The title of the event
 		:param description: The description of the event
