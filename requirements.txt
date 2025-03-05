@@ -7,3 +7,4 @@ pytz
 langchain_community
 vobject
 youtube_search
+duckduckgo-search
