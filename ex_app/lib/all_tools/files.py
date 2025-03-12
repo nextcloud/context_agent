@@ -25,6 +25,24 @@ def get_tools(nc: Nextcloud):
 
 		return response.text
 
+
+	@tool
+	@dangerous_tool
+	def create_public_sharing_link(path: str):
+		"""
+		Creates a public sharing link for a file or folder
+		:param path: the path of the file or folder
+		:return: 
+		""" 
+
+		response = nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json={
+					'path': path,
+					'shareType': 3,
+				})
+
+		return response
+
 	return [
-		get_file_content
+		get_file_content,
+		create_public_sharing_link,
 	]
