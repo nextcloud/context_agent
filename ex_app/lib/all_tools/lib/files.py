@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 import re
 
 def get_file_id_from_file_url(file_url) -> int:

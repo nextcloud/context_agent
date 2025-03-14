@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from datetime import datetime, timezone, timedelta
 from time import sleep
 from typing import Optional

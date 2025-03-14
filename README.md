@@ -1,4 +1,10 @@
+<!--
+  - SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 # context_agent
+
+[![REUSE status](https://api.reuse.software/badge/github.com/nextcloud/context_agent)](https://api.reuse.software/info/github.com/nextcloud/context_agent)
 
 Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example
 - sending an email
