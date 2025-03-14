@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from nc_py_api.ex_app.providers.task_processing import TaskProcessingProvider, TaskType, ShapeDescriptor, ShapeType
 
 provider = TaskProcessingProvider(

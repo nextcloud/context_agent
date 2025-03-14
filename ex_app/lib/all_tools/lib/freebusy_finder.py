@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from datetime import datetime, timedelta
 
 def find_available_slots(start_time, end_time, busy_intervals, slot_duration=timedelta(hours=1), max_slots=3):

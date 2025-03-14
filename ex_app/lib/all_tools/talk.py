@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 from nc_py_api.talk import ConversationType
