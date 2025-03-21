@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-nc_py_api[app]>=0.17.1
-nc_py_api[calendar]>=0.17.1
+nc_py_api[app]>=0.19.2
+nc_py_api[calendar]>=0.19.2
 langgraph
 langchain
 ics

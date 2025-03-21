@@ -25,6 +25,16 @@ def get_tools(nc: Nextcloud):
 
 		return response.text
 
+	@tool
+	@safe_tool
+	def get_folder_tree(depth: int):
+		"""
+		Get the folder tree of the user
+		:param depth: the depth of the returned folder tree
+		:return: 
+		""" 
+
+		return nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', json={'depth': depth}, response_type='json')
 
 	@tool
 	@dangerous_tool
@@ -44,5 +54,6 @@ def get_tools(nc: Nextcloud):
 
 	return [
 		get_file_content,
+		get_folder_tree,
 		create_public_sharing_link,
 	]
