@@ -51,7 +51,33 @@ def get_tools(nc: Nextcloud):
 			raise Exception('Could not retrieve weather for coordinates')
 		return json['properties']['timeseries'][0]['data']['instant']['details']
 
+
+
+	@tool
+	@safe_tool
+	def get_public_transport_route_for_coordinates(origin_lat: str, origin_lon: str, destination_lat: str, destination_lon: str, routes: int) -> dict[str, typing.Any]:
+		"""
+		Retrieve a public transport route between two coordinates
+		When using get_public_transport_route_for_coordinates, always let the user know that the routing service here.com was used.
+		:param origin_lat: Latitude of the starting point
+		:param origin_lon: Longitude of the starting point
+		:param destination_lat: Latitude of the destination
+		:param destination_lon: Longitude of the destination
+		:param routes: the number of routes returned
+		:return: 
+		"""
+
+		api_key = nc.appconfig_ex.get_value('here_api')
+		res = httpx.get('https://transit.hereapi.com/v8/routes?transportMode=car&origin=' 
+			+ origin_lat + ',' + origin_lon + '&destination=' + destination_lat + ',' + destination_lon 
+			+ '&alternatives=' + str(routes-1) + '&apikey=' + api_key)
+		json = res.json()
+		return json
+
+	
+
 	return [
 		get_coordinates_for_address,
 		get_current_weather_for_coordinates,
+		get_public_transport_route_for_coordinates
 	]

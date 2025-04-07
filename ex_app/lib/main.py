@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import os
 import traceback
 from contextlib import asynccontextmanager
 from json import JSONDecodeError
@@ -9,14 +10,31 @@ from time import sleep
 import httpx
 from fastapi import FastAPI
 from nc_py_api import NextcloudApp, NextcloudException
-from nc_py_api.ex_app import AppAPIAuthMiddleware, LogLvl, run_app, set_handlers
+from nc_py_api.ex_app import (
+    AppAPIAuthMiddleware, 
+    LogLvl, 
+    run_app, 
+    set_handlers,
+    SettingsForm,
+    SettingsField,
+    SettingsFieldType)
 
 from ex_app.lib.agent import react
 from ex_app.lib.logger import log
 from ex_app.lib.provider import provider
 
+from contextvars import ContextVar
+from gettext import translation
+
 
 app_enabled = Event()
+
+LOCALE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "locale")
+current_translator = ContextVar("current_translator")
+current_translator.set(translation(os.getenv("APP_ID"), LOCALE_DIR, languages=["en"], fallback=True))
+
+def _(text):
+    return current_translator.get().gettext(text)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +49,24 @@ async def lifespan(app: FastAPI):
 APP = FastAPI(lifespan=lifespan)
 APP.add_middleware(AppAPIAuthMiddleware)  # set global AppAPI authentication middleware
 
+SETTINGS = SettingsForm(
+    id="settings_context_agent",
+    section_type="admin",
+    section_id="ai",
+    title=_("Context Agent"),
+    description=_("Find more details on how to set up Context Agent in the Administration documentation."),
+    fields=[
+        SettingsField(
+            id="here_api",
+            title=_("API Key HERE"),
+            description=_("Set the API key for the HERE public transport routing"),
+            type=SettingsFieldType.PASSWORD,
+            default="",
+            placeholder=_("API key"),
+        ),
+    ],
+)
+
 
 def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
     # This will be called each time application is `enabled` or `disabled`
@@ -40,6 +76,8 @@ def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
         nc.providers.task_processing.register(provider)
         app_enabled.set()
         log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
+
+        nc.ui.settings.register_form(SETTINGS)
     else:
         nc.providers.task_processing.unregister(provider.id)
         app_enabled.clear()
