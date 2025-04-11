@@ -23,7 +23,7 @@ def run_task(nc, type, task_input):
 	response = nc.ocs(
 		"POST",
 		"/ocs/v1.php/taskprocessing/schedule",
-		json={"type": "core:audio2text", "appId": "context_agent", "input": task_input},
+		json={"type": type, "appId": "context_agent", "input": task_input},
 	)
 
 	try:
