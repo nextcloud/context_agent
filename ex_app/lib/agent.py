@@ -75,7 +75,6 @@ You can check which calendars exist using the list_calendars tool, if a calendar
 you can find out a user's email address and location by using the find_person_in_contacts tool.
 you can find out the current user's location by using the find_details_of_current_user tool.
 If an item should be added to a list, check list_calendars for a fitting calendar and add the item as a task there.
-If asked to show a map, always answer with the URL in plain text without any markdown syntax.
 """.replace("{CURRENT_DATE}", current_date)
 		)
 

@@ -82,13 +82,24 @@ def get_tools(nc: Nextcloud):
 		:param origin_lon: Longitude of the starting point
 		:param destination_lat: Latitude of the destination
 		:param destination_lon: Longitude of the destination
-		:return: 
+		:return: a JSON description of the route and a URL to show the route on a map
 		"""
 
+		match profile:
+			case "routed-car":
+				profile_num = "0"
+			case "routed-bike":
+				profile_num = "1"
+			case "routed-foot":
+				profile_num = "2"
+			case _: 
+				profile = "routed-foot"
+				profile_num = "2" 
 		url = f'https://routing.openstreetmap.de/{profile}/route/v1/driving/{origin_lon},{origin_lat};{destination_lon},{destination_lat}?overview=false&steps=true'
+		map_url = f' https://routing.openstreetmap.de/?loc={origin_lat}%2C{origin_lon}&loc={destination_lat}%2C{destination_lon}&srv={profile_num}'
 		res = httpx.get(url)
 		json = res.json()
-		return json
+		return {'route_json_description': json, 'map_url': map_url}
 
 	
 	@tool
