@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2024 LangChain, Inc.
+# SPDX-License-Identifier: MIT
 import logging
 import os
 import pickle
