@@ -8,7 +8,6 @@ from datetime import date
 
 from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig, RunnableLambda
-from langgraph.checkpoint.memory import MemorySaver
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import persistent_storage
 
@@ -17,6 +16,7 @@ from ex_app.lib.signature import add_signature
 from ex_app.lib.graph import AgentState, get_graph
 from ex_app.lib.nc_model import model
 from ex_app.lib.tools import get_tools
+from ex_app.lib.memorysaver import MemorySaver
 
 from langchain_community.tools import YouTubeSearchTool, DuckDuckGoSearchResults
 
@@ -39,7 +39,9 @@ with open(key_file_path, "r") as file:
 def load_conversation(checkpointer, conversation_token: str):
 	if conversation_token == '' or conversation_token == '{}':
 		return
+	print(checkpointer.storage)
 	checkpointer.storage = checkpointer.serde.loads(verify_signature(conversation_token, key).encode())
+	print(checkpointer.storage)
 
 def export_conversation(checkpointer):
 	return add_signature(checkpointer.serde.dumps(checkpointer.storage).decode('utf-8'), key)
