@@ -52,7 +52,7 @@ def get_tools(nc: Nextcloud):
 	def list_messages_in_conversation(conversation_name: str, n_messages: int = 30):
 		"""
 		List messages of a conversation in talk
-		:param conversation_name: The name of the conversation to list messages of
+		:param conversation_name: The name of the conversation to list messages of (can only be one conversation per Tool call, obtainable via list_talk_conversations)
 		:param n_messages: The number of messages to receive
 		:return:
 		"""
