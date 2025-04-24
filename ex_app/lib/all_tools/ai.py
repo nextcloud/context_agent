@@ -45,17 +45,18 @@ def get_tools(nc: Nextcloud):
 
 	@tool
 	@safe_tool
-	def generate_document(input: str) -> str:
+	def generate_document(input: str, format: str) -> str:
 		"""
 		Generate a document with the input string as description
 		:param text: the instructions for the document
+		:param format: the format of the generated file, available are "text_document" and "spreadsheet_document"
 		:return: a download link to the generated document
 		"""
-
+		tasktype = "richdocuments:text_to_" + format
 		task_input = {
 			'text': input,
 		}
-		task_output = run_task(nc,  "richdocuments:text_to_text_document", task_input)
+		task_output = run_task(nc,  tasktype, task_input)
 		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task_output['task_id']}/output-file/{task_output['file']}/download"
 
 	return [
