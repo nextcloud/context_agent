@@ -42,7 +42,24 @@ def get_tools(nc: Nextcloud):
 		task_output = run_task(nc,  "core:audio2text", task_input)
 		return task_output['output']
 
+
+	@tool
+	@safe_tool
+	def generate_document(input: str) -> str:
+		"""
+		Generate a document with the input string as description
+		:param text: the instructions for the document
+		:return: a download link to the generated document
+		"""
+
+		task_input = {
+			'text': input,
+		}
+		task_output = run_task(nc,  "richdocuments:text_to_text_document", task_input)
+		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task_output['task_id']}/output-file/{task_output['file']}/download"
+
 	return [
 		ask_context_chat,
 		transcribe_file,
+		generate_document,
 	]

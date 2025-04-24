@@ -63,6 +63,9 @@ def run_task(nc, type, task_input):
 		raise Exception("Nextcloud TaskProcessing Task failed")
 
 	if not isinstance(task.output, dict) or "output" not in task.output:
+		if task.output['file'] != None:
+			task.output['task_id'] = task.id
+			return task.output
 		raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
 
 	return task.output
