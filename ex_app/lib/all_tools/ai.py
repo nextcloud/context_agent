@@ -25,7 +25,7 @@ def get_tools(nc: Nextcloud):
 			'scopeList': [],
 			'scopeListMeta': '',
 		}
-		task_output = run_task(nc,  "context_chat:context_chat", task_input)
+		task_output = run_task(nc,  "context_chat:context_chat", task_input).output
 		return task_output['output']
 
 	@tool
@@ -39,7 +39,7 @@ def get_tools(nc: Nextcloud):
 		task_input = {
 			'input': get_file_id_from_file_url(file_url),
 		}
-		task_output = run_task(nc,  "core:audio2text", task_input)
+		task_output = run_task(nc,  "core:audio2text", task_input).output
 		return task_output['output']
 
 
@@ -56,8 +56,8 @@ def get_tools(nc: Nextcloud):
 		task_input = {
 			'text': input,
 		}
-		task_output = run_task(nc,  tasktype, task_input)
-		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task_output['task_id']}/output-file/{task_output['file']}/download"
+		task = run_task(nc,  tasktype, task_input)
+		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['file']}/download"
 
 	return [
 		ask_context_chat,

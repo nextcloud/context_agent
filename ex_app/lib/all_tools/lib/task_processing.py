@@ -58,14 +58,10 @@ def run_task(nc, type, task_input):
 			log(nc, LogLvl.DEBUG, task)
 	except ValidationError as e:
 		raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
-
 	if task.status != "STATUS_SUCCESSFUL":
 		raise Exception("Nextcloud TaskProcessing Task failed")
 
-	if not isinstance(task.output, dict) or "output" not in task.output:
-		if task.output['file'] != None:
-			task.output['task_id'] = task.id
-			return task.output
+	if not isinstance(task.output, dict) or ("file" not in task.output and "output" not in task.output):
 		raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
 
-	return task.output
+	return task
