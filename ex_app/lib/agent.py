@@ -108,6 +108,12 @@ If an item should be added to a list, check list_calendars for a fitting calenda
 
 	for event in graph.stream(new_input, thread, stream_mode="values"):
 		last_message = event['messages'][-1]
+		for message in event['messages']:
+			if isinstance(message, HumanMessage):
+				source_list = []
+			if isinstance(message, AIMessage) and message.tool_calls:
+					for tool_call in message.tool_calls:
+						source_list.append(tool_call['name'])
 
 	state_snapshot = graph.get_state(thread)
 	actions = ''
@@ -117,5 +123,6 @@ If an item should be added to a list, check list_calendars for a fitting calenda
 	return {
 		'output': last_message.content,
 		'actions': actions,
-		'conversation_token': export_conversation(checkpointer)
+		'conversation_token': export_conversation(checkpointer),
+		'sources': source_list,
 	}
