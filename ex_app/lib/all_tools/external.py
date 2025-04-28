@@ -36,7 +36,6 @@ def get_tools(nc: Nextcloud):
 	def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:
 		"""
 		Retrieve the current weather for a given latitude and longitude
-		When using this tool, you must let the user know that the internet service met.no was used.
 		:param lat: Latitude
 		:param lon: Longitude
 		:return:
