@@ -39,9 +39,7 @@ with open(key_file_path, "r") as file:
 def load_conversation(checkpointer, conversation_token: str):
 	if conversation_token == '' or conversation_token == '{}':
 		return
-	print(checkpointer.storage)
 	checkpointer.storage = checkpointer.serde.loads(verify_signature(conversation_token, key).encode())
-	print(checkpointer.storage)
 
 def export_conversation(checkpointer):
 	return add_signature(checkpointer.serde.dumps(checkpointer.storage).decode('utf-8'), key)

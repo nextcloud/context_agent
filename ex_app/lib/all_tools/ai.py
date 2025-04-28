@@ -25,7 +25,7 @@ def get_tools(nc: Nextcloud):
 			'scopeList': [],
 			'scopeListMeta': '',
 		}
-		task_output = run_task(nc,  "context_chat:context_chat", task_input)
+		task_output = run_task(nc,  "context_chat:context_chat", task_input).output
 		return task_output['output']
 
 	@tool
@@ -39,10 +39,28 @@ def get_tools(nc: Nextcloud):
 		task_input = {
 			'input': get_file_id_from_file_url(file_url),
 		}
-		task_output = run_task(nc,  "core:audio2text", task_input)
+		task_output = run_task(nc,  "core:audio2text", task_input).output
 		return task_output['output']
+
+
+	@tool
+	@safe_tool
+	def generate_document(input: str, format: str) -> str:
+		"""
+		Generate a document with the input string as description
+		:param text: the instructions for the document
+		:param format: the format of the generated file, available are "text_document" and "spreadsheet_document"
+		:return: a download link to the generated document
+		"""
+		tasktype = "richdocuments:text_to_" + format
+		task_input = {
+			'text': input,
+		}
+		task = run_task(nc,  tasktype, task_input)
+		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['file']}/download"
 
 	return [
 		ask_context_chat,
 		transcribe_file,
+		generate_document,
 	]
