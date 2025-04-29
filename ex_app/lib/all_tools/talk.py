@@ -13,11 +13,11 @@ def get_tools(nc: Nextcloud):
 	def list_talk_conversations():
 		"""
 		List all conversations in talk
-		:return:
+		:return: returns a list of conversation names, e.g. ["Conversation 1", "Conversation 2"]
 		"""
 		conversations = nc.talk.get_user_conversations()
 
-		return ", ".join([conv.display_name for conv in conversations])
+		return [conv.display_name for conv in conversations]
 
 	@tool
 	@dangerous_tool
@@ -54,7 +54,7 @@ def get_tools(nc: Nextcloud):
 		List messages of a conversation in talk
 		:param conversation_name: The name of the conversation to list messages of (can only be one conversation per Tool call, obtainable via list_talk_conversations)
 		:param n_messages: The number of messages to receive
-		:return:
+		:return: A list of messages
 		"""
 		conversations = nc.talk.get_user_conversations()
 		conversation = {conv.display_name: conv for conv in conversations}[conversation_name]
