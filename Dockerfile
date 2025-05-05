@@ -25,10 +25,15 @@ RUN set -ex; \
     chmod +x /usr/local/bin/frpc; \
     rm -rf /tmp/frp /tmp/frp.tar.gz
 
-COPY requirements.txt /
 
-RUN \
-  python3 -m pip install -r requirements.txt && rm -rf ~/.cache && rm requirements.txt
+RUN apt install -y pipx build-essential git vim
+RUN pipx install poetry
+
+# Install requirements
+
+COPY pyproject.toml .
+COPY poetry.lock .
+RUN poetry install
 
 ADD /ex_app/cs[s] /ex_app/css
 ADD /ex_app/im[g] /ex_app/img
@@ -41,5 +46,5 @@ COPY --chmod=775 start.sh /
 
 WORKDIR /ex_app/lib
 ENV PYTHONPATH="/"
-ENTRYPOINT ["/start.sh", "python3", "main.py"]
+ENTRYPOINT ["/start.sh", "poetry", "run", "python3", "main.py"]
 HEALTHCHECK --interval=2s --timeout=2s --retries=300 CMD /healthcheck.sh

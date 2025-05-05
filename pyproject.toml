@@ -1,5 +1,30 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+[tool.poetry]
+name = "context_agent"
+description = ""
+authors = ["Marcel Klehr <mklehr@gmx.net>"]
+license = "AGPL-3.0"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+nc-py-api = {extras = ["calendar"], version = "^0.20.0"}
+langgraph = "^0.4.1"
+langchain = "^0.3.25"
+ics = "^0.7.2"
+pytz = "^2025.2"
+langchain-community = "^0.3.23"
+vobject = "^0.9.9"
+youtube-search = "^2.1.2"
+duckduckgo-search = "^8.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
 [tool.black]
 line-length = 120
 target-versions = ["py310"]
