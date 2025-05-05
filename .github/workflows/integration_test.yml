@@ -11,7 +11,7 @@ on:
       - stable*
 
 env:
-  APP_NAME: llm2
+  APP_NAME: context_agent
 
 concurrency:
   group: integration-test-${{ github.head_ref || github.run_id }}
@@ -128,6 +128,10 @@ jobs:
       - name: Enable app and app_api
         run: ./occ app:enable -vvv -f app_api
 
+      - name: Register manual deploy daemon
+        run: |
+          ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
+
       - name: Setup python 3.10
         uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 #v5.5.0
         with:
@@ -151,7 +155,6 @@ jobs:
 
       - name: Register backend
         run: |
-          ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
           ./occ app_api:app:register llm2 manual_install --json-info "{\"appid\":\"llm2\",\"name\":\"Local large language model\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.llm2_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9080,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
 
 
@@ -162,19 +165,18 @@ jobs:
           pipx install poetry
           poetry install
 
-      - name: Init llm2
+      - name: Init context_agent
         working-directory: ${{ env.APP_NAME }}
         env:
           APP_ID: ${{ env.APP_NAME }}
           APP_PORT: 9081
           APP_VERSION: ${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}
         run: |
-          poetry run python3 main.py > ./logs 2>&1 &
+          poetry run python3 ex_app/lib/main.py > ./logs 2>&1 &
 
       - name: Register backend
         run: |
-          ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
-          ./occ app_api:app:register llm2 manual_install --json-info "{\"appid\":\"context_agent\",\"name\":\"Nextcloud Assistant Context Agent",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9081,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
+          ./occ app_api:app:register context_agent manual_install --json-info "{\"appid\":\"context_agent\",\"name\":\"Nextcloud Assistant Context Agent\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9081,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
 
 
       - name: Run task
