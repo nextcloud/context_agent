@@ -166,13 +166,13 @@ jobs:
           poetry install
 
       - name: Init context_agent
-        working-directory: ${{ env.APP_NAME }}
+        working-directory: ${{ env.APP_NAME }}/ex_app/lib/
         env:
           APP_ID: ${{ env.APP_NAME }}
           APP_PORT: 9081
           APP_VERSION: ${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}
         run: |
-          poetry run python3 ex_app/lib/main.py > ./logs 2>&1 &
+          poetry run python3 main.py > ../../logs 2>&1 &
 
       - name: Register backend
         run: |
