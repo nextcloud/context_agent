@@ -1,0 +1,214 @@
+# SPDX-FileCopyrightText: Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Integration test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - stable*
+
+env:
+  APP_NAME: llm2
+
+concurrency:
+  group: integration-test-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+
+jobs:
+  transcription:
+    runs-on: ubuntu-22.04
+
+    strategy:
+      # do not stop on another job's failure
+      fail-fast: false
+      matrix:
+        php-versions: [ '8.1' ]
+        databases: [ 'sqlite' ]
+        server-versions: [ 'master', 'stable31', 'stable30' ]
+
+    name: Integration test on ☁️${{ matrix.server-versions }} 🐘${{ matrix.php-versions }}
+
+    env:
+      MYSQL_PORT: 4444
+      PGSQL_PORT: 4445
+
+      PYTHONUNBUFFERED: 1
+      APP_HOST: 0.0.0.0
+      APP_SECRET: 12345
+      COMPUTE_DEVICE: CPU
+      NEXTCLOUD_URL: http://localhost:8080
+
+    services:
+      mysql:
+        image: mariadb:10.5
+        ports:
+          - 4444:3306/tcp
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+        options: --health-cmd="mysqladmin ping" --health-interval 5s --health-timeout 2s --health-retries 5
+      postgres:
+        image: postgres
+        ports:
+          - 4445:5432/tcp
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: rootpassword
+          POSTGRES_DB: nextcloud
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 2s --health-retries 5
+
+    steps:
+      - name: Checkout server
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: nextcloud/server
+          ref: ${{ matrix.server-versions }}
+
+      - name: Checkout submodules
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+
+      - name: Set up php ${{ matrix.php-versions }}
+        uses: shivammathur/setup-php@9e72090525849c5e82e596468b86eb55e9cc5401 # v2.32.0
+        with:
+          php-version: ${{ matrix.php-versions }}
+          tools: phpunit
+          extensions: mbstring, iconv, fileinfo, intl, sqlite, pdo_mysql, pdo_sqlite, pgsql, pdo_pgsql, gd, zip
+
+      - name: Checkout llm2 app
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: llm2
+          repository: nextcloud/llm2
+          ref: main
+          persist-credentials: false
+
+      - name: Get app version
+        id: llm2_appinfo
+        uses: skjnldsv/xpath-action@7e6a7c379d0e9abc8acaef43df403ab4fc4f770c # master
+        with:
+          filename: llm2/appinfo/info.xml
+          expression: "/info/version/text()"
+
+      - name: Checkout app
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: ${{ env.APP_NAME }}
+          persist-credentials: false
+
+      - name: Get app version
+        id: context_agent_appinfo
+        uses: skjnldsv/xpath-action@7e6a7c379d0e9abc8acaef43df403ab4fc4f770c # master
+        with:
+          filename: ${{ env.APP_NAME }}/appinfo/info.xml
+          expression: "/info/version/text()"
+
+      - name: Set up Nextcloud
+        if: ${{ matrix.databases != 'pgsql'}}
+        run: |
+          sleep 25
+          mkdir data
+          ./occ maintenance:install --verbose --database=${{ matrix.databases }} --database-name=nextcloud --database-host=127.0.0.1 --database-port=$MYSQL_PORT --database-user=root --database-pass=rootpassword --admin-user admin --admin-pass password
+          composer run serve &
+
+      - name: Set up Nextcloud
+        if: ${{ matrix.databases == 'pgsql'}}
+        run: |
+          sleep 25
+          mkdir data
+          ./occ maintenance:install --verbose --database=${{ matrix.databases }} --database-name=nextcloud --database-host=127.0.0.1 --database-port=$PGSQL_PORT --database-user=root --database-pass=rootpassword --admin-user admin --admin-pass password
+          composer run serve &
+
+      - name: Enable app and app_api
+        run: ./occ app:enable -vvv -f app_api
+
+      - name: Setup python 3.10
+        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 #v5.5.0
+        with:
+          python-version: '3.10'
+
+      - name: Install llm2 app
+        working-directory: llm2
+        run: |
+          sudo apt install pipx
+          pipx install poetry
+          poetry install
+
+      - name: Init llm2
+        working-directory: llm2/lib
+        env:
+          APP_ID: llm2
+          APP_PORT: 9080
+          APP_VERSION: ${{ fromJson(steps.llm2_appinfo.outputs.result).version }}
+        run: |
+          poetry run python3 main.py > ../logs 2>&1 &
+
+      - name: Register backend
+        run: |
+          ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
+          ./occ app_api:app:register llm2 manual_install --json-info "{\"appid\":\"llm2\",\"name\":\"Local large language model\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.llm2_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9080,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
+
+
+      - name: Install context_agent app
+        working-directory: ${{ env.APP_NAME }}
+        run: |
+          sudo apt install pipx
+          pipx install poetry
+          poetry install
+
+      - name: Init llm2
+        working-directory: ${{ env.APP_NAME }}
+        env:
+          APP_ID: ${{ env.APP_NAME }}
+          APP_PORT: 9081
+          APP_VERSION: ${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}
+        run: |
+          poetry run python3 main.py > ./logs 2>&1 &
+
+      - name: Register backend
+        run: |
+          ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
+          ./occ app_api:app:register llm2 manual_install --json-info "{\"appid\":\"context_agent\",\"name\":\"Nextcloud Assistant Context Agent",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9081,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
+
+
+      - name: Run task
+        env:
+          CREDS: "admin:password"
+        run: |
+          set -x
+          sleep 300
+          TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "What are the coordinates of Berlin, Germany?", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
+          echo $TASK
+          TASK_ID=$(echo $TASK | jq '.ocs.data.task.id')
+          NEXT_WAIT_TIME=0
+          TASK_STATUS='"STATUS_SCHEDULED"'
+          until [ $NEXT_WAIT_TIME -eq 35 ] || [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ] || [ "$TASK_STATUS" == '"STATUS_FAILED"' ]; do
+            TASK=$(curl -u "$CREDS" -H "oCS-APIRequest: true" http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json)
+            echo $TASK
+            TASK_STATUS=$(echo $TASK | jq '.ocs.data.task.status')
+            echo $TASK_STATUS
+            sleep $(( NEXT_WAIT_TIME++ ))
+          done
+          curl -u "$CREDS" -H "oCS-APIRequest: true" http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json
+          [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ]
+
+      - name: Show nextcloud logs
+        if: always()
+        run: |
+          tail data/nextcloud.log
+
+      - name: Show context_chat logs
+        if: always()
+        run: |
+          [ -f ${{ env.APP_NAME }}/logs ] && cat ${{ env.APP_NAME }}/logs || echo "No context_chat logs"
+
+      - name: Show llm2 logs
+        if: always()
+        run: |
+          [ -f llm2/logs ] && cat llm2/logs || echo "No llm2 logs"
