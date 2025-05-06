@@ -172,7 +172,7 @@ jobs:
           APP_PORT: 9081
           APP_VERSION: ${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}
         run: |
-          poetry run python3 main.py > ../../logs 2>&1 &
+          PYTHONPATH="$(pwd)/../.." poetry run python3 main.py > ../../logs 2>&1 &
 
       - name: Register backend
         run: |
