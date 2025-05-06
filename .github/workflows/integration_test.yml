@@ -207,6 +207,11 @@ jobs:
           done
           curl -u "$CREDS" -H "oCS-APIRequest: true" http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json
           [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ]
+          echo $TASK | jq '.ocs.data.task.output.output'
+          echo $TASK | jq '.ocs.data.task.output.sources'
+          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q get_coordinates_for_address
+          echo $TASK | jq '.ocs.data.task.output.output' | grep -q '52.'
+          echo $TASK | jq '.ocs.data.task.output.output' | grep -q '13.'
 
       - name: Show nextcloud logs
         if: always()
