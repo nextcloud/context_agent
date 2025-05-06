@@ -19,6 +19,7 @@ langchain-community = "^0.3.23"
 vobject = "^0.9.9"
 youtube-search = "^2.1.2"
 duckduckgo-search = "^8.0.1"
+uvicorn = "^0.34.2"
 
 [build-system]
 requires = ["poetry-core"]
