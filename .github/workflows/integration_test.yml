@@ -148,6 +148,7 @@ jobs:
       - name: Install llm2 app
         working-directory: llm2
         run: |
+          sudo apt-get update
           sudo apt install pipx
           pipx install poetry
           poetry install

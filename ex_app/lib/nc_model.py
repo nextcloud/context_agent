@@ -127,7 +127,7 @@ class ChatWithNextcloud(BaseChatModel):
 		if task.status == "STATUS_FAILED":
 			raise Exception("Nextcloud TaskProcessing Task failed")
 
-		if task.status == "STATUS_RUNNING" or task.status == "STATUS_SCHEDULED":
+		if task.status in ("STATUS_RUNNING", "STATUS_SCHEDULED"):
 			raise Exception("Nextcloud TaskProcessing Task timed out")
 
 		if not isinstance(task.output, dict) or "output" not in task.output:
