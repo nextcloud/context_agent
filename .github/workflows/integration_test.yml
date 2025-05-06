@@ -192,7 +192,6 @@ jobs:
         env:
           CREDS: "admin:password"
         run: |
-          set -x
           sleep 300
           TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "What are the coordinates of Berlin, Germany?", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
           echo $TASK
@@ -204,6 +203,7 @@ jobs:
             echo $TASK
             TASK_STATUS=$(echo $TASK | jq '.ocs.data.task.status')
             echo $TASK_STATUS
+            echo "Sleeping for $NEXT_WAIT_TIME seconds"
             sleep $(( NEXT_WAIT_TIME++ ))
           done
           curl -u "$CREDS" -H "oCS-APIRequest: true" http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json
