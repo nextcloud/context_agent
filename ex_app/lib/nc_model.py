@@ -96,8 +96,8 @@ class ChatWithNextcloud(BaseChatModel):
 			log(nc, LogLvl.DEBUG, task)
 
 			i = 0
-			# wait for 5 seconds * 60 * 2 = 10 minutes (one i ^= 5 sec)
-			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 2:
+			# wait for 5 seconds * 60 * 4 = 20 minutes (one i ^= 5 sec)
+			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 4:
 				time.sleep(5)
 				i += 1
 				try:
