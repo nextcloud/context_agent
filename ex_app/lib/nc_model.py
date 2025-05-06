@@ -124,8 +124,11 @@ class ChatWithNextcloud(BaseChatModel):
 		except ValidationError as e:
 			raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
 
-		if task.status != "STATUS_SUCCESSFUL":
+		if task.status == "STATUS_FAILED":
 			raise Exception("Nextcloud TaskProcessing Task failed")
+
+		if task.status == "STATUS_RUNNING" or task.status == "STATUS_SCHEDULED":
+			raise Exception("Nextcloud TaskProcessing Task timed out")
 
 		if not isinstance(task.output, dict) or "output" not in task.output:
 			raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
