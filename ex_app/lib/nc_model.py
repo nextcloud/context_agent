@@ -36,6 +36,7 @@ class ChatWithNextcloud(BaseChatModel):
 	nc: Nextcloud = NextcloudApp()
 	tools: Sequence[
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
+	TIMEOUT: int = 60 * 20 # 20 minutes
 
 	def _generate(
 			self,
@@ -96,9 +97,10 @@ class ChatWithNextcloud(BaseChatModel):
 			log(nc, LogLvl.DEBUG, task)
 
 			i = 0
-			# wait for 5 seconds * 60 * 2 = 10 minutes (one i ^= 5 sec)
-			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 2:
-				time.sleep(5)
+			wait_time = 5
+			# wait for TIMEOUT (one i ^= 5 sec)
+			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < self.TIMEOUT / wait_time:
+				time.sleep(wait_time)
 				i += 1
 				try:
 					response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
@@ -124,8 +126,11 @@ class ChatWithNextcloud(BaseChatModel):
 		except ValidationError as e:
 			raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
 
-		if task.status != "STATUS_SUCCESSFUL":
+		if task.status == "STATUS_FAILED":
 			raise Exception("Nextcloud TaskProcessing Task failed")
+
+		if task.status in ("STATUS_RUNNING", "STATUS_SCHEDULED"):
+			raise Exception("Nextcloud TaskProcessing Task timed out")
 
 		if not isinstance(task.output, dict) or "output" not in task.output:
 			raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
