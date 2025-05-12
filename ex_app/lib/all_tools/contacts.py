@@ -91,5 +91,5 @@ def get_tools(nc: Nextcloud):
 		find_person_in_contacts, find_details_of_current_user
 	]
 
-	def get_category_name():
-		return "Contacts"
+def get_category_name():
+	return "Contacts"

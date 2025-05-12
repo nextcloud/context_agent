@@ -3,6 +3,7 @@
 import importlib
 import os
 import pathlib
+import json
 from os.path import dirname
 
 from nc_py_api import Nextcloud
@@ -15,6 +16,8 @@ def get_tools(nc: Nextcloud):
 	safe_tools = []
 
 	py_files = [f for f in os.listdir(directory) if f.endswith(".py") and f != "__init__.py"]
+	is_activated = json.loads(nc.appconfig_ex.get_value('tool_status'))
+	print(is_activated)
 
 	for file in py_files:
 		module_name = pathlib.Path(file).stem  # Extract module name without .py
@@ -28,6 +31,9 @@ def get_tools(nc: Nextcloud):
 		# Call function if it exists
 		if hasattr(module, function_name):
 			get_tools_from_import = getattr(module, function_name)
+			if not is_activated[module_name]:
+				print(f"{module_name} tools deactivated")
+				continue
 			if callable(get_tools_from_import):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = get_tools_from_import(nc)
@@ -67,8 +73,6 @@ def get_categories():
 			if callable(category_from_import):
 				categories[module_name] = category_from_import()
 			else:
-				print(f"{function_name} in {module_name} is not callable.")
-
-	print(categories)			
+				print(f"{function_name} in {module_name} is not callable.")		
 
 	return categories
