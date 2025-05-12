@@ -64,3 +64,6 @@ def get_tools(nc: Nextcloud):
 		transcribe_file,
 		generate_document,
 	]
+
+def get_category_name():
+	return "AI"

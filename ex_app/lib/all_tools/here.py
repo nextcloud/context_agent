@@ -39,3 +39,6 @@ def get_tools(nc: Nextcloud):
 	return [
 		get_public_transport_route_for_coordinates,
 	]
+
+def get_category_name():
+	return "Public Transport"

@@ -87,3 +87,6 @@ def get_tools(nc: Nextcloud):
 		get_osm_route,
 		get_osm_link,
 	]
+
+def get_category_name():
+	return "OpenStreetMap"

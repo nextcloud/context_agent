@@ -85,3 +85,6 @@ def get_tools(nc: Nextcloud):
 		list_assignees,
 		create_work_package
 	]
+
+def get_category_name():
+	return "OpenProject"

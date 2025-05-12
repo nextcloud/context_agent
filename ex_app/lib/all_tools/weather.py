@@ -35,3 +35,6 @@ def get_tools(nc: Nextcloud):
 	return [
 		get_current_weather_for_coordinates,
 	]
+
+def get_category_name():
+	return "Weather"

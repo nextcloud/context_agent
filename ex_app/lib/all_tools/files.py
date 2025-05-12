@@ -59,3 +59,6 @@ def get_tools(nc: Nextcloud):
 		get_folder_tree,
 		create_public_sharing_link,
 	]
+
+def get_category_name():
+	return "Files"
