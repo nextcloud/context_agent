@@ -59,8 +59,28 @@ def get_tools(nc: Nextcloud):
 		task = run_task(nc,  tasktype, task_input)
 		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['file']}/download"
 
+
+	@tool
+	@safe_tool
+	def generate_image(input: str) -> str:
+		"""
+		Generate an image with the input string as description
+		:param text: the instructions for the image generation
+		:return: a download link to the generated image
+		"""
+		tasktype = "core:text2image"
+		task_input = {
+			'input': input,
+			'numberOfImages': 1,
+		}
+		task = run_task(nc,  tasktype, task_input)
+
+		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['images'][0]}/download"
+
+
 	return [
 		ask_context_chat,
 		transcribe_file,
 		generate_document,
+		generate_image
 	]
