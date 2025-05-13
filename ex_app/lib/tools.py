@@ -73,6 +73,6 @@ def get_categories():
 			if callable(category_from_import):
 				categories[module_name] = category_from_import()
 			else:
-				print(f"{function_name} in {module_name} is not callable.")		
+				print(f"{function_name} in {module_name} is not callable.")
 
 	return categories
