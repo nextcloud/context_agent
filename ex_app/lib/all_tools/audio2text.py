@@ -29,7 +29,7 @@ def get_tools(nc: Nextcloud):
 	]
 
 def get_category_name():
-	return "Audio Transcription"
+	return "Audio transcription"
 
 def is_available(nc: Nextcloud):
 	tasktypes = [i['id'] for i in nc.ocs('GET', '/ocs/v2.php/apps/assistant/api/v1/task-types')['types']]

@@ -32,7 +32,7 @@ def get_tools(nc: Nextcloud):
 	]
 
 def get_category_name():
-	return "Context Chat"
+	return "Context chat"
 
 def is_available(nc: Nextcloud):
 	return 'context_chat' in nc.apps.get_list()

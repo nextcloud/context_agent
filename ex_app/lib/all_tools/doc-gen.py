@@ -30,7 +30,7 @@ def get_tools(nc: Nextcloud):
 	]
 
 def get_category_name():
-	return "Office Document Generation"
+	return "Office document generation"
 
 def is_available(nc: Nextcloud):
 	return 'richdocuments' in nc.capabilities
