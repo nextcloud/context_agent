@@ -66,3 +66,9 @@ def get_tools(nc: Nextcloud):
 		send_message_to_conversation,
 		create_public_conversation,
 	]
+
+def get_category_name():
+	return "Talk"
+
+def is_available(nc: Nextcloud):
+	return 'spreed' in nc.capabilities

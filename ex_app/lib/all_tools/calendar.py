@@ -240,3 +240,9 @@ END:VCALENDAR
 		find_free_time_slot_in_calendar,
 		add_task
 	]
+
+def get_category_name():
+	return "Calendar and Tasks"
+
+def is_available(nc: Nextcloud):
+	return 'calendar' in nc.apps.get_list()

@@ -61,3 +61,9 @@ def get_tools(nc: Nextcloud):
 		list_decks,
 		add_card
 	]
+
+def get_category_name():
+	return "Deck"
+
+def is_available(nc: Nextcloud):
+	return 'deck' in nc.capabilities

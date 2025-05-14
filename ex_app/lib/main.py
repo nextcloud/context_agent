@@ -22,6 +22,7 @@ from nc_py_api.ex_app import (
 from ex_app.lib.agent import react
 from ex_app.lib.logger import log
 from ex_app.lib.provider import provider
+from ex_app.lib.tools import get_categories
 
 from contextvars import ContextVar
 from gettext import translation
@@ -48,14 +49,22 @@ async def lifespan(app: FastAPI):
 
 APP = FastAPI(lifespan=lifespan)
 APP.add_middleware(AppAPIAuthMiddleware)  # set global AppAPI authentication middleware
+categories=get_categories()
 
 SETTINGS = SettingsForm(
     id="settings_context_agent",
     section_type="admin",
     section_id="ai",
-    title=_("Context Agent"),
-    description=_("Find more details on how to set up Context Agent in the Administration documentation."),
+    title=_("Context agent"),
+    description=_("Find more details on how to set up Context agent in the Administration documentation."),
     fields=[
+        SettingsField(
+            id="tool_status",
+            title=_("Activate all tools that Context agent should use"),
+            type=SettingsFieldType.MULTI_CHECKBOX,
+            default=dict.fromkeys(categories, True),
+            options={v: k for k, v in categories.items()},
+        ), 
         SettingsField(
             id="here_api",
             title=_("API Key HERE"),
@@ -64,7 +73,7 @@ SETTINGS = SettingsForm(
             default="",
             placeholder=_("API key"),
         ),
-    ],
+        ]     
 )
 
 
