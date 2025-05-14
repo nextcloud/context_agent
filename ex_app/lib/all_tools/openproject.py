@@ -88,3 +88,6 @@ def get_tools(nc: Nextcloud):
 
 def get_category_name():
 	return "OpenProject"
+
+def is_available(nc: Nextcloud):
+	return 'integration_openproject' in nc.capabilities

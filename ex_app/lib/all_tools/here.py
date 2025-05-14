@@ -42,3 +42,6 @@ def get_tools(nc: Nextcloud):
 
 def get_category_name():
 	return "Public Transport"
+
+def is_available(nc: Nextcloud):
+	return nc.appconfig_ex.get_value('here_api') != ''

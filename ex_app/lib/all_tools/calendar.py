@@ -243,3 +243,6 @@ END:VCALENDAR
 
 def get_category_name():
 	return "Calendar and Tasks"
+
+def is_available(nc: Nextcloud):
+	return 'calendar' in nc.apps.get_list()

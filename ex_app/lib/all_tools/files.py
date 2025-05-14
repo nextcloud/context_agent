@@ -62,3 +62,6 @@ def get_tools(nc: Nextcloud):
 
 def get_category_name():
 	return "Files"
+
+def is_available(nc: Nextcloud):
+	return True

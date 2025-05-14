@@ -17,7 +17,6 @@ def get_tools(nc: Nextcloud):
 
 	py_files = [f for f in os.listdir(directory) if f.endswith(".py") and f != "__init__.py"]
 	is_activated = json.loads(nc.appconfig_ex.get_value('tool_status'))
-	print(is_activated)
 
 	for file in py_files:
 		module_name = pathlib.Path(file).stem  # Extract module name without .py
@@ -31,8 +30,12 @@ def get_tools(nc: Nextcloud):
 		# Call function if it exists
 		if hasattr(module, function_name):
 			get_tools_from_import = getattr(module, function_name)
+			available_from_import = getattr(module, "is_available")
 			if not is_activated[module_name]:
 				print(f"{module_name} tools deactivated")
+				continue
+			if not available_from_import(nc):
+				print(f"{module_name} not available")
 				continue
 			if callable(get_tools_from_import):
 				print(f"Invoking {function_name} from {module_name}")
