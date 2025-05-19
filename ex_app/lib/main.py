@@ -8,6 +8,7 @@ from threading import Thread, Event
 from time import sleep
 
 import httpx
+import json
 from fastapi import FastAPI
 from nc_py_api import NextcloudApp, NextcloudException
 from nc_py_api.ex_app import (
@@ -87,6 +88,12 @@ def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
         log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
 
         nc.ui.settings.register_form(SETTINGS)
+        pref_settings = json.loads(nc.appconfig_ex.get_value('tool_status', default = "{}"))
+        for key in categories.keys(): # populate new settings values
+            if key not in pref_settings:
+                pref_settings[key] = True
+        nc.appconfig_ex.set_value('tool_status', json.dumps(pref_settings))
+
     else:
         nc.providers.task_processing.unregister(provider.id)
         app_enabled.clear()
