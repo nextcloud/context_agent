@@ -19,13 +19,8 @@ def get_tools(nc: Nextcloud):
 	is_activated = json.loads(nc.appconfig_ex.get_value('tool_status'))
 
 	for file in py_files:
-		module_name = pathlib.Path(file).stem  # Extract module name without .py
-		module_path = os.path.join(directory, file)
-
 		# Load module dynamically
-		spec = importlib.util.spec_from_file_location(module_name, module_path)
-		module = importlib.util.module_from_spec(spec)
-		spec.loader.exec_module(module)
+		module_name, spec, module = get_tool_module(file, directory)
 
 		# Call function if it exists
 		if hasattr(module, function_name):
@@ -49,7 +44,6 @@ def get_tools(nc: Nextcloud):
 				print(f"{function_name} in {module_name} is not callable.")
 		else:
 			print(f"{function_name} not found in {module_name}.")
-	get_categories()
 
 	return safe_tools, dangerous_tools
 
@@ -62,13 +56,8 @@ def get_categories():
 	py_files = [f for f in os.listdir(directory) if f.endswith(".py") and f != "__init__.py"]
 
 	for file in py_files:
-		module_name = pathlib.Path(file).stem  # Extract module name without .py
-		module_path = os.path.join(directory, file)
-
 		# Load module dynamically
-		spec = importlib.util.spec_from_file_location(module_name, module_path)
-		module = importlib.util.module_from_spec(spec)
-		spec.loader.exec_module(module)
+		module_name, spec, module = get_tool_module(file, directory)
 
 		# Call function if it exists
 		if hasattr(module, function_name):
@@ -79,3 +68,14 @@ def get_categories():
 				print(f"{function_name} in {module_name} is not callable.")
 
 	return categories
+
+
+def get_tool_module(file, directory):
+	module_name = pathlib.Path(file).stem  # Extract module name without .py
+	module_path = os.path.join(directory, file)
+
+	spec = importlib.util.spec_from_file_location(module_name, module_path)
+	module = importlib.util.module_from_spec(spec)
+	spec.loader.exec_module(module)
+
+	return module_name, spec, module
