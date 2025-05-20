@@ -7,7 +7,9 @@ import json
 from os.path import dirname
 
 from nc_py_api import Nextcloud
+from ex_app.lib.all_tools.lib.decorator import timed_memoize
 
+@timed_memoize(1*60)
 def get_tools(nc: Nextcloud):
 	directory = dirname(__file__) + '/all_tools'
 	function_name = "get_tools"
@@ -36,6 +38,9 @@ def get_tools(nc: Nextcloud):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = get_tools_from_import(nc)
 				for tool in imported_tools:
+					if not hasattr(tool, 'func'):
+						safe_tools.append(tool) # external tools cannot be decorated and should always be safe
+						continue
 					if not tool.func.safe:
 						dangerous_tools.append(tool)
 					else:
