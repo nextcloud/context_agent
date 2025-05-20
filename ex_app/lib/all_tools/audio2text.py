@@ -32,5 +32,5 @@ def get_category_name():
 	return "Audio transcription"
 
 def is_available(nc: Nextcloud):
-	tasktypes = [i['id'] for i in nc.ocs('GET', '/ocs/v2.php/apps/assistant/api/v1/task-types')['types']]
+	tasktypes = nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes')['types'].keys()
 	return 'core:audio2text' in tasktypes

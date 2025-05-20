@@ -13,7 +13,7 @@ from nc_py_api.ex_app import LogLvl
 import xml.etree.ElementTree as ET
 import vobject
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool, timed_memoize
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
 from ex_app.lib.logger import log
 
@@ -244,5 +244,7 @@ END:VCALENDAR
 def get_category_name():
 	return "Calendar and Tasks"
 
+@timed_memoize(5*60)
 def is_available(nc: Nextcloud):
+	print('SHOULD DISAPPEAR')
 	return 'calendar' in nc.apps.get_list()
