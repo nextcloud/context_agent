@@ -18,7 +18,6 @@ from ex_app.lib.nc_model import model
 from ex_app.lib.tools import get_tools
 from ex_app.lib.memorysaver import MemorySaver
 
-from langchain_community.tools import YouTubeSearchTool, DuckDuckGoSearchResults
 
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
@@ -47,8 +46,6 @@ def export_conversation(checkpointer):
 
 def react(task, nc: Nextcloud):
 	safe_tools, dangerous_tools = get_tools(nc)
-	safe_tools.append(YouTubeSearchTool())
-	safe_tools.append(DuckDuckGoSearchResults(output_format="list"))
 
 	model.bind_nextcloud(nc)
 

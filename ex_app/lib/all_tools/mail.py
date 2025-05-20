@@ -62,3 +62,9 @@ def get_tools(nc: Nextcloud):
 		send_email,
 		get_mail_account_list
 	]
+
+def get_category_name():
+	return "Mail"
+
+def is_available(nc: Nextcloud):
+	return 'mail' in nc.apps.get_list()

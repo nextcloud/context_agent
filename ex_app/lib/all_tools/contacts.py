@@ -90,3 +90,9 @@ def get_tools(nc: Nextcloud):
 	return [
 		find_person_in_contacts, find_details_of_current_user
 	]
+
+def get_category_name():
+	return "Contacts"
+
+def is_available(nc: Nextcloud):
+	return True
