@@ -15,10 +15,24 @@ def get_tools(nc: Nextcloud):
 		"""
 		Generate a document with the input string as description
 		:param text: the instructions for the document
-		:param format: the format of the generated file, available are "text_document" and "spreadsheet_document"
+		:param format: the format of the generated file, available are "text document", "word document", "pdf" "spreadsheet" and "slides"
 		:return: a download link to the generated document
 		"""
-		tasktype = "richdocuments:text_to_" + format
+		match format:
+			case "text document":
+				tasktype = "richdocuments:text_to_text_document"
+
+			case "spreadsheet":
+				tasktype = "richdocuments:text_to_spreadsheet_document"
+
+			case "slides":
+				tasktype = "richdocuments:slide_deck_generation"
+				task_input = {
+					'text': input,
+				}
+				task = run_task(nc,  tasktype, task_input)
+				return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['slide_deck']}/download"
+
 		task_input = {
 			'text': input,
 		}

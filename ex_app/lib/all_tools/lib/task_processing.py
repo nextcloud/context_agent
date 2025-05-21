@@ -61,7 +61,7 @@ def run_task(nc, type, task_input):
 	if task.status != "STATUS_SUCCESSFUL":
 		raise Exception("Nextcloud TaskProcessing Task failed")
 
-	if not isinstance(task.output, dict) or all(x not in ["file", "output", "images"] for x in task.output):
+	if not isinstance(task.output, dict) or all(x not in ["file", "output", "images", "slide_deck"] for x in task.output):
 		raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
 
 	return task
