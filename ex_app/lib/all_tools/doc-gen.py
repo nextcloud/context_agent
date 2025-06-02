@@ -15,7 +15,7 @@ def get_tools(nc: Nextcloud):
 		"""
 		Generate a document with the input string as description. 
 		:param text: the instructions for the document
-		:param format: the format of the generated file, available are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
+		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
 		:return: a download link to the generated document
 		"""
 		match format:
