@@ -1,0 +1,11 @@
+OC.L10N.register(
+    "context_agent",
+    {
+    "API Key HERE" : "HERE API atslēga",
+    "Set the API key for the HERE public transport routing" : "Iestatīt API atslēgu HERE publiskā transporta maršrutēšanai",
+    "API key" : "API atslēga",
+    "Nextcloud Context Agent" : "Nextcloud konteksta aģents",
+    "Let Nextcloud assistant take off tasks from your todo list." : "Ļauj Nextcloud palīgam paveikt darāmo leitu saraksta uzdevumus!",
+    "Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example\n- sending an email\n- writing a message in a Talk room\n- creating calendar entrys\n\nand much more. \n\nThis app needs Nextcloud Assistant and an AI provider to work.\nRead [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n\n## Ethical AI Rating\n\n### Rating: 🟢\n\nPositive:\n\n* The software for this app is open source, no trained AI model is used" : "Ļauj Nextcloud palīgam paveikt uzdevumus no sava darāmo lietu saraksta! Konteksta aģents palīgā nodrošina MI tērzēšanau ar rīkiem darbību veikšanai savā Nextcloud, nosūtot norādes tērzēšanas ziņā, piemēram:\n- e-pasta ziņojuma nosūtīšana;\n- ziņas sacerēšana sarunu istabā;\n- kalendāra ierakstu izveidošana\n\nun vēl daudz ko citu.\n\nIr nepieciešams Nextcloud palīgs un MI pakalpojumu sniedzējs, lai šī lietotne darbotos.\nLasīt [dokumentāciju](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n\n## Ētiska MI novērtējums\n\n### Novērtējums: 🟢\n\nAtzīstami:\n\n* šai lietotnei ir atvērts pirmkods, netiek izmantoti apmācīti MI modeļi"
+},
+"nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n != 0 ? 1 : 2);");

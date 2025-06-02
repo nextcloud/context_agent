@@ -1,0 +1,97 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Nextcloud package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+# Translators:
+# Miguel Anxo Bouzada <mbouzada@gmail.com>, 2025
+# 
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Nextcloud 3.14159\n"
+"Report-Msgid-Bugs-To: translations\\@example.com\n"
+"POT-Creation-Date: 2025-06-02 12:53+0000\n"
+"PO-Revision-Date: 2025-05-20 10:32+0000\n"
+"Last-Translator: Miguel Anxo Bouzada <mbouzada@gmail.com>, 2025\n"
+"Language-Team: Galician (https://app.transifex.com/nextcloud/teams/64236/gl/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: gl\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: /app/ex_app/lib/main.py:59
+msgid "Context agent"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:60
+msgid ""
+"Find more details on how to set up Context agent in the Administration "
+"documentation."
+msgstr ""
+
+#: /app/ex_app/lib/main.py:64
+msgid "Activate all tools that Context agent should use"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:71
+msgid "API Key HERE"
+msgstr "A chave da API AQUÍ"
+
+#: /app/ex_app/lib/main.py:72
+msgid "Set the API key for the HERE public transport routing"
+msgstr ""
+"Estabeleza AQUI a chave da API para o cálculo de rutas do transporte público"
+
+#: /app/ex_app/lib/main.py:75
+msgid "API key"
+msgstr "Chave da API"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:2
+msgid "Nextcloud Context Agent"
+msgstr "Axente de contexto de Nextcloud"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:3
+msgid "Let Nextcloud assistant take off tasks from your todo list."
+msgstr ""
+"Deixe que o asistente de Nextcloud retire tarefas da súa lista de tarefas "
+"pendentes."
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:4
+msgid ""
+"Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example\n"
+"- sending an email\n"
+"- writing a message in a Talk room\n"
+"- creating calendar entrys\n"
+"\n"
+"and much more. \n"
+"\n"
+"This app needs Nextcloud Assistant and an AI provider to work.\n"
+"Read [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n"
+"\n"
+"## Ethical AI Rating\n"
+"\n"
+"### Rating: 🟢\n"
+"\n"
+"Positive:\n"
+"\n"
+"* The software for this app is open source, no trained AI model is used"
+msgstr ""
+"Deixe que o Asistente de Nextcloud retire tarefas da súa lista de tarefas pendentes. O Axente de contexto fornece á parola de IA no Asistente as ferramentas para realizar accións no seu Nextcloud ao enviar instrucións nunha mensaxe de parola, por exemplo\n"
+"– enviar un correo-e\n"
+"– escribir unha mensaxe nunha sala de Parladoiro\n"
+"– crear entradas de calendario\n"
+"\n"
+"e moito máis.\n"
+"\n"
+"Esta aplicación precisa do Asistente de Nextcloud e dun provedor de IA para funcionar.\n"
+"Consulte a documentación (https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n"
+"\n"
+"## Avaliación ética da IA\n"
+"\n"
+"# Valoración: 🟢\n"
+"\n"
+"Positiva:\n"
+"\n"
+"* O software desta aplicación é de código aberto, non se emprega ningún modelo de IA adestrado"

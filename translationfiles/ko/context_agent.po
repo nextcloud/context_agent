@@ -1,0 +1,94 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Nextcloud package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+# Translators:
+# daf9a3bef94549192358462a8bb20263_a023b71 <69530ed134884b79b067e9214de553f8_465041>, 2025
+# Hyogeol Lee, 2025
+# 
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Nextcloud 3.14159\n"
+"Report-Msgid-Bugs-To: translations\\@example.com\n"
+"POT-Creation-Date: 2025-06-02 12:53+0000\n"
+"PO-Revision-Date: 2025-05-20 10:32+0000\n"
+"Last-Translator: Hyogeol Lee, 2025\n"
+"Language-Team: Korean (https://app.transifex.com/nextcloud/teams/64236/ko/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ko\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: /app/ex_app/lib/main.py:59
+msgid "Context agent"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:60
+msgid ""
+"Find more details on how to set up Context agent in the Administration "
+"documentation."
+msgstr ""
+
+#: /app/ex_app/lib/main.py:64
+msgid "Activate all tools that Context agent should use"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:71
+msgid "API Key HERE"
+msgstr "API 키 HERE"
+
+#: /app/ex_app/lib/main.py:72
+msgid "Set the API key for the HERE public transport routing"
+msgstr "HERE 대중 교통 경로에 대한 API 키 설정"
+
+#: /app/ex_app/lib/main.py:75
+msgid "API key"
+msgstr "API 키"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:2
+msgid "Nextcloud Context Agent"
+msgstr "Nextcloud 컨텍스트 에이전트"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:3
+msgid "Let Nextcloud assistant take off tasks from your todo list."
+msgstr "Nextcloud 어시스턴트가 할일 목록으로 부터 작업을 제거하도록 합니다."
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:4
+msgid ""
+"Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example\n"
+"- sending an email\n"
+"- writing a message in a Talk room\n"
+"- creating calendar entrys\n"
+"\n"
+"and much more. \n"
+"\n"
+"This app needs Nextcloud Assistant and an AI provider to work.\n"
+"Read [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n"
+"\n"
+"## Ethical AI Rating\n"
+"\n"
+"### Rating: 🟢\n"
+"\n"
+"Positive:\n"
+"\n"
+"* The software for this app is open source, no trained AI model is used"
+msgstr ""
+"Nextcloud 어시스턴트가 할일 목록으로 부터 작업을 제거하도록 합니다. 컨텍스트 에이전트는 어시스턴트에서 AI 채팅을 제공하며,  채팅 메시지에서 명령을 전송하여 Nextcloud에서 동작을 수행하는 도구를 제공합니다, 예를 들어\n"
+"- 이메일 보내기\n"
+"- 대화방에서 메시지 작성\n"
+"- 캘린더 항목 생성\n"
+"\n"
+"그리고 더 많은 기능을 제공합니다. \n"
+"\n"
+"이 앱은 동작을 위해 Nextcloud 어시스턴트와 AI 제공자가 필요합니다. [문서](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html)를 참조하십시오.\n"
+"\n"
+"## 윤리적 AI 등급\n"
+"\n"
+"### 등급: 🟢\n"
+"\n"
+"긍정적:\n"
+"\n"
+"* 이 앱에 대한 소프트웨어는 오픈소스이며, 훈련된 AI 모델이 사용되지 않았습니다"

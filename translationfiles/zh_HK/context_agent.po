@@ -1,0 +1,94 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Nextcloud package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+# Translators:
+# Café Tango, 2025
+# 
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Nextcloud 3.14159\n"
+"Report-Msgid-Bugs-To: translations\\@example.com\n"
+"POT-Creation-Date: 2025-06-02 12:53+0000\n"
+"PO-Revision-Date: 2025-05-20 10:32+0000\n"
+"Last-Translator: Café Tango, 2025\n"
+"Language-Team: Chinese (Hong Kong) (https://app.transifex.com/nextcloud/teams/64236/zh_HK/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh_HK\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: /app/ex_app/lib/main.py:59
+msgid "Context agent"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:60
+msgid ""
+"Find more details on how to set up Context agent in the Administration "
+"documentation."
+msgstr ""
+
+#: /app/ex_app/lib/main.py:64
+msgid "Activate all tools that Context agent should use"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:71
+msgid "API Key HERE"
+msgstr "這裡的 API 金鑰"
+
+#: /app/ex_app/lib/main.py:72
+msgid "Set the API key for the HERE public transport routing"
+msgstr "設置 HERE 公共交通路線規劃的 API 密鑰"
+
+#: /app/ex_app/lib/main.py:75
+msgid "API key"
+msgstr "API 密鑰"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:2
+msgid "Nextcloud Context Agent"
+msgstr "Nextcloud 上下文代理"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:3
+msgid "Let Nextcloud assistant take off tasks from your todo list."
+msgstr "讓 Nextcloud 助手從你的待辦事項清單中移除任務。"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:4
+msgid ""
+"Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example\n"
+"- sending an email\n"
+"- writing a message in a Talk room\n"
+"- creating calendar entrys\n"
+"\n"
+"and much more. \n"
+"\n"
+"This app needs Nextcloud Assistant and an AI provider to work.\n"
+"Read [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n"
+"\n"
+"## Ethical AI Rating\n"
+"\n"
+"### Rating: 🟢\n"
+"\n"
+"Positive:\n"
+"\n"
+"* The software for this app is open source, no trained AI model is used"
+msgstr ""
+"讓 Nextcloud 助手從你的待辦事項列表中移除任務。上下文代理為助手中的 AI 聊天提供執行操作的工具，通過在聊天消息中發送指令，例如\n"
+"- 發送電子郵件\n"
+"- 在 Talk 房間中寫消息\n"
+"- 創建日曆條目\n"
+"\n"
+"等等。\n"
+"\n"
+"此應用需要 Nextcloud 助手和 AI 提供者才能運行。\n"
+"請閱讀 [文檔](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html)。\n"
+"\n"
+"## 道德 AI 評級\n"
+"\n"
+"### 評級: 🟢\n"
+"\n"
+"正面:\n"
+"\n"
+"* 該應用的軟件是開源的，未使用訓練的 AI 模型。"

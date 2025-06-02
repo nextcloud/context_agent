@@ -1,0 +1,94 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Nextcloud package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+# Translators:
+# Aindriú Mac Giolla Eoin, 2025
+# 
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Nextcloud 3.14159\n"
+"Report-Msgid-Bugs-To: translations\\@example.com\n"
+"POT-Creation-Date: 2025-06-02 12:53+0000\n"
+"PO-Revision-Date: 2025-05-20 10:32+0000\n"
+"Last-Translator: Aindriú Mac Giolla Eoin, 2025\n"
+"Language-Team: Irish (https://app.transifex.com/nextcloud/teams/64236/ga/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ga\n"
+"Plural-Forms: nplurals=5; plural=(n==1 ? 0 : n==2 ? 1 : n<7 ? 2 : n<11 ? 3 : 4);\n"
+
+#: /app/ex_app/lib/main.py:59
+msgid "Context agent"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:60
+msgid ""
+"Find more details on how to set up Context agent in the Administration "
+"documentation."
+msgstr ""
+
+#: /app/ex_app/lib/main.py:64
+msgid "Activate all tools that Context agent should use"
+msgstr ""
+
+#: /app/ex_app/lib/main.py:71
+msgid "API Key HERE"
+msgstr "Eochair API ANSEO"
+
+#: /app/ex_app/lib/main.py:72
+msgid "Set the API key for the HERE public transport routing"
+msgstr "Socraigh an eochair API don ródú iompair phoiblí ANSEO"
+
+#: /app/ex_app/lib/main.py:75
+msgid "API key"
+msgstr "Eochair API"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:2
+msgid "Nextcloud Context Agent"
+msgstr "Gníomhaire Comhthéacs Nextcloud"
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:3
+msgid "Let Nextcloud assistant take off tasks from your todo list."
+msgstr "Lig do chúntóir Nextcloud tascanna a bhaint de do liosta le déanamh."
+
+#: /app/specialAppInfoFakeDummyForL10nScript.php:4
+msgid ""
+"Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example\n"
+"- sending an email\n"
+"- writing a message in a Talk room\n"
+"- creating calendar entrys\n"
+"\n"
+"and much more. \n"
+"\n"
+"This app needs Nextcloud Assistant and an AI provider to work.\n"
+"Read [the documentation](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n"
+"\n"
+"## Ethical AI Rating\n"
+"\n"
+"### Rating: 🟢\n"
+"\n"
+"Positive:\n"
+"\n"
+"* The software for this app is open source, no trained AI model is used"
+msgstr ""
+"Lig do Chúntóir Nextcloud tascanna a bhaint de do liosta le déanamh. Soláthraíonn Gníomhaire Comhthéacs na huirlisí don chomhrá AI i gCúntóir chun gníomhartha a dhéanamh i do Nextcloud nuair a sheoltar treoracha i dteachtaireacht comhrá, mar shampla\n"
+"- ríomhphost a sheoladh\n"
+"- teachtaireacht a scríobh i seomra Comhrá\n"
+"- iontrálacha féilire a chruthú\n"
+"\n"
+"agus i bhfad níos mó.\n"
+"\n"
+"Teastaíonn Cúntóir Nextcloud agus soláthraí AI ón aip seo le go n-oibreoidh sí.\n"
+"Léigh [an doiciméadacht](https://docs.nextcloud.com/server/latest/admin_manual/ai/app_context_agent.html).\n"
+"\n"
+"## Rátáil Eiticiúil AI\n"
+"\n"
+"### Rátáil: 🟢\n"
+"\n"
+"Dearfach:\n"
+"\n"
+"* Is foinse oscailte an bogearra don aip seo, ní úsáidtear aon mhúnla AI oilte"
