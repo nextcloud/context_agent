@@ -8,6 +8,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.2.0] - 2025-06-03
+
+### Added
+- image generation tool (AI)
+- settings to dis/-able tools
+- HaRP-Support
+- added used tools to output so that Assistant can show them
+- document generation tools: text documents, spreadsheets and slides
+- Public transport tool using HERE API 
+- Routing tool using OPenStreetMap
+- get file content tool (Files)
+- get folder tree tool (Files)
+- create a public share link tool (Files)
+- get mail accounts tool (Mail)
+- Web search tool using DuckDuckGo
+- OpenProject tools: list projects and create workpackage
+
+### Changed
+- use poetry instead of pip to manage dependencies
+- Mail tool doesn't need the account ID anymore, it can be obtained by another tool
+- calendar tools improved
+
+### Fixed
+- output when using Llama 3.1 fixed
+- context chat tool fixed
+
+
 ## [1.1.0] - 2025-02-25
 
 ### Added
