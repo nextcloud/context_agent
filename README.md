@@ -9,7 +9,7 @@
 Let Nextcloud Assistant take off tasks from your todo list. Context Agent provides the AI chat in Assistant with the tools to perform actions in your Nextcloud upon sending instructions in a chat message, for example
 - sending an email
 - writing a message in a Talk room
-- creating calendar entrys
+- creating calendar entries
 
 and much more. 
 
