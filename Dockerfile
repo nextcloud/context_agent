@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && \
   apt-get install -y curl && \
   apt-get -y clean && \
+  apt-get install -y pipx build-essential git vim && \
   rm -rf /var/lib/apt/lists/*
 
 # Download and install FRP client into /usr/local/bin.
@@ -26,13 +27,13 @@ RUN set -ex; \
     rm -rf /tmp/frp /tmp/frp.tar.gz
 
 
-RUN apt install -y pipx build-essential git vim
 RUN pipx install poetry
 
 # Install requirements
 
 COPY pyproject.toml .
 COPY poetry.lock .
+ENV PATH="/root/.local/bin:${PATH}"
 RUN poetry install
 
 ADD /ex_app/cs[s] /ex_app/css
