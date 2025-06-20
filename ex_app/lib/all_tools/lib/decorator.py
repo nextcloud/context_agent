@@ -12,27 +12,30 @@ def dangerous_tool(tool):
 	setattr(tool, 'safe', False)
 	return tool
 
+# cache for get_tools
+# needs NextcloudApp as first arg in the cached function
 def timed_memoize(timeout):
 	def decorator(func):
-		cached_result = None
-		timestamp = 0
+		cached_result = {}
+		timestamp = {}
 
 		@wraps(func)
-		def wrapper(*args):
+		def wrapper(*args): # needs NextcloudApp as first arg
 			nonlocal cached_result
 			nonlocal timestamp
+			user_id = args[0].user # cache result saved per user
 			current_time = time.time()
-			if cached_result != None:
-				if current_time - timestamp < timeout:
-					return cached_result
+			if user_id in cached_result:
+				if current_time - timestamp[user_id] < timeout:
+					return cached_result[user_id]
 				else:
 					# Cache expired
-					cached_result = None
-					timestamp = 0
+					del cached_result[user_id]
+					timestamp[user_id] = 0
 			# Call the function and cache the result
 			result = func(*args)
-			cached_result = result
-			timestamp = current_time
+			cached_result[user_id] = result
+			timestamp[user_id] = current_time
 			return result
 
 		return wrapper
