@@ -244,7 +244,5 @@ END:VCALENDAR
 def get_category_name():
 	return "Calendar and Tasks"
 
-@timed_memoize(5*60)
 def is_available(nc: Nextcloud):
-	print('SHOULD DISAPPEAR')
 	return 'calendar' in nc.apps.get_list()
