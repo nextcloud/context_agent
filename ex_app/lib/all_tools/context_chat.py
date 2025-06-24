@@ -35,4 +35,5 @@ def get_category_name():
 	return "Context chat"
 
 def is_available(nc: Nextcloud):
-	return 'context_chat' in nc.apps.get_list()
+	tasktypes = nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes')['types'].keys()
+	return 'context_chat:context_chat' in tasktypes

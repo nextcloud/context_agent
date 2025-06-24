@@ -67,4 +67,8 @@ def get_category_name():
 	return "Mail"
 
 def is_available(nc: Nextcloud):
-	return 'mail' in nc.apps.get_list()
+	try: 
+		res = nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
+	except:
+		return False
+	return True
