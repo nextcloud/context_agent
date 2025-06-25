@@ -8,6 +8,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.2.1] - 2025-06-25
+
+### Fixed
+- fixed a bug that made Context Agent unusable for non-users
+- made caching user-related
+- adapted spelling in settings
+- updated dependencies
+
 ## [1.2.0] - 2025-06-03
 
 ### Added

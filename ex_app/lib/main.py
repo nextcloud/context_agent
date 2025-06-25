@@ -56,12 +56,12 @@ SETTINGS = SettingsForm(
     id="settings_context_agent",
     section_type="admin",
     section_id="ai",
-    title=_("Context agent"),
-    description=_("Find more details on how to set up Context agent in the Administration documentation."),
+    title=_("Context Agent"),
+    description=_("Find more details on how to set up Context Agent in the Administration documentation."),
     fields=[
         SettingsField(
             id="tool_status",
-            title=_("Activate all tools that Context agent should use"),
+            title=_("Activate all tools that Context Agent should use"),
             type=SettingsFieldType.MULTI_CHECKBOX,
             default=dict.fromkeys(categories, True),
             options={v: k for k, v in categories.items()},
