@@ -28,7 +28,7 @@ Positive:
 * The software for this app is open source, no trained AI model is used
 ]]>
 	</description>
-	<version>1.2.1</version>
+	<version>1.2.2</version>
 	<licence>MIT</licence>
 	<author mail="mklehr@gmx.net" homepage="https://marcelklehr.de">Marcel Klehr</author>
 	<namespace>ContextAgent</namespace>
@@ -44,7 +44,7 @@ Positive:
 		<docker-install>
 			<registry>ghcr.io</registry>
 			<image>nextcloud/context_agent</image>
-			<image-tag>1.2.1</image-tag>
+			<image-tag>1.2.2</image-tag>
 		</docker-install>
 	</external-app>
 </info>
