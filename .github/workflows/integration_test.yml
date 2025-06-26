@@ -125,6 +125,11 @@ jobs:
           ./occ maintenance:install --verbose --database=${{ matrix.databases }} --database-name=nextcloud --database-host=127.0.0.1 --database-port=$PGSQL_PORT --database-user=root --database-pass=rootpassword --admin-user admin --admin-pass password
           composer run serve &
 
+      - name: Create user
+        run: |
+          export OC_PASS='alice'
+          ./occ user:add --password-from-env alice
+
       - name: Checkout app_api
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -190,7 +195,7 @@ jobs:
 
       - name: Run task
         env:
-          CREDS: "admin:password"
+          CREDS: "alice:alice"
         run: |
           sleep 300
           TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "What are the coordinates of Berlin, Germany?", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
