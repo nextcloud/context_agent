@@ -18,6 +18,8 @@ def get_tools(nc: Nextcloud):
 		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
 		:return: a download link to the generated document
 		"""
+		url = nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
+
 		match format:
 			case "text document":
 				tasktype = "richdocuments:text_to_text_document"
@@ -53,10 +55,10 @@ def get_tools(nc: Nextcloud):
 					'text': input,
 				}
 				task = run_task(nc,  tasktype, task_input)
-				return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['slide_deck']}/download"
+				return f"{url}/{task.id}/output-file/{task.output['slide_deck']}/download"
 
 		task = run_task(nc,  tasktype, task_input)
-		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['file']}/download"
+		return f"{url}/{task.id}/output-file/{task.output['file']}/download"
 
 	return [
 		generate_document,
