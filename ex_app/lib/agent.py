@@ -62,10 +62,11 @@ def react(task, nc: Nextcloud):
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
 """
-You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools! If you used a tool, you still need to convey its output to the user.
+You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools if necessary. If no tool is needed to provide a correct answer, do not use one. If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
 Today is {CURRENT_DATE}.
-Detect the language the user is using. Reply in the detected language. Do not output the detected language.
+Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
+Only use tools if you cannot answer the user without them.
 Only use the duckduckgo_results_json tool if the user explicitly asks for a web search.
 You can check which conversations exist using the list_talk_conversations tool, if a conversation cannot be found.
 You can check which calendars exist using the list_calendars tool, if a calendar can not be found.
