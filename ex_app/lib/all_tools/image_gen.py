@@ -24,8 +24,8 @@ def get_tools(nc: Nextcloud):
 			'numberOfImages': 1,
 		}
 		task = run_task(nc,  tasktype, task_input)
-
-		return f"https://nextcloud.local/ocs/v2.php/apps/assistant/api/v1/task/{task.id}/output-file/{task.output['images'][0]}/download"
+		url = nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
+		return f"{url}/{task.id}/output-file/{task.output['images'][0]}/download"
 
 	return [
 		generate_image,
