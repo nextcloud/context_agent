@@ -28,7 +28,7 @@ Positive:
 * The software for this app is open source, no trained AI model is used
 ]]>
 	</description>
-	<version>1.2.2</version>
+	<version>2.0.0</version>
 	<licence>MIT</licence>
 	<author mail="mklehr@gmx.net" homepage="https://marcelklehr.de">Marcel Klehr</author>
 	<namespace>ContextAgent</namespace>
