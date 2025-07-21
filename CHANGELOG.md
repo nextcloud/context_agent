@@ -8,6 +8,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0] - 2025-07-21
+
+### Changed
+- bumped min NC version to 31.0.8
+
+### Fixed
+- link generation for file outputs
+- system prompt optimized
+
 ## [1.2.2] - 2025-06-26
 
 ### Fixed 
