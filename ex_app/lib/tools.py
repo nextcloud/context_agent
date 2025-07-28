@@ -6,11 +6,12 @@ import pathlib
 import json
 from os.path import dirname
 
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from nc_py_api import Nextcloud
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
 
 @timed_memoize(1*60)
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 	directory = dirname(__file__) + '/all_tools'
 	function_name = "get_tools"
 
@@ -36,9 +37,9 @@ def get_tools(nc: Nextcloud):
 				continue
 			if callable(get_tools_from_import):
 				print(f"Invoking {function_name} from {module_name}")
-				imported_tools = get_tools_from_import(nc)
+				imported_tools = await get_tools_from_import(nc)
 				for tool in imported_tools:
-					if not hasattr(tool, 'func'):
+					if not hasattr(tool, 'func') or not hasattr(tool.func, 'safe'):
 						safe_tools.append(tool) # external tools cannot be decorated and should always be safe
 						continue
 					if not tool.func.safe:

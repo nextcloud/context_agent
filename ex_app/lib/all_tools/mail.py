@@ -11,7 +11,7 @@ from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 from ex_app.lib.logger import log
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 	@tool
 	@dangerous_tool
 	def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
