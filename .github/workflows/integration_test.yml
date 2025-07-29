@@ -198,7 +198,7 @@ jobs:
           CREDS: "alice:alice"
         run: |
           sleep 300
-          TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "What are the coordinates of Berlin, Germany?", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
+          TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "Search duckduckgo for Nextcloud", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
           echo $TASK
           TASK_ID=$(echo $TASK | jq '.ocs.data.task.id')
           NEXT_WAIT_TIME=0
@@ -215,9 +215,8 @@ jobs:
           [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ]
           echo $TASK | jq '.ocs.data.task.output.output'
           echo $TASK | jq '.ocs.data.task.output.sources'
-          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q get_coordinates_for_address
-          echo $TASK | jq '.ocs.data.task.output.output' | grep -q '52.'
-          echo $TASK | jq '.ocs.data.task.output.output' | grep -q '13.'
+          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q 'duckduckgo_results_json'
+          echo $TASK | jq '.ocs.data.task.output.output' | grep -q 'Nextcloud'
 
       - name: Show nextcloud logs
         if: always()
