@@ -39,11 +39,11 @@ async def get_tools(nc: Nextcloud):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = await get_tools_from_import(nc)
 				for tool in imported_tools:
-					if not hasattr(tool, 'func') or not hasattr(tool.func, 'safe'):
-						safe_tools.append(tool) # external tools cannot be decorated and should always be safe
+					if not hasattr(tool, 'func'):
+						safe_tools.append(tool)
 						continue
-					if not tool.func.safe:
-						dangerous_tools.append(tool)
+					if not hasattr(tool.func, 'safe') or not tool.func.safe:
+						dangerous_tools.append(tool) # MCP tools cannot be decorated and should always be dangerous
 					else:
 						safe_tools.append(tool)
 			else:
