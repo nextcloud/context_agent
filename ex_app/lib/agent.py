@@ -67,6 +67,7 @@ Use the same language for your answers as the user used in their message.
 Today is {CURRENT_DATE}.
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
+Always check for the mail account id before requesting a folder list.
 Only use the duckduckgo_results_json tool if the user explicitly asks for a web search.
 You can check which conversations exist using the list_talk_conversations tool, if a conversation cannot be found.
 You can check which calendars exist using the list_calendars tool, if a calendar can not be found.

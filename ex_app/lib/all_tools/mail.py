@@ -49,18 +49,39 @@ def get_tools(nc: Nextcloud):
 	def get_mail_account_list():
 		"""
 		Lists all available email accounts including their account id
-		:param subject: The subject of the email
-		:param body: The body of the email
-		:param account_id: The id of the account to send from
-		:param to_emails: The emails to send
 		"""
 		
 		return nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
+
+
+	@tool
+	@safe_tool
+	def get_mail_folder_list(account_id: int):
+		"""
+		Lists all mail folders for an account. You need to get the correct account id matching the request first before using this tool. 
+		:param account_id: The id of the account to list as integer, obtainable via get_mail_account_list
+		"""
+		
+		return nc.ocs('GET', '/ocs/v2.php/apps/mail/mailbox/list', json={'accountId': account_id})
+
+
+	@tool
+	@safe_tool
+	def list_mails(folder_id: int, n_mails: int = 30):
+		"""
+		Lists all messages in a mailbox folder. You need to get the correct folder id matching the request first before using this tool. 
+		:param folder_id: The id of the folder to list as integer, obtainable via get_mail_folder_list
+		:param n_mails: The number of mails to receive. Optional, default is 30
+		:return: a list of mails/messages, including timestamps
+		"""
+		return nc.ocs('GET', '/ocs/v2.php/apps/mail/mailbox/messages/list', json={'mailboxId': folder_id, 'limit': n_mails})
 		
 
 	return [
 		send_email,
-		get_mail_account_list
+		get_mail_account_list,
+		get_mail_folder_list,
+		list_mails,
 	]
 
 def get_category_name():
