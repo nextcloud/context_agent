@@ -12,7 +12,7 @@ import traceback
 
 
 async def get_tools(nc: Nextcloud):
-	mcp_json = nc.appconfig_ex.get_value("mcp_config", {})
+	mcp_json = nc.appconfig_ex.get_value("mcp_config", "{}")
 	try:
 		mcp_config = json.loads(mcp_json)
 	except JSONDecodeError:
