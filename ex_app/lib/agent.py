@@ -49,32 +49,45 @@ async def react(task, nc: Nextcloud):
 
 	model.bind_nextcloud(nc)
 
+	tools = dangerous_tools + safe_tools
+
 	bound_model = model.bind_tools(
-		dangerous_tools
-		+ safe_tools
+		tools,
 	)
+
+	def tool_enabled(tool_name):
+		for tool in tools:
+			if tool.name == tool_name:
+				return True
+		return False
 
 	async def call_model(
 			state: AgentState,
 			config: RunnableConfig,
 	):
 		current_date = date.today().strftime("%Y-%m-%d")
-		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
-		system_prompt = SystemMessage(
-"""
+
+		system_prompt_text = """
 You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools if necessary. If no tool is needed to provide a correct answer, do not use one. If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
 Today is {CURRENT_DATE}.
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
-Only use the duckduckgo_results_json tool if the user explicitly asks for a web search.
-You can check which conversations exist using the list_talk_conversations tool, if a conversation cannot be found.
-You can check which calendars exist using the list_calendars tool, if a calendar can not be found.
-you can find out a user's email address and location by using the find_person_in_contacts tool.
-you can find out the current user's location by using the find_details_of_current_user tool.
-If an item should be added to a list, check list_calendars for a fitting calendar and add the item as a task there.
 If you get a link as a tool output, always add the link to your response.
-""".replace("{CURRENT_DATE}", current_date)
+"""
+		if tool_enabled("duckduckgo_results_json"):
+			system_prompt_text += "Only use the duckduckgo_results_json tool if the user explicitly asks for a web search.\n"
+		if tool_enabled("list_talk_conversations"):
+			system_prompt_text += "Use the list_talk_conversations tool to check which conversations exist.\n"
+		if tool_enabled("list_calendars"):
+			system_prompt_text += "Use the list_calendars tool to check which calendars exist.\nIf an item should be added to a list, check list_calendars for a fitting calendar and add the item as a task there.\n"
+		if tool_enabled("find_person_in_contacts"):
+			system_prompt_text += "Use the find_person_in_contacts tool to find a person's email address and location.\n"
+		if tool_enabled("find_details_of_current_user"):
+			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location.\n"
+		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
+		system_prompt = SystemMessage(
+			system_prompt_text.replace("{CURRENT_DATE}", current_date)
 		)
 
 		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
