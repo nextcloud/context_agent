@@ -20,7 +20,10 @@ async def get_tools(nc: Nextcloud):
 		mcp_config = {}
 	try:
 		server = MultiServerMCPClient(mcp_config)
-		return await asyncio.wait_for(server.get_tools(), timeout=120)
+		tools = await asyncio.wait_for(server.get_tools(), timeout=120)
+		for tool in tools:
+			tool.name = "mcp_" + tool.name
+		return tools
 	except Exception as e:
 		tb_str = "".join(traceback.format_exception(e))
 		log(nc, LogLvl.ERROR, "Failed to load MCP servers: " + tb_str)

@@ -77,7 +77,7 @@ SETTINGS = SettingsForm(
 		SettingsField(
             id="mcp_config",
             title=_("MCP Config"),
-            description=_("JSON configuration for the MCP. For an example look at https://langchain-ai.github.io/langgraph/agents/mcp/ but make sure to only use streamable_http MCPs."),
+            description=_("JSON configuration for the MCP. Structured as {\"service_name\": {\"url\": \"https://service.url\",\"transport\": \"streamable_http\"}}. For more details view the documentation for context_agent."),
             type=SettingsFieldType.TEXT,
             default="",
             placeholder="{\"weather\": {\"url\": \"https://weather.internet/mcp\",\"transport\": \"streamable_http\"}}",
