@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import os
-import time
 import traceback
 from contextlib import asynccontextmanager
 from json import JSONDecodeError
@@ -11,8 +10,6 @@ import asyncio
 import httpx
 import json
 from fastapi import FastAPI
-from fastmcp.tools import Tool
-from mcp import types as mt
 from nc_py_api import NextcloudApp, NextcloudException
 from nc_py_api.ex_app import (
     AppAPIAuthMiddleware,
@@ -25,48 +22,17 @@ from nc_py_api.ex_app import (
 
 from ex_app.lib.agent import react
 from ex_app.lib.logger import log
+from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider
-from ex_app.lib.tools import get_categories, get_tools
+from ex_app.lib.tools import get_categories
 
 from contextvars import ContextVar
 from gettext import translation
 from fastmcp import FastMCP
-from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
-
-class UserAuthMiddleware(Middleware):
-    async def on_message(self, context: MiddlewareContext, call_next):
-        # Middleware stores user info in context state
-        user = context.fastmcp_context.request_context.request.headers.get("Authorization")
-        if user.startswith("Bearer "):
-            user = user[len("Bearer "):]
-        nc = NextcloudApp()
-        nc.set_user(user)
-        context.fastmcp_context.set_state("nextcloud", nc)
-        return await call_next(context)
-
-LAST_MCP_TOOL_UPDATE = 0
-class ToolListMiddleware(Middleware):
-    async def on_message(
-        self,
-        context: MiddlewareContext[mt.ListToolsRequest],
-        call_next: CallNext[mt.ListToolsRequest, list[Tool]],
-    ) -> list[Tool]:
-        global LAST_MCP_TOOL_UPDATE
-        if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-            safe, dangerous = await get_tools(context.fastmcp_context.get_state("nextcloud"))
-            tools = await mcp.get_tools()
-            if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-                for tool in tools.keys():
-                    mcp.remove_tool(tool)
-                for tool in safe + dangerous:
-                    mcp.tool()(tool.func)
-                LAST_MCP_TOOL_UPDATE = time.time()
-        return await call_next(context)
-
 
 mcp = FastMCP(name="nextcloud")
 mcp.add_middleware(UserAuthMiddleware())
-mcp.add_middleware(ToolListMiddleware())
+mcp.add_middleware(ToolListMiddleware(mcp))
 mcp.stateless_http = True
 http_mcp_app = mcp.http_app("/", transport="http")
 

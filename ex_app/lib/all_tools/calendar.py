@@ -13,6 +13,7 @@ from nc_py_api.ex_app import LogLvl
 import xml.etree.ElementTree as ET
 import vobject
 
+from ex_app.lib.all_tools.lib.context import get_nextcloud
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool, timed_memoize
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
 from ex_app.lib.logger import log
@@ -27,6 +28,9 @@ async def get_tools(nc: Nextcloud):
 		List all existing calendars by name
 		:return:
 		"""
+		nonlocal nc
+		nc = get_nextcloud(nc)
+
 		principal = nc.cal.principal()
 		calendars = principal.calendars()
 		return ", ".join([cal.name for cal in calendars])
@@ -48,6 +52,8 @@ async def get_tools(nc: Nextcloud):
 		:param timezone: Timezone (e.g., 'America/New_York').
 		:return: bool
 		"""
+		nonlocal nc
+		nc = get_nextcloud(nc)
 
 		# Parse date and times
 		start_date = datetime.strptime(start_date, "%Y-%m-%d")
@@ -125,6 +131,9 @@ async def get_tools(nc: Nextcloud):
 		:param end_time: the end time of the range within which to check for free slots (by default this will be 7 days after start_time; use the following format: 2025-01-31)
 		:return:
 		"""
+		nonlocal nc
+		nc = get_nextcloud(nc)
+
 		me = nc.ocs('GET', '/ocs/v2.php/cloud/user')
 
 		attendees = 'ORGANIZER:mailto:'+me['email']+'\n'
@@ -198,6 +207,8 @@ END:VCALENDAR
 		:param timezone: Timezone (e.g., 'America/New_York'). Is required if there is a specified due date. 
 		:return: bool
 		"""
+		nonlocal nc
+		nc = get_nextcloud(nc)
 
 		# Create task
 		c = Calendar()
