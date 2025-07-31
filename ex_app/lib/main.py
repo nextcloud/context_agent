@@ -4,17 +4,17 @@ import os
 import traceback
 from contextlib import asynccontextmanager
 from json import JSONDecodeError
-from threading import Thread, Event
-from time import sleep
+from threading import Event
+import asyncio
 
 import httpx
 import json
 from fastapi import FastAPI
 from nc_py_api import NextcloudApp, NextcloudException
 from nc_py_api.ex_app import (
-    AppAPIAuthMiddleware, 
-    LogLvl, 
-    run_app, 
+    AppAPIAuthMiddleware,
+    LogLvl,
+    run_app,
     set_handlers,
     SettingsForm,
     SettingsField,
@@ -65,7 +65,7 @@ SETTINGS = SettingsForm(
             type=SettingsFieldType.MULTI_CHECKBOX,
             default=dict.fromkeys(categories, True),
             options={v: k for k, v in categories.items()},
-        ), 
+        ),
         SettingsField(
             id="here_api",
             title=_("API Key HERE"),
@@ -74,7 +74,15 @@ SETTINGS = SettingsForm(
             default="",
             placeholder=_("API key"),
         ),
-        ]     
+		SettingsField(
+            id="mcp_config",
+            title=_("MCP Config"),
+            description=_("JSON configuration for the MCP. Structured as {\"service_name\": {\"url\": \"https://service.url\",\"transport\": \"streamable_http\"}}. For more details view the documentation for context_agent."),
+            type=SettingsFieldType.TEXT,
+            default="",
+            placeholder="{\"weather\": {\"url\": \"https://weather.internet/mcp\",\"transport\": \"streamable_http\"}}",
+        ),
+        ]
 )
 
 
@@ -102,23 +110,23 @@ def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
     return ""
 
 
-def background_thread_task():
+async def background_thread_task():
     nc = NextcloudApp()
 
     while True:
         if not app_enabled.is_set():
-            sleep(5)
+            await asyncio.sleep(5)
             continue
 
         try:
             response = nc.providers.task_processing.next_task([provider.id], [provider.task_type])
             if not response or not 'task' in response:
-                sleep(2)
+                await asyncio.sleep(2)
                 continue
         except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
             tb_str = ''.join(traceback.format_exception(e))
             log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
-            sleep(5)
+            await asyncio.sleep(5)
             continue
         except (
                 httpx.RemoteProtocolError,
@@ -127,44 +135,46 @@ def background_thread_task():
                 httpx.PoolTimeout,
         ) as e:
             log(nc, LogLvl.DEBUG, "Ignored error during task polling")
-            sleep(2)
+            await asyncio.sleep(2)
             continue
 
         task = response["task"]
         log(nc, LogLvl.INFO, 'New Task incoming')
         log(nc, LogLvl.DEBUG, str(task))
         log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>'}))
+        asyncio.create_task(handle_task(task, nc))
+        await asyncio.sleep(5)
 
+
+async def handle_task(task, nc: NextcloudApp):
+    try:
+        nextcloud = NextcloudApp()
+        if task['userId']:
+            nextcloud.set_user(task['userId'])
+        output = await react(task, nextcloud)
+    except Exception as e:  # noqa
+        tb_str = ''.join(traceback.format_exception(e))
+        log(nc, LogLvl.ERROR, "Error: " + tb_str)
         try:
-            nextcloud = NextcloudApp()
-            if task['userId']:
-                nextcloud.set_user(task['userId'])
-            output = react(task, nextcloud)
-        except Exception as e:  # noqa
-            tb_str = ''.join(traceback.format_exception(e))
-            log(nc, LogLvl.ERROR,"Error: " + tb_str)
-            try:
-                nc.providers.task_processing.report_result(task["id"], error_message=str(e))
-            except (NextcloudException, httpx.RequestError) as net_err:
-                tb_str = ''.join(traceback.format_exception(net_err))
-                log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
-            sleep(5)
-            continue
-        try:
-            NextcloudApp().providers.task_processing.report_result(
-                task["id"],
-                output,
-            )
-        except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
-            tb_str = ''.join(traceback.format_exception(e))
-            log(nc, LogLvl.ERROR,"Network error trying to report the task result: " + tb_str)
-            sleep(5)
+            nc.providers.task_processing.report_result(task["id"], error_message=str(e))
+        except (NextcloudException, httpx.RequestError) as net_err:
+            tb_str = ''.join(traceback.format_exception(net_err))
+            log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
+        return
+    try:
+        NextcloudApp().providers.task_processing.report_result(
+            task["id"],
+            output,
+        )
+    except (NextcloudException, httpx.RequestError, JSONDecodeError) as e:
+        tb_str = ''.join(traceback.format_exception(e))
+        log(nc, LogLvl.ERROR, "Network error trying to report the task result: " + tb_str)
 
 
 
 def start_bg_task():
-    t = Thread(target=background_thread_task, args=())
-    t.start()
+    loop = asyncio.get_event_loop()
+    loop.create_task(background_thread_task())
 
 if __name__ == "__main__":
     # Wrapper around `uvicorn.run`.

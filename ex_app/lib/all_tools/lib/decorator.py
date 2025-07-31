@@ -20,7 +20,7 @@ def timed_memoize(timeout):
 		timestamp = {}
 
 		@wraps(func)
-		def wrapper(*args): # needs NextcloudApp as first arg
+		async def wrapper(*args): # needs NextcloudApp as first arg
 			nonlocal cached_result
 			nonlocal timestamp
 			user_id = args[0].user # cache result saved per user
@@ -33,7 +33,7 @@ def timed_memoize(timeout):
 					del cached_result[user_id]
 					timestamp[user_id] = 0
 			# Call the function and cache the result
-			result = func(*args)
+			result = await func(*args)
 			cached_result[user_id] = result
 			timestamp[user_id] = current_time
 			return result

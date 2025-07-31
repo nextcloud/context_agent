@@ -7,7 +7,7 @@ from langchain_community.tools import DuckDuckGoSearchResults
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 
 	web_search = DuckDuckGoSearchResults(output_format="list")
 	return [

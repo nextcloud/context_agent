@@ -10,7 +10,7 @@ from nc_py_api import Nextcloud
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 	@tool
 	@safe_tool
 	def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:

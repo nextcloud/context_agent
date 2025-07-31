@@ -7,7 +7,7 @@ from nc_py_api.talk import ConversationType
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 	@tool
 	@safe_tool
 	def list_talk_conversations():

@@ -44,8 +44,8 @@ def export_conversation(checkpointer):
 	return add_signature(checkpointer.serde.dumps(checkpointer.storage).decode('utf-8'), key)
 
 
-def react(task, nc: Nextcloud):
-	safe_tools, dangerous_tools = get_tools(nc)
+async def react(task, nc: Nextcloud):
+	safe_tools, dangerous_tools = await get_tools(nc)
 
 	model.bind_nextcloud(nc)
 
@@ -54,7 +54,7 @@ def react(task, nc: Nextcloud):
 		+ safe_tools
 	)
 
-	def call_model(
+	async def call_model(
 			state: AgentState,
 			config: RunnableConfig,
 	):
@@ -77,12 +77,12 @@ If you get a link as a tool output, always add the link to your response.
 """.replace("{CURRENT_DATE}", current_date)
 		)
 
-		response = bound_model.invoke([system_prompt] + state["messages"], config)
+		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
 		# We return a list, because this will get added to the existing list
 		return {"messages": [response]}
 
 	checkpointer = MemorySaver()
-	graph = get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
+	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
 
 	load_conversation(checkpointer, task['input']['conversation_token'])
 
@@ -105,7 +105,7 @@ If you get a link as a tool output, always add the link to your response.
 	else:
 		new_input = {"messages": [("user", task['input']['input'])]}
 
-	for event in graph.stream(new_input, thread, stream_mode="values"):
+	async for event in graph.astream(new_input, thread, stream_mode="values"):
 		last_message = event['messages'][-1]
 		for message in event['messages']:
 			if isinstance(message, HumanMessage):
