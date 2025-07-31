@@ -10,7 +10,7 @@ import vobject
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 	@tool
 	@safe_tool
 	def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:

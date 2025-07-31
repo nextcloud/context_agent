@@ -7,7 +7,7 @@ from langchain_community.tools import YouTubeSearchTool
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 
 	yt_search = YouTubeSearchTool()
 	return [

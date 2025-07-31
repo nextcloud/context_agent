@@ -18,7 +18,7 @@ from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round
 from ex_app.lib.logger import log
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 
 	@tool
 	@safe_tool

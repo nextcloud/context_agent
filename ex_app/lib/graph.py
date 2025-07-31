@@ -36,7 +36,7 @@ def create_tool_node_with_fallback(tools: list) -> dict:
 		[RunnableLambda(handle_tool_error)], exception_key="error"
 	)
 
-def get_graph(call_model, safe_tools, dangerous_tools, checkpointer):
+async def get_graph(call_model, safe_tools, dangerous_tools, checkpointer):
 	dangerous_tool_names = {tool.name: tool for tool in dangerous_tools}
 	safe_tool_names = {tool.name: tool for tool in safe_tools}
 

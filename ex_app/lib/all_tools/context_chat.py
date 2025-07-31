@@ -7,7 +7,7 @@ from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-def get_tools(nc: Nextcloud):
+async def get_tools(nc: Nextcloud):
 
 	@tool
 	@safe_tool
