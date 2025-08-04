@@ -9,16 +9,32 @@ from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.tools import Tool
 from mcp import types as mt
 from ex_app.lib.tools import get_tools
+import requests
+
+def get_user(authorization_header: str, nc: NextcloudApp) -> str:
+	print(f"http://{nc.app_cfg.endpoint}/ocs/v2.php/cloud/user")
+	response = requests.get(
+		f"{nc.app_cfg.endpoint}/ocs/v2.php/cloud/user",
+		headers={
+			"Accept": "application/json",
+			"Ocs-Apirequest": "1",
+			"Authorization": authorization_header,
+		},
+	)
+	if response.status_code != 200:
+		raise Exception("Failed to get user info")
+	return response.json()["ocs"]["data"]["id"]
+
 
 class UserAuthMiddleware(Middleware):
 	async def on_message(self, context: MiddlewareContext, call_next):
 		# Middleware stores user info in context state
-		user = context.fastmcp_context.request_context.request.headers.get("Authorization")
-		if user is None:
+		authorization_header = context.fastmcp_context.request_context.request.headers.get("Authorization")
+		if authorization_header is None:
 			raise Exception("Authorization header is missing/invalid")
-		if user.startswith("Bearer "):
-			user = user[len("Bearer "):]
 		nc = NextcloudApp()
+		user = get_user(authorization_header, nc)
+		print(user)
 		nc.set_user(user)
 		context.fastmcp_context.set_state("nextcloud", nc)
 		return await call_next(context)
@@ -57,7 +73,8 @@ def mcp_tool(tool):
 		ctx = get_context()
 		nc = ctx.get_state('nextcloud')
 		safe, dangerous = await get_tools(nc)
-		for t in safe + dangerous:
+		tools = safe + dangerous
+		for t in tools:
 			if hasattr(t, "func") and t.func and t.name == tool.__name__:
 				return t.func(*args, **kwargs)
 		raise RuntimeError("Tool not found")

@@ -50,7 +50,7 @@ Positive:
 			<route>
 				<url>mcp</url>
 				<verb>POST,GET,DELETE</verb>
-				<access_level>PUBLIC</access_level>
+				<access_level>USER</access_level>
 				<headers_to_exclude>[]</headers_to_exclude>
 			</route>
 		</routes>
