@@ -21,7 +21,7 @@ youtube-search = "^2.1.2"
 duckduckgo-search = "^8.0.1"
 uvicorn = "^0.34.2"
 langchain-mcp-adapters = "^0.1.9"
-fastmcp = {git = "https://github.com/jlowin/fastmcp"}
+fastmcp = "^2.11.2"
 
 [build-system]
 requires = ["poetry-core"]

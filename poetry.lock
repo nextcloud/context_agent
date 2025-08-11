@@ -704,13 +704,15 @@ standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.5)", "htt
 
 [[package]]
 name = "fastmcp"
-version = "2.10.7.dev66+6fdb8d6"
+version = "2.11.2"
 description = "The fast, Pythonic way to build MCP servers and clients."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "fastmcp-2.11.2-py3-none-any.whl", hash = "sha256:3e358f65e41f5f85b8fb0303131cc1c8b122f43a7aff9b47b74157e615fe5484"},
+    {file = "fastmcp-2.11.2.tar.gz", hash = "sha256:bb958010faf987ff158a75ee9950bb6ea4e7b01940dd9ec0e9f0f6a419c4f6b8"},
+]
 
 [package.dependencies]
 authlib = ">=1.5.2"
@@ -727,12 +729,6 @@ rich = ">=13.9.4"
 
 [package.extras]
 websockets = ["websockets (>=15.0.1)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/jlowin/fastmcp"
-reference = "HEAD"
-resolved_reference = "6fdb8d6a1c8042f3fe35b7e5ffb55ccf7cf71b3d"
 
 [[package]]
 name = "frozenlist"
@@ -3704,4 +3700,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "31ffe9e6db38f03b0027ed47a6cf99298f9768751c179f304e95ff840a6d57b7"
+content-hash = "b8fe9ff57553a669bc05d0e5a665c23a904fe737aa06288115363b40b061bf7a"
