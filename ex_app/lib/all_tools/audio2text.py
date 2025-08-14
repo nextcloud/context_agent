@@ -18,6 +18,7 @@ async def get_tools(nc: Nextcloud):
 		:param file_url: The file URL to the media file in nextcloud (The user can input this using the smart picker for example)
 		:return: the transcription result
 		"""
+
 		task_input = {
 			'input': get_file_id_from_file_url(file_url),
 		}
