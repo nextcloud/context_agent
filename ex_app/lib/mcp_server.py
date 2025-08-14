@@ -12,7 +12,6 @@ from ex_app.lib.tools import get_tools
 import requests
 
 def get_user(authorization_header: str, nc: NextcloudApp) -> str:
-	print(f"http://{nc.app_cfg.endpoint}/ocs/v2.php/cloud/user")
 	response = requests.get(
 		f"{nc.app_cfg.endpoint}/ocs/v2.php/cloud/user",
 		headers={
@@ -34,7 +33,6 @@ class UserAuthMiddleware(Middleware):
 			raise Exception("Authorization header is missing/invalid")
 		nc = NextcloudApp()
 		user = get_user(authorization_header, nc)
-		print(user)
 		nc.set_user(user)
 		context.fastmcp_context.set_state("nextcloud", nc)
 		return await call_next(context)
