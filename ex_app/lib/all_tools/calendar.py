@@ -125,6 +125,7 @@ async def get_tools(nc: Nextcloud):
 		:param end_time: the end time of the range within which to check for free slots (by default this will be 7 days after start_time; use the following format: 2025-01-31)
 		:return:
 		"""
+
 		me = nc.ocs('GET', '/ocs/v2.php/cloud/user')
 
 		attendees = 'ORGANIZER:mailto:'+me['email']+'\n'

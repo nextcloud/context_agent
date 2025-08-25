@@ -17,7 +17,7 @@ async def get_tools(nc: Nextcloud):
 		Get the content of a file
 		:param file_path: the path of the file
 		:return: 
-		""" 
+		"""
 
 		user_id = nc.ocs('GET', '/ocs/v2.php/cloud/user')["id"]
 		
@@ -34,7 +34,7 @@ async def get_tools(nc: Nextcloud):
 		Get the folder tree of the user
 		:param depth: the depth of the returned folder tree
 		:return: 
-		""" 
+		"""
 
 		return nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', json={'depth': depth}, response_type='json')
 
@@ -45,7 +45,7 @@ async def get_tools(nc: Nextcloud):
 		Creates a public sharing link for a file or folder
 		:param path: the path of the file or folder
 		:return: 
-		""" 
+		"""
 
 		response = nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json={
 					'path': path,

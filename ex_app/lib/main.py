@@ -22,12 +22,21 @@ from nc_py_api.ex_app import (
 
 from ex_app.lib.agent import react
 from ex_app.lib.logger import log
+from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider
 from ex_app.lib.tools import get_categories
 
 from contextvars import ContextVar
 from gettext import translation
+from fastmcp import FastMCP
 
+mcp = FastMCP(name="nextcloud")
+mcp.add_middleware(UserAuthMiddleware())
+mcp.add_middleware(ToolListMiddleware(mcp))
+mcp.stateless_http = True
+http_mcp_app = mcp.http_app("/", transport="http")
+
+fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
 app_enabled = Event()
 
@@ -40,6 +49,11 @@ def _(text):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    async with exapp_lifespan(app):
+        async with http_mcp_app.lifespan(app):
+            yield
+@asynccontextmanager
+async def exapp_lifespan(app: FastAPI):
     set_handlers(app, enabled_handler)
     start_bg_task()
     nc = NextcloudApp()
@@ -175,6 +189,8 @@ async def handle_task(task, nc: NextcloudApp):
 def start_bg_task():
     loop = asyncio.get_event_loop()
     loop.create_task(background_thread_task())
+
+APP.mount("/mcp", http_mcp_app)
 
 if __name__ == "__main__":
     # Wrapper around `uvicorn.run`.

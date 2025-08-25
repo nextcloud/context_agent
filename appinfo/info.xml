@@ -46,5 +46,13 @@ Positive:
 			<image>nextcloud/context_agent</image>
 			<image-tag>1.2.2</image-tag>
 		</docker-install>
+        <routes>
+			<route>
+				<url>mcp</url>
+				<verb>POST,GET,DELETE</verb>
+				<access_level>USER</access_level>
+				<headers_to_exclude>[]</headers_to_exclude>
+			</route>
+		</routes>
 	</external-app>
 </info>

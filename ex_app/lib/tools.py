@@ -6,7 +6,6 @@ import pathlib
 import json
 from os.path import dirname
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from nc_py_api import Nextcloud
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
 
