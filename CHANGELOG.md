@@ -8,6 +8,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.1.0] - 2025-08-27
+
+### Added
+- Adding mcp servers as custom tools for context agent
+- Expose an mcp server to use context agent's tools in other llms
+
+### Fixed
+- Tune prompt to not include tools in system prompt if they are disabled
+
 ## [2.0.0] - 2025-07-21
 
 ### Changed
