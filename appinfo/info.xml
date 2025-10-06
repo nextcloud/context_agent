@@ -39,7 +39,7 @@ Positive:
 	<screenshot>https://github.com/nextcloud/context_agent/blob/main/img/screenshot.png?raw=true</screenshot>
 	<repository type="git">https://github.com/nextcloud/context_agent</repository>
 	<dependencies>
-		<nextcloud min-version="31.0.8" max-version="32"/>
+		<nextcloud min-version="31.0.8" max-version="33"/>
 	</dependencies>
 	<external-app>
 		<docker-install>
