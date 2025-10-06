@@ -33,6 +33,7 @@ Positive:
 	<author mail="mklehr@gmx.net" homepage="https://marcelklehr.de">Marcel Klehr</author>
 	<namespace>ContextAgent</namespace>
 	<category>tools</category>
+	<category>ai</category>
 	<website>https://github.com/nextcloud/context_agent</website>
 	<bugs>https://github.com/nextcloud/context_agent/issues</bugs>
 	<screenshot>https://github.com/nextcloud/context_agent/blob/main/img/screenshot.png?raw=true</screenshot>
