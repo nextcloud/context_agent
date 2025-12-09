@@ -35,13 +35,29 @@ with open(key_file_path, "r") as file:
 	print(f"Reading file '{key_file_path}'.")
 	key = file.read()
 
-def load_conversation(checkpointer, conversation_token: str):
+def load_conversation_old(conversation_token: str):
+	checkpointer = MemorySaver()
 	if conversation_token == '' or conversation_token == '{}':
-		return
+		return checkpointer
 	checkpointer.storage = checkpointer.serde.loads(verify_signature(conversation_token, key).encode())
+	return checkpointer
+
+def load_conversation(conversation_token: str):
+	checkpointer = MemorySaver()
+	if conversation_token == '' or conversation_token == '{}':
+		return checkpointer
+
+	conversation = checkpointer.serde.loads(verify_signature(conversation_token, key).encode())
+	last_checkpoint = conversation['last_checkpoint']
+	last_config = conversation['last_config']
+	checkpointer.storage[last_config['configurable']['thread_id']][last_config['configurable']['checkpoint_ns']][last_config['configurable']['checkpoint_id']] = last_checkpoint
+	return checkpointer
 
 def export_conversation(checkpointer):
-	return add_signature(checkpointer.serde.dumps(checkpointer.storage).decode('utf-8'), key)
+	last_config = checkpointer.last_config
+	last_checkpoint = checkpointer.storage[last_config['configurable']['thread_id']][last_config['configurable']['checkpoint_ns']][last_config['configurable']['checkpoint_id']]
+	conversation_token = {"last_config": last_config, "last_checkpoint": last_checkpoint}
+	return add_signature(checkpointer.serde.dumps(conversation_token).decode('utf-8'), key)
 
 
 async def react(task, nc: Nextcloud):
@@ -94,10 +110,12 @@ If you get a link as a tool output, always add the link to your response.
 		# We return a list, because this will get added to the existing list
 		return {"messages": [response]}
 
-	checkpointer = MemorySaver()
-	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
+	try:
+		checkpointer = load_conversation(task['input']['conversation_token'])
+	except Exception as e:
+		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	load_conversation(checkpointer, task['input']['conversation_token'])
+	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
 
 	state_snapshot = graph.get_state(thread)
 

@@ -73,6 +73,8 @@ class InMemorySaver(
 		dict[tuple[str, int], tuple[str, str, tuple[str, bytes], str]],
 	]
 
+	last_config: Optional[dict] = None
+
 	def __init__(
 			self,
 			*,
@@ -352,7 +354,7 @@ class InMemorySaver(
 			RunnableConfig: The updated config containing the saved checkpoint's timestamp.
 		"""
 		c = checkpoint.copy()
-		c.pop("pending_sends")  # type: ignore[misc]
+		#c.pop("pending_sends")  # type: ignore[misc]
 		thread_id = config["configurable"]["thread_id"]
 		checkpoint_ns = config["configurable"]["checkpoint_ns"]
 		self.storage[thread_id][checkpoint_ns].update(
@@ -364,6 +366,13 @@ class InMemorySaver(
 				)
 			}
 		)
+		self.last_config = {
+			"configurable": {
+				"thread_id": thread_id,
+				"checkpoint_ns": checkpoint_ns,
+				"checkpoint_id": checkpoint["id"],
+			}
+		}
 		return {
 			"configurable": {
 				"thread_id": thread_id,
