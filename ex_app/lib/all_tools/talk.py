@@ -43,7 +43,8 @@ async def get_tools(nc: Nextcloud):
 		"""
 		conversations = nc.talk.get_user_conversations()
 		conversation = {conv.display_name: conv for conv in conversations}[conversation_name]
-		nc.talk.send_message(message, conversation)
+		message_with_ai_note = f"{message}\n\nThis message was sent by Nextcloud AI Assistant."
+		nc.talk.send_message(message_with_ai_note, conversation)
 
 		return True
 

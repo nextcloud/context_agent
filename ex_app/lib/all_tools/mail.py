@@ -23,13 +23,14 @@ async def get_tools(nc: Nextcloud):
 		:param to_emails: The emails to send
 		"""
 		i = 0
+		body_with_ai_note = f"{body}\n\n---\n\nThis email was sent by Nextcloud AI Assistant."
 		while i < 20:
 			try:
 				return nc.ocs('POST', '/ocs/v2.php/apps/mail/message/send', json={
 					'accountId': account_id,
 					'fromEmail': from_email,
 					'subject': subject,
-					'body': body,
+					'body': body_with_ai_note,
 					'isHtml': False,
 					'to': [{'label': '', 'email': email} for email in to_emails],
 				})

@@ -70,6 +70,7 @@ async def get_tools(nc: Nextcloud):
 			start_datetime = tz.localize(start_datetime)
 			end_datetime = tz.localize(end_datetime)
 
+		description_with_ai_note = f"{description}\n\n---\n\nThis event was scheduled by Nextcloud AI Assistant."
 
 		# Create event
 		c = Calendar()
@@ -77,7 +78,7 @@ async def get_tools(nc: Nextcloud):
 		e.name = title
 		e.begin = start_datetime
 		e.end = end_datetime
-		e.description = description
+		e.description = description_with_ai_note
 		e.location = location
 		if attendees is not None:
 			for attendee in attendees:

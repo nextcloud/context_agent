@@ -50,6 +50,7 @@ async def get_tools(nc: Nextcloud):
 			"Content-Type": "application/json",
 		}, json={
 					'title': title,
+					'description': 'Created by Nextcloud AI Assistant.',
 					'type': 'plain',
 					'order': 999,
 				})
