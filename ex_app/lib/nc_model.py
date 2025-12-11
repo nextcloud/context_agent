@@ -37,6 +37,7 @@ class ChatWithNextcloud(BaseChatModel):
 	tools: Sequence[
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
 	TIMEOUT: int = 60 * 20 # 20 minutes
+	MAX_MESSAGE_HISTORY: int = 13
 
 	def _generate(
 			self,
@@ -51,6 +52,9 @@ class ChatWithNextcloud(BaseChatModel):
 		if messages[0].type == 'system':
 			task_input['system_prompt'] = messages[0].content
 			messages = messages[1:]
+
+		# Impose a history limit to avoid the token intake exploding
+		messages = messages[-self.MAX_MESSAGE_HISTORY:]
 
 		task_input['input'] = ''
 		task_input['tool_message'] = []
