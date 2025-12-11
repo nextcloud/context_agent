@@ -159,7 +159,7 @@ async def background_thread_task():
         task = response["task"]
         log(nc, LogLvl.INFO, 'New Task incoming')
         log(nc, LogLvl.DEBUG, str(task))
-        log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>'}))
+        log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
         asyncio.create_task(handle_task(task, nc))
 
 
