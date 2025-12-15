@@ -40,7 +40,9 @@ async def get_tools(nc: Nextcloud):
 		:param description: The description of the work package
 		:param assignee_id: The ID of the user the work package should be assigned to, obtainable via list_assignees
 		:return: 
-		""" 
+		"""
+
+		descrption_with_ai_note = f"{description}\n\nThis work package was created by Nextcloud AI Assistant."
 
 		links = {
 							"project": {
@@ -69,10 +71,10 @@ async def get_tools(nc: Nextcloud):
 
 		if description:
 			json["body"]["description"] = {
-                        "format": "markdown",
-                        "html": "",
-                        "raw": description,
-                    }
+				"format": "markdown",
+				"html": "",
+				"raw": descrption_with_ai_note,
+			}
 		
 		response = nc.ocs('POST', '/ocs/v2.php/apps/integration_openproject/api/v1/create/work-packages', json=json)
 
