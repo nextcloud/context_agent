@@ -201,11 +201,13 @@ END:VCALENDAR
 		:return: bool
 		"""
 
+		description_with_ai_note = f"{description}\n\n---\n\nThis task was scheduled by Nextcloud AI Assistant."
+
 		# Create task
 		c = Calendar()
 		t = Todo()
 		t.name = title
-		t.description = description
+		t.description = description_with_ai_note
 
 		# Parse date and times
 		if due_date:
