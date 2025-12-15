@@ -11,7 +11,7 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.10"
 nc-py-api = {extras = ["calendar"], version = "^0.22.0"}
-langgraph = "^0.4.1"
+langgraph = "1.*"
 langchain = "^0.3.25"
 ics = "^0.7.2"
 pytz = "^2025.2"

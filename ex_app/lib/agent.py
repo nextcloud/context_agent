@@ -35,14 +35,63 @@ with open(key_file_path, "r") as file:
 	print(f"Reading file '{key_file_path}'.")
 	key = file.read()
 
-def load_conversation(checkpointer, conversation_token: str):
+def load_conversation_old(conversation_token: str):
+	"""
+	Load a checkpointer with the conversation state from the conversation token
+
+	This is the old way which is only used as a fallback anymore
+	"""
+	checkpointer = MemorySaver()
 	if conversation_token == '' or conversation_token == '{}':
-		return
-	checkpointer.storage = checkpointer.serde.loads(verify_signature(conversation_token, key).encode())
+		# return an empty checkpointer
+		return checkpointer
+	# Verify whether this conversation token was signed by this instance of context_agent
+	serialized_checkpointer = verify_signature(conversation_token, key)
+	# Deserialize the checkpointer storage
+	checkpointer.storage = checkpointer.serde.loads(serialized_checkpointer.encode())
+	# return the prepared checkpointer
+	return checkpointer
+
+def load_conversation(conversation_token: str):
+	"""
+	Load a checkpointer with the conversation state from the conversation token
+
+	This is the new way which only restores that last checkpoint of the checkpointer instead of the whole checkpointer history
+	"""
+	checkpointer = MemorySaver()
+	if conversation_token == '' or conversation_token == '{}':
+		# return an empty checkpointer
+		return checkpointer
+
+	# Verify whether this was signed by this instance of context_agent
+	serialized_state = verify_signature(conversation_token, key)
+	# Deserialize the saved state
+	conversation = checkpointer.serde.loads(serialized_state.encode())
+	# Get the last checkpoint state
+	last_checkpoint = conversation['last_checkpoint']
+	# get the last checkpointer config
+	last_config = conversation['last_config']
+	# insert the last checkpoint state at the right spot in the checkpointer storage
+	checkpointer.storage[last_config['configurable']['thread_id']][last_config['configurable']['checkpoint_ns']][last_config['configurable']['checkpoint_id']] = last_checkpoint
+	# return the prepared checkpointer
+	return checkpointer
 
 def export_conversation(checkpointer):
-	return add_signature(checkpointer.serde.dumps(checkpointer.storage).decode('utf-8'), key)
+	"""
+	Prepare and sign a conversation token from a checkpointer
 
+	This only uses the new way which only saves the last checkpoint of the checkpointer instead of the whole checkpointer history
+	"""
+	# get the last config which holds the last written checkpoint
+	last_config = checkpointer.last_config
+	# Select the last written checkpoint
+	last_checkpoint = checkpointer.storage[last_config['configurable']['thread_id']][last_config['configurable']['checkpoint_ns']][last_config['configurable']['checkpoint_id']]
+	# prepare the to-serialize blob
+	state = {"last_config": last_config, "last_checkpoint": last_checkpoint}
+	serialized_state = checkpointer.serde.dumps(state)
+	# sign the serialized state
+	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
+	return conversation_token
 
 async def react(task, nc: Nextcloud):
 	safe_tools, dangerous_tools = await get_tools(nc)
@@ -94,10 +143,15 @@ If you get a link as a tool output, always add the link to your response.
 		# We return a list, because this will get added to the existing list
 		return {"messages": [response]}
 
-	checkpointer = MemorySaver()
-	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
+	try:
+		# Try to load state using the new conversation_token type
+		checkpointer = load_conversation(task['input']['conversation_token'])
+	except Exception as e:
+		# fallback to trying to load the state using the old conversation_token type
+		# if this fails, we fail the whole task
+		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	load_conversation(checkpointer, task['input']['conversation_token'])
+	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
 
 	state_snapshot = graph.get_state(thread)
 
