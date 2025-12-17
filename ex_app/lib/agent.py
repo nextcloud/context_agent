@@ -134,6 +134,9 @@ If you get a link as a tool output, always add the link to your response.
 			system_prompt_text += "Use the find_person_in_contacts tool to find a person's email address and location.\n"
 		if tool_enabled("find_details_of_current_user"):
 			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location.\n"
+
+		if task['input'].get('memories', None) is not None:
+			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
 			system_prompt_text.replace("{CURRENT_DATE}", current_date)

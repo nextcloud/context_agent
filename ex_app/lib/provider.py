@@ -14,5 +14,12 @@ provider = TaskProcessingProvider(
 				description="Used tools",
 				shape_type=ShapeType.LIST_OF_TEXTS
 			)
+	],
+	optional_input_shape= [
+			ShapeDescriptor(
+				name="memories",
+				description="Injected memories",
+				shape_type=ShapeType.LIST_OF_TEXTS
+			)
 	]
 )
