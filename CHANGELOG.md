@@ -8,6 +8,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.2.0] - 2025-12-19
+
+### Added
+- Implement taskprocessing trigger event
+- Add "AI-generated" notes where appropriate
+- Add optional memories input slot
+- add AI app category for appstore
+
+
+### Changed
+- updated python dependencies
+- Reduce size of conversation_token
+- Impose a history limit to avoid the token intake exploding
+
+
 ## [2.1.0] - 2025-08-27
 
 ### Added
