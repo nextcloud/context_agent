@@ -62,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout server
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: nextcloud/server
           ref: ${{ matrix.server-versions }}
@@ -82,7 +82,7 @@ jobs:
           extensions: mbstring, iconv, fileinfo, intl, sqlite, pdo_mysql, pdo_sqlite, pgsql, pdo_pgsql, gd, zip
 
       - name: Checkout llm2 app
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: llm2
           repository: nextcloud/llm2
@@ -97,7 +97,7 @@ jobs:
           expression: "/info/version/text()"
 
       - name: Checkout app
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: ${{ env.APP_NAME }}
           persist-credentials: false
@@ -131,7 +131,7 @@ jobs:
           ./occ user:add --password-from-env alice
 
       - name: Checkout app_api
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: apps/app_api
           repository: nextcloud/app_api
