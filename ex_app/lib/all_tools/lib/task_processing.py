@@ -3,7 +3,7 @@
 import time
 import typing
 
-from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
+from niquests import ConnectionError, Timeout
 from nc_py_api import NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
@@ -31,10 +31,7 @@ def run_task(nc, type, task_input):
 			break
 		except (
 				ConnectionError,
-				ProxyError,
-				SSLError,
-				TimeoutConnectTimeout,
-				ReadTimeout
+				Timeout
 
 		) as e:
 			log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
@@ -55,10 +52,7 @@ def run_task(nc, type, task_input):
 				response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 			except (
 					ConnectionError,
-					ProxyError,
-					SSLError,
-					TimeoutConnectTimeout,
-					ReadTimeout
+					Timeout
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				time.sleep(5)

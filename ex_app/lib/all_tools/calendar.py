@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from time import sleep
 from typing import Optional
 
-from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
+from niquests import ConnectionError, Timeout
 import pytz
 from ics import Calendar, Event, Attendee, Organizer, Todo
 from langchain_core.tools import tool
@@ -92,11 +92,7 @@ async def get_tools(nc: Nextcloud):
 				break
 			except (
 					ConnectionError,
-					ProxyError,
-					SSLError,
-					TimeoutConnectTimeout,
-					ReadTimeout
-
+					Timeout
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1

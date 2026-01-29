@@ -5,7 +5,7 @@ import time
 import typing
 from typing import Optional, Any, Sequence, Union, Callable
 
-from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
+from niquests import ConnectionError, Timeout
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage, AIMessage
@@ -101,10 +101,7 @@ class ChatWithNextcloud(BaseChatModel):
 				break
 			except (
 					ConnectionError,
-					ProxyError,
-					SSLError,
-					TimeoutConnectTimeout,
-					ReadTimeout
+					Timeout
 
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
@@ -126,10 +123,7 @@ class ChatWithNextcloud(BaseChatModel):
 					response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 				except (
 						ConnectionError,
-						ProxyError,
-						SSLError,
-						TimeoutConnectTimeout,
-						ReadTimeout
+						Timeout
 
 				) as e:
 					log(nc, LogLvl.DEBUG, "Ignored error during task polling")
