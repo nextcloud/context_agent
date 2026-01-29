@@ -28,7 +28,7 @@ jobs:
       matrix:
         php-versions: [ '8.2' ]
         databases: [ 'sqlite' ]
-        server-versions: [ 'master', 'stable32', 'stable31' ]
+        server-versions: [ 'master', 'stable33', 'stable32', 'stable31' ]
 
     name: Integration test on ☁️${{ matrix.server-versions }} 🐘${{ matrix.php-versions }}
 
@@ -198,7 +198,7 @@ jobs:
           CREDS: "alice:alice"
         run: |
           sleep 300
-          TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "Search duckduckgo for Nextcloud", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
+          TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "Search youtube for videos about Nextcloud", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
           echo $TASK
           TASK_ID=$(echo $TASK | jq '.ocs.data.task.id')
           NEXT_WAIT_TIME=0
@@ -215,7 +215,7 @@ jobs:
           [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ]
           echo $TASK | jq '.ocs.data.task.output.output'
           echo $TASK | jq '.ocs.data.task.output.sources'
-          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q 'duckduckgo_results_json'
+          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q 'youtube_search'
           echo $TASK | jq '.ocs.data.task.output.output' | grep -q 'Nextcloud'
 
       - name: Show nextcloud logs
