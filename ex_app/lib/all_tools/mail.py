@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from time import sleep
 
-import httpx
+from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import LogLvl
@@ -35,10 +35,11 @@ async def get_tools(nc: Nextcloud):
 					'to': [{'label': '', 'email': email} for email in to_emails],
 				})
 			except (
-					httpx.RemoteProtocolError,
-					httpx.ReadError,
-					httpx.LocalProtocolError,
-					httpx.PoolTimeout,
+					ConnectionError,
+					ProxyError,
+					SSLError,
+					TimeoutConnectTimeout,
+					ReadTimeout
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1

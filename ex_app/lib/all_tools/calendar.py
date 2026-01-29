@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from time import sleep
 from typing import Optional
 
-import httpx
+from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
 import pytz
 from ics import Calendar, Event, Attendee, Organizer, Todo
 from langchain_core.tools import tool
@@ -91,10 +91,12 @@ async def get_tools(nc: Nextcloud):
 				json = nc.ocs('GET', '/ocs/v2.php/cloud/user')
 				break
 			except (
-					httpx.RemoteProtocolError,
-					httpx.ReadError,
-					httpx.LocalProtocolError,
-					httpx.PoolTimeout,
+					ConnectionError,
+					ProxyError,
+					SSLError,
+					TimeoutConnectTimeout,
+					ReadTimeout
+
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1
