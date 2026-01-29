@@ -28,7 +28,7 @@ jobs:
       matrix:
         php-versions: [ '8.2' ]
         databases: [ 'sqlite' ]
-        server-versions: [ 'master', 'stable32', 'stable31' ]
+        server-versions: [ 'master', 'stable33', 'stable32', 'stable31' ]
 
     name: Integration test on ☁️${{ matrix.server-versions }} 🐘${{ matrix.php-versions }}
 
