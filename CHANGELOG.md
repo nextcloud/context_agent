@@ -8,6 +8,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.3.0] - 2025-12-29
+
+### Added
+- Support for NC34
+
+### Changed
+- updated python dependencies
+- retry task scheduling when a connection error is thrown
+- switch from httpx to niquests
+
 ## [2.2.0] - 2025-12-19
 
 ### Added
