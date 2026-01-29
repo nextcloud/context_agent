@@ -3,7 +3,7 @@
 import time
 import typing
 
-import httpx
+from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
 from nc_py_api import NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
@@ -20,11 +20,27 @@ class Response(BaseModel):
 	task: Task
 
 def run_task(nc, type, task_input):
-	response = nc.ocs(
-		"POST",
-		"/ocs/v1.php/taskprocessing/schedule",
-		json={"type": type, "appId": "context_agent", "input": task_input},
-	)
+	i = 0
+	while i < 20:
+		try:
+			response = nc.ocs(
+				"POST",
+				"/ocs/v1.php/taskprocessing/schedule",
+				json={"type": type, "appId": "context_agent", "input": task_input},
+			)
+			break
+		except (
+				ConnectionError,
+				ProxyError,
+				SSLError,
+				TimeoutConnectTimeout,
+				ReadTimeout
+
+		) as e:
+			log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
+			i += 1
+			sleep(1)
+			continue
 
 	try:
 		task = Response.model_validate(response).task
@@ -38,10 +54,11 @@ def run_task(nc, type, task_input):
 			try:
 				response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 			except (
-					httpx.RemoteProtocolError,
-					httpx.ReadError,
-					httpx.LocalProtocolError,
-					httpx.PoolTimeout,
+					ConnectionError,
+					ProxyError,
+					SSLError,
+					TimeoutConnectTimeout,
+					ReadTimeout
 			) as e:
 				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				time.sleep(5)

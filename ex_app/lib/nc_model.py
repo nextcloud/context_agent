@@ -5,7 +5,7 @@ import time
 import typing
 from typing import Optional, Any, Sequence, Union, Callable
 
-import httpx
+from niquests import ConnectionError, ProxyError, SSLError, TimeoutConnectTimeout, ReadTimeout
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage, AIMessage
@@ -90,11 +90,27 @@ class ChatWithNextcloud(BaseChatModel):
 
 		log(nc, LogLvl.DEBUG, task_input)
 
-		response = nc.ocs(
-			"POST",
-			"/ocs/v1.php/taskprocessing/schedule",
-			json={"type": "core:text2text:chatwithtools", "appId": "context_agent", "input": task_input},
-		)
+		i = 0
+		while i < 20:
+			try:
+				response = nc.ocs(
+					"POST",
+					"/ocs/v1.php/taskprocessing/schedule",
+					json={"type": "core:text2text:chatwithtools", "appId": "context_agent", "input": task_input},
+				)
+				break
+			except (
+					ConnectionError,
+					ProxyError,
+					SSLError,
+					TimeoutConnectTimeout,
+					ReadTimeout
+
+			) as e:
+				log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
+				i += 1
+				sleep(1)
+				continue
 
 		try:
 			task = Response.model_validate(response).task
@@ -109,10 +125,12 @@ class ChatWithNextcloud(BaseChatModel):
 				try:
 					response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 				except (
-						httpx.RemoteProtocolError,
-						httpx.ReadError,
-						httpx.LocalProtocolError,
-						httpx.PoolTimeout,
+						ConnectionError,
+						ProxyError,
+						SSLError,
+						TimeoutConnectTimeout,
+						ReadTimeout
+
 				) as e:
 					log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 					time.sleep(5)
