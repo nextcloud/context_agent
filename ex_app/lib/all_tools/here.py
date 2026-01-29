@@ -4,7 +4,7 @@ import typing
 import datetime
 import urllib.parse
 
-import httpx
+import niquests
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 
@@ -30,7 +30,7 @@ async def get_tools(nc: Nextcloud):
 		if departure_time is None:
 			departure_time = urllib.parse.quote_plus(datetime.datetime.now(datetime.UTC).isoformat())
 		api_key = nc.appconfig_ex.get_value('here_api')
-		res = httpx.get('https://transit.hereapi.com/v8/routes?transportMode=car&origin=' 
+		res = niquests.get('https://transit.hereapi.com/v8/routes?transportMode=car&origin=' 
 			+ origin_lat + ',' + origin_lon + '&destination=' + destination_lat + ',' + destination_lon 
 			+ '&alternatives=' + str(routes-1) + '&departureTime=' + departure_time + '&apikey=' + api_key)
 		json = res.json()

@@ -4,7 +4,6 @@ from datetime import datetime, timezone, timedelta
 from time import sleep
 from typing import Optional
 
-import httpx
 import pytz
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud

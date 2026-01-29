@@ -3,7 +3,7 @@
 import typing
 import urllib.parse
 
-import httpx
+import niquests
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 
@@ -20,7 +20,7 @@ async def get_tools(nc: Nextcloud):
 		:param lon: Longitude
 		:return:
 		"""
-		res = httpx.get('https://api.met.no/weatherapi/locationforecast/2.0/compact', params={
+		res = niquests.get('https://api.met.no/weatherapi/locationforecast/2.0/compact', params={
 			'lat': lat,
 			'lon': lon,
 		},

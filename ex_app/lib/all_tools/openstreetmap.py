@@ -6,7 +6,7 @@ import datetime
 import urllib.parse
 from time import sleep
 
-import httpx
+import niquests
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 
@@ -22,7 +22,7 @@ async def get_tools(nc: Nextcloud):
 		:param address: the address to calculate the coordinates for
 		:return: a tuple of latitude and longitude
 		"""
-		res = httpx.get('https://nominatim.openstreetmap.org/search', params={'q': address, 'format': 'json', 'addressdetails': '1', 'extratags': '1', 'namedetails': '1', 'limit': '1'})
+		res = niquests.get('https://nominatim.openstreetmap.org/search', params={'q': address, 'format': 'json', 'addressdetails': '1', 'extratags': '1', 'namedetails': '1', 'limit': '1'})
 		json = res.json()
 		if 'error' in json:
 			raise Exception(json['error'])
@@ -56,7 +56,7 @@ async def get_tools(nc: Nextcloud):
 				profile_num = "2" 
 		url = f'https://routing.openstreetmap.de/{profile}/route/v1/driving/{origin_lon},{origin_lat};{destination_lon},{destination_lat}?overview=false&steps=true'
 		map_url = f' https://routing.openstreetmap.de/?loc={origin_lat}%2C{origin_lon}&loc={destination_lat}%2C{destination_lon}&srv={profile_num}'
-		res = httpx.get(url)
+		res = niquests.get(url)
 		json = res.json()
 		return {'route_json_description': json, 'map_url': map_url}
 
@@ -70,7 +70,7 @@ async def get_tools(nc: Nextcloud):
 		:return: URL
 		"""
 
-		res = httpx.get('https://nominatim.openstreetmap.org/search', params={'q': location, 'format': 'json','limit': '1'})
+		res = niquests.get('https://nominatim.openstreetmap.org/search', params={'q': location, 'format': 'json','limit': '1'})
 		json = res.json()
 		if 'error' in json:
 			raise Exception(json['error'])
