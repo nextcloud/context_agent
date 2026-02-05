@@ -13,8 +13,8 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def generate_document(input: str, format: str) -> str:
 		"""
-		Generate a document with the input string as description. 
-		:param text: the instructions for the document
+		Generate an office document based on a description of what it should contain
+		:param input: the instructions for what the document should contain
 		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
 		:return: a download link to the generated document
 		"""

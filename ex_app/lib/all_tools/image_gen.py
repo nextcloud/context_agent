@@ -3,7 +3,6 @@
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 
-from ex_app.lib.all_tools.lib.files import get_file_id_from_file_url
 from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
@@ -14,7 +13,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def generate_image(input: str) -> str:
 		"""
-		Generate an image with the input string as description
+		Generate an image using AI with the input string as description
 		:param text: the instructions for the image generation
 		:return: a download link to the generated image
 		"""

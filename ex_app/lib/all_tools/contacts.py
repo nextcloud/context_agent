@@ -80,7 +80,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def find_details_of_current_user() -> dict[str, typing.Any]:
 		"""
-		Find the user's personal information
+		Find the current user's personal information
 		:return: a dictionary with the person's personal information
 		"""
 

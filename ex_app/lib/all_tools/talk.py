@@ -12,7 +12,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def list_talk_conversations():
 		"""
-		List all conversations in talk
+		List all conversations of the user in the Nextcloud Talk app
 		:return: returns a list of conversation names, e.g. ["Conversation 1", "Conversation 2"]
 		"""
 		conversations = nc.talk.get_user_conversations()
@@ -23,7 +23,7 @@ async def get_tools(nc: Nextcloud):
 	@dangerous_tool
 	def create_public_conversation(conversation_name: str) -> str:
 		"""
-		Create a new talk conversation
+		Create a new conversation in the Nextcloud Talk app
 		:param conversation_name: The name of the conversation to create
 		:return: The URL of the new conversation
 		"""
@@ -36,7 +36,7 @@ async def get_tools(nc: Nextcloud):
 	@dangerous_tool
 	def send_message_to_conversation(conversation_name: str, message: str):
 		"""
-		List all conversations in talk
+		List all conversations in the Nextcloud talk app
 		:param message: The message to send
 		:param conversation_name: The name of the conversation to send a message to
 		:return:
@@ -52,7 +52,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def list_messages_in_conversation(conversation_name: str, n_messages: int = 30):
 		"""
-		List messages of a conversation in talk
+		List messages of a conversation in the Nextcloud Talk app
 		:param conversation_name: The name of the conversation to list messages of (can only be one conversation per Tool call, obtainable via list_talk_conversations)
 		:param n_messages: The number of messages to receive
 		:return: A list of messages
