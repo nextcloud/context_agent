@@ -12,7 +12,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def list_talk_conversations():
 		"""
-		List all conversations of the user in the Nextcloud Talk app
+		List all conversations of the current user in the Nextcloud Talk app
 		:return: returns a list of conversation names, e.g. ["Conversation 1", "Conversation 2"]
 		"""
 		conversations = nc.talk.get_user_conversations()
