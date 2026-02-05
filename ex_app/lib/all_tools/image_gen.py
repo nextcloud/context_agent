@@ -13,7 +13,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def generate_image(input: str) -> str:
 		"""
-		Generate an image using AI with the input string as description
+		Generate an image using AI from a text description input
 		:param text: the instructions for the image generation
 		:return: a download link to the generated image
 		"""
