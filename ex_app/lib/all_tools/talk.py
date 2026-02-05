@@ -36,7 +36,7 @@ async def get_tools(nc: Nextcloud):
 	@dangerous_tool
 	def send_message_to_conversation(conversation_name: str, message: str):
 		"""
-		List all conversations in the Nextcloud talk app
+		Send a message to a conversation in the Nextcloud talk app
 		:param message: The message to send
 		:param conversation_name: The name of the conversation to send a message to
 		:return:
