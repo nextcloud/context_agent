@@ -13,7 +13,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def ask_context_chat(question: str) -> str:
 		"""
-		Ask the context chat oracle, which knows all of the user's documents, a question about them
+		Ask the context chat oracle a question about the user's documents. It knows the contents of all of the users documents.
 		:param question: The question to ask
 		:return: the answer from context chat
 		"""

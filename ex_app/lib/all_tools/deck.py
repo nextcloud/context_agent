@@ -1,27 +1,19 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-from datetime import datetime, timezone, timedelta
-from time import sleep
-from typing import Optional
-
-import pytz
 from langchain_core.tools import tool
 from nc_py_api import Nextcloud
 from nc_py_api.ex_app import LogLvl
-import xml.etree.ElementTree as ET
-import vobject
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
-from ex_app.lib.logger import log
 
 
 async def get_tools(nc: Nextcloud):
 
 	@tool
 	@safe_tool
-	def list_decks():
+	def list_boards():
 		"""
-		List all existing kanban decks with their available info
+		List all existing kanban boards available in the Nextcloud Deck app for the current user with their available info
 		:return: a dictionary with all decks of the user
 		"""
 
@@ -35,17 +27,17 @@ async def get_tools(nc: Nextcloud):
 
 	@tool
 	@dangerous_tool
-	def add_card(deck_id: int, stack_id: int, title: str):
+	def add_card(board_id: int, stack_id: int, title: str):
 		"""
-		Create a new card in a list of a kanban deck. 
-		When using this tool, you need to specify in which deck and map the card should be created.
-		:param deck_id: the id of the deck the card should be created in, obtainable with list_decks
-		:param stack_id: the id of the stack the card should be created in, obtainable with list_decks
+		Create a new card in a list of a kanban board in the Nextcloud Deck app.
+		When using this tool, you need to specify in which board and map the card should be created.
+		:param board_id: the id of the board the card should be created in, obtainable with list_boards
+		:param stack_id: the id of the stack the card should be created in, obtainable with list_boards
 		:param title: The title of the card
 		:return: bool
 		"""
 
-		response = nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0//boards/{deck_id}/stacks/{stack_id}/cards", headers={
+		response = nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
 			"Content-Type": "application/json",
 		}, json={
 					'title': title,
@@ -58,7 +50,7 @@ async def get_tools(nc: Nextcloud):
 		return True
 
 	return [
-		list_decks,
+		list_boards,
 		add_card
 	]
 

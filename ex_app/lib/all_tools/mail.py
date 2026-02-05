@@ -16,11 +16,11 @@ async def get_tools(nc: Nextcloud):
 	@dangerous_tool
 	def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
 		"""
-		Send an email to a list of emails
+		Send an email to a list of email addresses
 		:param subject: The subject of the email
 		:param body: The body of the email
 		:param account_id: The id of the account to send from, obtainable via get_mail_account_list
-		:param to_emails: The emails to send
+		:param to_emails: The email addresses to send the message to
 		"""
 		i = 0
 		body_with_ai_note = f"{body}\n\n---\n\nThis email was sent by Nextcloud AI Assistant."
@@ -47,7 +47,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def get_mail_account_list():
 		"""
-		Lists all available email accounts including their account id
+		Lists all available email accounts of the current user including their account id
 		:param subject: The subject of the email
 		:param body: The body of the email
 		:param account_id: The id of the account to send from

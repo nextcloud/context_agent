@@ -14,7 +14,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def transcribe_file(file_url: str) -> str:
 		"""
-		Transcribe a media file stored inside the nextcloud
+		Transcribe a media file stored inside Nextcloud
 		:param file_url: The file URL to the media file in nextcloud (The user can input this using the smart picker for example)
 		:return: the transcription result
 		"""
