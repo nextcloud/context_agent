@@ -36,7 +36,7 @@ def run_task(nc, type, task_input):
 		) as e:
 			log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
 			i += 1
-			sleep(1)
+			time.sleep(1)
 			continue
 
 	try:
