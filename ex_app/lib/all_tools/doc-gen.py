@@ -1,24 +1,24 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@safe_tool
-	def generate_document(input: str, format: str) -> str:
+	async def generate_document(input: str, format: str) -> str:
 		"""
 		Generate an office document based on a description of what it should contain
 		:param input: the instructions for what the document should contain
 		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
 		:return: a download link to the generated document
 		"""
-		url = nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
+		url = await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
 
 		match format:
 			case "text document":
@@ -54,10 +54,10 @@ async def get_tools(nc: Nextcloud):
 				task_input = {
 					'text': input,
 				}
-				task = run_task(nc,  tasktype, task_input)
+				task = await run_task(nc,  tasktype, task_input)
 				return f"{url}/{task.id}/output-file/{task.output['slide_deck']}/download"
 
-		task = run_task(nc,  tasktype, task_input)
+		task = await run_task(nc,  tasktype, task_input)
 		return f"{url}/{task.id}/output-file/{task.output['file']}/download"
 
 	return [
@@ -67,5 +67,5 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Office document generation"
 
-def is_available(nc: Nextcloud):
-	return 'richdocuments' in nc.capabilities
+async def is_available(nc: AsyncNextcloudApp):
+	return 'richdocuments' in await nc.capabilities

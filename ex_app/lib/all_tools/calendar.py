@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 from datetime import datetime, timezone, timedelta
-from time import sleep
 from typing import Optional
 
 from niquests import ConnectionError, Timeout
 import pytz
 from ics import Calendar, Event, Attendee, Organizer, Todo
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl
 import xml.etree.ElementTree as ET
 import vobject
@@ -18,11 +18,11 @@ from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round
 from ex_app.lib.logger import log
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@safe_tool
-	def list_calendars():
+	async def list_calendars():
 		"""
 		List all existing calendars by name
 		:return:
@@ -33,7 +33,7 @@ async def get_tools(nc: Nextcloud):
 
 	@tool
 	@dangerous_tool
-	def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
+	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
 		"""
 		Crete a new event or meeting in a calendar. Omit start_time and end_time parameters to create an all-day event.
 		:param calendar_name: The name of the calendar to add the event to
@@ -94,9 +94,9 @@ async def get_tools(nc: Nextcloud):
 					ConnectionError,
 					Timeout
 			) as e:
-				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
+				await log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1
-				sleep(1)
+				await asyncio.sleep(1)
 				continue
 
 		# ...and set the organizer
@@ -115,7 +115,7 @@ async def get_tools(nc: Nextcloud):
 
 	@tool
 	@safe_tool
-	def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str]):
+	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str]):
 		"""
 		Finds a free time slot where all participants have time
 		:param participants: The list of participants to find a free slot for (These should be email addresses. If possible use the email addresses from contacts)
@@ -125,7 +125,7 @@ async def get_tools(nc: Nextcloud):
 		:return:
 		"""
 
-		me = nc.ocs('GET', '/ocs/v2.php/cloud/user')
+		me = await nc.ocs('GET', '/ocs/v2.php/cloud/user')
 
 		attendees = 'ORGANIZER:mailto:'+me['email']+'\n'
 		attendees += 'ATTENDEE:mailto:'+me['email']+'\n'
@@ -161,7 +161,7 @@ DTEND:{DTEND}
 END:VCALENDAR
 """.replace('{ATTENDEES}', attendees).replace('{DTSTART}', dtstart).replace('{DTEND}', dtend)
 		username = nc._session.user
-		response = nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{username}/outbox/", headers={
+		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{username}/outbox/", headers={
 			"Content-Type": "text/calendar; charset=utf-8",
 			"Depth": "0",
 		}, content=freebusyRequest)
@@ -187,15 +187,15 @@ END:VCALENDAR
 
 	@tool
 	@dangerous_tool
-	def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: Optional[str],):
+	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: Optional[str],):
 		"""
-		Crete a new task in a calendar. 
+		Crete a new task in a calendar.
 		:param calendar_name: The name of the calendar to add the task to
 		:param title: The title of the task
 		:param description: The description of the task
 		:param due_date: the due date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
 		:param due_time: the due time in the following form: HH:MM AM/PM e.g. '3:00 PM'
-		:param timezone: Timezone (e.g., 'America/New_York'). Is required if there is a specified due date. 
+		:param timezone: Timezone (e.g., 'America/New_York'). Is required if there is a specified due date.
 		:return: bool
 		"""
 
@@ -246,5 +246,5 @@ END:VCALENDAR
 def get_category_name():
 	return "Calendar and Tasks"
 
-def is_available(nc: Nextcloud):
+async def is_available(nc: AsyncNextcloudApp):
 	return True

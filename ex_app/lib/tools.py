@@ -6,11 +6,11 @@ import pathlib
 import json
 from os.path import dirname
 
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
 
 @timed_memoize(1*60)
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 	directory = dirname(__file__) + '/all_tools'
 	function_name = "get_tools"
 
@@ -18,7 +18,7 @@ async def get_tools(nc: Nextcloud):
 	safe_tools = []
 
 	py_files = [f for f in os.listdir(directory) if f.endswith(".py") and f != "__init__.py"]
-	is_activated = json.loads(nc.appconfig_ex.get_value('tool_status'))
+	is_activated = json.loads(await nc.appconfig_ex.get_value('tool_status'))
 
 	for file in py_files:
 		# Load module dynamically
@@ -31,17 +31,17 @@ async def get_tools(nc: Nextcloud):
 			if not is_activated[module_name]:
 				print(f"{module_name} tools deactivated")
 				continue
-			if not available_from_import(nc):
+			if not await available_from_import(nc):
 				print(f"{module_name} not available")
 				continue
 			if callable(get_tools_from_import):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = await get_tools_from_import(nc)
 				for tool in imported_tools:
-					if not hasattr(tool, 'func'):
+					if not hasattr(tool, 'coroutine') and not hasattr(tool, 'func'):
 						safe_tools.append(tool)
 						continue
-					if not hasattr(tool.func, 'safe') or not tool.func.safe:
+					if (not hasattr(tool.coroutine, 'safe') or not tool.coroutine.safe) and (not hasattr(tool.func, 'safe') or not tool.coroutine.sage):
 						dangerous_tools.append(tool) # MCP tools cannot be decorated and should always be dangerous
 					else:
 						safe_tools.append(tool)

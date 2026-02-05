@@ -6,16 +6,16 @@ import urllib.parse
 
 import niquests
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@safe_tool
-	def get_public_transport_route_for_coordinates(origin_lat: str, origin_lon: str, destination_lat: str, destination_lon: str, routes: int, departure_time: str | None = None):
+	async def get_public_transport_route_for_coordinates(origin_lat: str, origin_lon: str, destination_lat: str, destination_lon: str, routes: int, departure_time: str | None = None):
 		"""
 		Retrieve a public transport route between two coordinates
 		:param origin_lat: Latitude of the starting point
@@ -29,8 +29,8 @@ async def get_tools(nc: Nextcloud):
 
 		if departure_time is None:
 			departure_time = urllib.parse.quote_plus(datetime.datetime.now(datetime.UTC).isoformat())
-		api_key = nc.appconfig_ex.get_value('here_api')
-		res = niquests.get('https://transit.hereapi.com/v8/routes?transportMode=car&origin=' 
+		api_key = await nc.appconfig_ex.get_value('here_api')
+		res = await niquests.async_api.get('https://transit.hereapi.com/v8/routes?transportMode=car&origin='
 			+ origin_lat + ',' + origin_lon + '&destination=' + destination_lat + ',' + destination_lon 
 			+ '&alternatives=' + str(routes-1) + '&departureTime=' + departure_time + '&apikey=' + api_key)
 		json = res.json()
@@ -43,5 +43,5 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Public transport"
 
-def is_available(nc: Nextcloud):
-	return nc.appconfig_ex.get_value('here_api') != ''
+async def is_available(nc: AsyncNextcloudApp):
+	return await nc.appconfig_ex.get_value('here_api') != ''

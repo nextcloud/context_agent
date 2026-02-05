@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import time
 import typing
 
 from niquests import ConnectionError, Timeout
-from nc_py_api import NextcloudException
+from nc_py_api import AsyncNextcloudApp, NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 
@@ -19,11 +20,11 @@ class Task(BaseModel):
 class Response(BaseModel):
 	task: Task
 
-def run_task(nc, type, task_input):
+async def run_task(nc: AsyncNextcloudApp, type, task_input):
 	i = 0
 	while i < 20:
 		try:
-			response = nc.ocs(
+			response = await nc.ocs(
 				"POST",
 				"/ocs/v1.php/taskprocessing/schedule",
 				json={"type": type, "appId": "context_agent", "input": task_input},
@@ -34,39 +35,42 @@ def run_task(nc, type, task_input):
 				Timeout
 
 		) as e:
-			log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
+			await log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
 			i += 1
-			time.sleep(1)
+			await asyncio.sleep(1)
 			continue
+
+	if i >= 20:
+		raise Exception("Failed to schedule task")
 
 	try:
 		task = Response.model_validate(response).task
-		log(nc, LogLvl.DEBUG, task)
+		await log(nc, LogLvl.DEBUG, task)
 
 		i = 0
 		# wait for 5 seconds * 60 * 2 = 10 minutes (one i ^= 5 sec)
 		while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < 60 * 2:
-			time.sleep(5)
+			await asyncio.sleep(5)
 			i += 1
 			try:
-				response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
+				response = await nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 			except (
 					ConnectionError,
 					Timeout
 			) as e:
-				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
-				time.sleep(5)
+				await log(nc, LogLvl.DEBUG, "Ignored error during task polling")
+				await asyncio.sleep(5)
 				i += 1
 				continue
 			except NextcloudException as e:
 				if e.status_code == 429:
-					log(nc, LogLvl.INFO, "Rate limited during task polling, waiting 10s more")
-					time.sleep(10)
+					await log(nc, LogLvl.INFO, "Rate limited during task polling, waiting 10s more")
+					await asyncio.sleep(10)
 					i += 2
 					continue
 				raise Exception("Nextcloud error when polling task") from e
 			task = Response.model_validate(response).task
-			log(nc, LogLvl.DEBUG, task)
+			await log(nc, LogLvl.DEBUG, task)
 	except ValidationError as e:
 		raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
 	if task.status != "STATUS_SUCCESSFUL":
