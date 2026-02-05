@@ -34,13 +34,13 @@ async def get_tools(nc: Nextcloud):
 		"""
 		Get the content of a file given an internal Nextcloud link (e.g., https://host/index.php/f/12345)
 		:param file_url: the internal file URL
-		:return:
+		:return: text content of the file
 		"""
 
 		file_id = get_file_id_from_file_url(file_url)
 		# Generate a direct download link using the fileId
 		info = nc.ocs('POST', '/ocs/v2.php/apps/dav/api/v1/direct', json={'fileId': file_id}, response_type='json')
-		download_url = info.get('url') if isinstance(info, dict) else None
+		download_url = info.get('ocs', {}).get('data', {}).get('url', None)
 
 		if not download_url:
 			raise Exception('Could not generate download URL from file id')
