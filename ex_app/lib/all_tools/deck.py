@@ -13,7 +13,7 @@ async def get_tools(nc: Nextcloud):
 	@safe_tool
 	def list_boards():
 		"""
-		List all existing kanban boards available in the Nextcloud Deck app to the current user with their available info
+		List all existing kanban boards available in the Nextcloud Deck app for the current user with their available info
 		:return: a dictionary with all decks of the user
 		"""
 
