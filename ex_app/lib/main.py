@@ -179,7 +179,7 @@ async def handle_task(task, nc: AsyncNextcloudApp):
             await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
         return
     try:
-        NextcloudApp().providers.task_processing.report_result(
+        await nc.providers.task_processing.report_result(
             task["id"],
             output,
         )

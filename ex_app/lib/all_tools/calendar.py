@@ -8,7 +8,7 @@ from niquests import ConnectionError, Timeout
 import pytz
 from ics import Calendar, Event, Attendee, Organizer, Todo
 from langchain_core.tools import tool
-from nc_py_api import AsyncNextcloudApp
+from nc_py_api import AsyncNextcloudApp, NextcloudApp
 from nc_py_api.ex_app import LogLvl
 import xml.etree.ElementTree as ET
 import vobject
@@ -19,15 +19,17 @@ from ex_app.lib.logger import log
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+	ncSync = NextcloudApp()
+	ncSync.set_user(await nc.user)
 
 	@tool
 	@safe_tool
 	async def list_calendars():
 		"""
 		List all existing calendars by name
-		:return:
+		:return: a comma-separated list of calendar names
 		"""
-		principal = nc.cal.principal()
+		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		return ", ".join([cal.name for cal in calendars])
 
@@ -88,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		i = 0
 		while i < 20:
 			try:
-				json = nc.ocs('GET', '/ocs/v2.php/cloud/user')
+				json = await nc.ocs('GET', '/ocs/v2.php/cloud/user')
 				break
 			except (
 					ConnectionError,
@@ -105,7 +107,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		# Add event to calendar
 		c.events.add(e)
 
-		principal = nc.cal.principal()
+		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		calendar = {cal.name: cal for cal in calendars}[calendar_name]
 		calendar.add_event(str(c))
@@ -179,9 +181,7 @@ END:VCALENDAR
 			vcal = vobject.readOne(vcal_text)
 			for fb in vcal.vfreebusy.contents.get("freebusy", []):
 				busy_times.append(fb.value[0])
-		print('busy times', busy_times)
 		available_slots = find_available_slots(start_time, end_time, busy_times, timedelta(hours=slot_duration))
-		print('available_slots', available_slots)
 		return available_slots
 
 
@@ -229,7 +229,7 @@ END:VCALENDAR
 		# Add event to calendar
 		c.todos.add(t)
 
-		principal = nc.cal.principal()
+		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		calendar = {cal.name: cal for cal in calendars}[calendar_name]
 		calendar.add_todo(t.serialize())
