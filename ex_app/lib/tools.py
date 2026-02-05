@@ -41,7 +41,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 					if not hasattr(tool, 'coroutine') and not hasattr(tool, 'func'):
 						safe_tools.append(tool)
 						continue
-					if (not hasattr(tool.coroutine, 'safe') or not tool.coroutine.safe) and (not hasattr(tool.func, 'safe') or not tool.coroutine.sage):
+					if (not hasattr(tool.coroutine, 'safe') or not tool.coroutine.safe) or (not hasattr(tool.func, 'safe') or not tool.coroutine.safe):
 						dangerous_tools.append(tool) # MCP tools cannot be decorated and should always be dangerous
 					else:
 						safe_tools.append(tool)
