@@ -23,7 +23,7 @@ def timed_memoize(timeout):
 		async def wrapper(*args): # needs NextcloudApp as first arg
 			nonlocal cached_result
 			nonlocal timestamp
-			user_id = args[0].user # cache result saved per user
+			user_id = await args[0].user # cache result saved per user
 			current_time = time.time()
 			if user_id in cached_result:
 				if current_time - timestamp[user_id] < timeout:
