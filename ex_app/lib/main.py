@@ -42,7 +42,7 @@ fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 app_enabled = Event()
 TRIGGER = Event()
 IDLE_POLLING_INTERVAL = 5
-IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5 * 60
+IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5
 
 LOCALE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "locale")
 current_translator = ContextVar("current_translator")

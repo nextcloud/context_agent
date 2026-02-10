@@ -146,19 +146,19 @@ async def get_tools(nc: AsyncNextcloudApp):
 			dtend = end_time.strftime("%Y%m%dT%H%M%SZ")
 
 			freebusyRequest = """
-	BEGIN:VCALENDAR
-	PRODID:-//IDN nextcloud.com//Calendar app 5.1.0-beta.2//EN
-	CALSCALE:GREGORIAN
-	VERSION:2.0
-	METHOD:REQUEST
-	BEGIN:VFREEBUSY
-	DTSTAMP:20250131T123029Z
-	UID:03c8f220-d313-4c86-ae06-19fbae157079
-	DTSTART:{DTSTART}
-	DTEND:{DTEND}
-	{ATTENDEES}END:VFREEBUSY
-	END:VCALENDAR
-	""".replace('{ATTENDEES}', attendees).replace('{DTSTART}', dtstart).replace('{DTEND}', dtend)
+BEGIN:VCALENDAR
+PRODID:-//IDN nextcloud.com//Calendar app 5.1.0-beta.2//EN
+CALSCALE:GREGORIAN
+VERSION:2.0
+METHOD:REQUEST
+BEGIN:VFREEBUSY
+DTSTAMP:20250131T123029Z
+UID:03c8f220-d313-4c86-ae06-19fbae157079
+DTSTART:{DTSTART}
+DTEND:{DTEND}
+{ATTENDEES}END:VFREEBUSY
+END:VCALENDAR
+""".replace('{ATTENDEES}', attendees).replace('{DTSTART}', dtstart).replace('{DTEND}', dtend)
 			username = ncSync._session.user
 			response = ncSync._session._create_adapter(True).request('POST',
 																	   f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{username}/outbox/",
