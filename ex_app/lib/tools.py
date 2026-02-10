@@ -28,7 +28,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if hasattr(module, function_name):
 			get_tools_from_import = getattr(module, function_name)
 			available_from_import = getattr(module, "is_available")
-			if not is_activated[module_name]:
+			if not is_activated.get(module_name, False):
 				print(f"{module_name} tools deactivated")
 				continue
 			if not await available_from_import(nc):
@@ -42,7 +42,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 					if tool_action is None:
 						safe_tools.append(tool)
 						continue
-					if getattr(tool_action, 'safe', False):
+					if not getattr(tool_action, 'safe', False):
 						dangerous_tools.append(tool) # MCP tools cannot be decorated and should always be dangerous
 					else:
 						safe_tools.append(tool)
