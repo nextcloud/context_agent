@@ -151,10 +151,6 @@ async def background_thread_task():
             await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
             await wait_for_task(5)
             continue
-        except RequestException as e:
-            await log(nc, LogLvl.DEBUG, "Ignored error during task polling")
-            await wait_for_task(2)
-            continue
 
         task = response["task"]
         await log(nc, LogLvl.INFO, 'New Task incoming')

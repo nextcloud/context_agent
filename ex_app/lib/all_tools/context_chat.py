@@ -24,7 +24,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'scopeList': [],
 			'scopeListMeta': '',
 		}
-		task_output = await run_task(nc,  "context_chat:context_chat", task_input).output
+		task_output = (await run_task(nc,  "context_chat:context_chat", task_input)).output
 		return task_output['output']
 
 	return [

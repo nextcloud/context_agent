@@ -11,5 +11,7 @@ async def log(nc, level, content):
 	logger.log((level+1)*10, content)
 	try:
 		await nc.log(level, content)
-	except:
+	except asyncio.CancelledError:
+		raise
+	except Exception:
 		pass

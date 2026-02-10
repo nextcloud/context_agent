@@ -40,7 +40,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			) as e:
 				await log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1
-				sleep(1)
+				await sleep(1)
 				continue
 
 	@tool
@@ -67,7 +67,7 @@ def get_category_name():
 
 async def is_available(nc: AsyncNextcloudApp):
 	try: 
-		res = await nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
+		await nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
 	except:
 		return False
 	return True

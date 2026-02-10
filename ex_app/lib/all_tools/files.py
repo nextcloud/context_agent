@@ -20,7 +20,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
-		user_id = await nc.ocs('GET', '/ocs/v2.php/cloud/user')["id"]
+		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{file_path}", headers={
 			"Content-Type": "application/json",

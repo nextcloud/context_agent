@@ -76,7 +76,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 				"raw": descrption_with_ai_note,
 			}
 		
-		response = await nc.ocs('POST', '/ocs/v2.php/apps/integration_openproject/api/v1/create/work-packages', json=json)
+		await nc.ocs('POST', '/ocs/v2.php/apps/integration_openproject/api/v1/create/work-packages', json=json)
 
 		return True
 

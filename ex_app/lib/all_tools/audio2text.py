@@ -22,7 +22,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		task_input = {
 			'input': get_file_id_from_file_url(file_url),
 		}
-		task_output = await run_task(nc,  "core:audio2text", task_input).output
+		task_output = (await run_task(nc,  "core:audio2text", task_input)).output
 		return task_output['output']
 
 	return [

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
 import json
-import time
 import typing
 from typing import Optional, Any, Sequence, Union, Callable
 
@@ -14,7 +13,7 @@ from langchain_core.outputs import ChatResult, ChatGeneration
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from nc_py_api import Nextcloud, AsyncNextcloudApp, NextcloudException
+from nc_py_api import AsyncNextcloudApp, NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 
@@ -112,6 +111,9 @@ class ChatWithNextcloud(BaseChatModel):
 				i += 1
 				await asyncio.sleep(1)
 				continue
+
+		if i >= 20:
+			raise Exception("Failed to schedule task")
 
 		try:
 			task = Response.model_validate(response).task

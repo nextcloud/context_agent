@@ -38,10 +38,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = await get_tools_from_import(nc)
 				for tool in imported_tools:
-					if not hasattr(tool, 'coroutine') and not hasattr(tool, 'func'):
+					tool_action = getattr(tool, 'coroutine', getattr(tool, 'func', None))
+					if tool_action is None:
 						safe_tools.append(tool)
 						continue
-					if (not hasattr(tool.coroutine, 'safe') or not tool.coroutine.safe) or (not hasattr(tool.func, 'safe') or not tool.coroutine.safe):
+					if getattr(tool_action, 'safe', False):
 						dangerous_tools.append(tool) # MCP tools cannot be decorated and should always be dangerous
 					else:
 						safe_tools.append(tool)

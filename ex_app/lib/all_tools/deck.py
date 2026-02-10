@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
-from nc_py_api.ex_app import LogLvl
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 
@@ -37,7 +36,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: bool
 		"""
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
+		await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
 			"Content-Type": "application/json",
 		}, json={
 					'title': title,
