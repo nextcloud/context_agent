@@ -42,7 +42,7 @@ fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 app_enabled = Event()
 TRIGGER = Event()
 IDLE_POLLING_INTERVAL = 5
-IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5
+IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5 * 60
 
 LOCALE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "locale")
 current_translator = ContextVar("current_translator")
@@ -144,7 +144,12 @@ async def background_thread_task():
         try:
             response = await nc.providers.task_processing.next_task([provider.id], [provider.task_type])
             if not response or not 'task' in response:
-                await wait_for_task()
+                if NUM_RUNNING_TASKS == 0:
+                    # if there are no running tasks we will get a trigger
+                    await wait_for_task()
+                else:
+                    # otherwise, wait with fast frequency
+                    await asyncio.sleep(2)
                 continue
         except (NextcloudException, RequestException, JSONDecodeError) as e:
             tb_str = ''.join(traceback.format_exception(e))
@@ -158,9 +163,12 @@ async def background_thread_task():
         await log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
         asyncio.create_task(handle_task(task, nc))
 
+NUM_RUNNING_TASKS = 0
 
 async def handle_task(task, nc: AsyncNextcloudApp):
+    global NUM_RUNNING_TASKS
     try:
+        NUM_RUNNING_TASKS += 1
         nextcloud = AsyncNextcloudApp()
         if task['userId']:
             await nextcloud.set_user(task['userId'])
@@ -173,6 +181,8 @@ async def handle_task(task, nc: AsyncNextcloudApp):
         except (NextcloudException, RequestException) as net_err:
             tb_str = ''.join(traceback.format_exception(net_err))
             await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
+        finally:
+            NUM_RUNNING_TASKS -= 1
         return
     try:
         await nc.providers.task_processing.report_result(
@@ -182,6 +192,8 @@ async def handle_task(task, nc: AsyncNextcloudApp):
     except (NextcloudException, RequestException, JSONDecodeError) as e:
         tb_str = ''.join(traceback.format_exception(e))
         await log(nc, LogLvl.ERROR, "Network error trying to report the task result: " + tb_str)
+    finally:
+        NUM_RUNNING_TASKS -= 1
 
 
 
