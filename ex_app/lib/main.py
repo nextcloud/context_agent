@@ -136,32 +136,33 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
 async def background_thread_task():
     nc = AsyncNextcloudApp()
 
-    while True:
-        if not app_enabled.is_set():
-            await asyncio.sleep(5)
-            continue
-
-        try:
-            response = await nc.providers.task_processing.next_task([provider.id], [provider.task_type])
-            if not response or not 'task' in response:
-                if NUM_RUNNING_TASKS == 0:
-                    # if there are no running tasks we will get a trigger
-                    await wait_for_task()
-                else:
-                    # otherwise, wait with fast frequency
-                    await asyncio.sleep(2)
+    async with asyncio.TaskGroup as tg:
+        while True:
+            if not app_enabled.is_set():
+                await asyncio.sleep(5)
                 continue
-        except (NextcloudException, RequestException, JSONDecodeError) as e:
-            tb_str = ''.join(traceback.format_exception(e))
-            await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
-            await wait_for_task(5)
-            continue
 
-        task = response["task"]
-        await log(nc, LogLvl.INFO, 'New Task incoming')
-        await log(nc, LogLvl.DEBUG, str(task))
-        await log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
-        asyncio.create_task(handle_task(task, nc))
+            try:
+                response = await nc.providers.task_processing.next_task([provider.id], [provider.task_type])
+                if not response or not 'task' in response:
+                    if NUM_RUNNING_TASKS == 0:
+                        # if there are no running tasks we will get a trigger
+                        await wait_for_task()
+                    else:
+                        # otherwise, wait with fast frequency
+                        await asyncio.sleep(2)
+                    continue
+            except (NextcloudException, RequestException, JSONDecodeError) as e:
+                tb_str = ''.join(traceback.format_exception(e))
+                await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
+                await wait_for_task(5)
+                continue
+
+            task = response["task"]
+            await log(nc, LogLvl.INFO, 'New Task incoming')
+            await log(nc, LogLvl.DEBUG, str(task))
+            await log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
+            tg.create_task(handle_task(task, nc))
 
 NUM_RUNNING_TASKS = 0
 
@@ -174,9 +175,9 @@ async def handle_task(task, nc: AsyncNextcloudApp):
             await nextcloud.set_user(task['userId'])
         output = await react(task, nextcloud)
     except Exception as e:  # noqa
-        tb_str = ''.join(traceback.format_exception(e))
-        await log(nc, LogLvl.ERROR, "Error: " + tb_str)
         try:
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.ERROR, "Error: " + tb_str)
             await nc.providers.task_processing.report_result(task["id"], error_message=str(e))
         except (NextcloudException, RequestException) as net_err:
             tb_str = ''.join(traceback.format_exception(net_err))
