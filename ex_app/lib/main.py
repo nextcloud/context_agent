@@ -136,7 +136,7 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
 async def background_thread_task():
     nc = AsyncNextcloudApp()
 
-    async with asyncio.TaskGroup as tg:
+    async with asyncio.TaskGroup() as tg:
         while True:
             if not app_enabled.is_set():
                 await asyncio.sleep(5)
