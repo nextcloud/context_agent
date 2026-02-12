@@ -204,6 +204,7 @@ def start_bg_task():
 
 # Trigger event is available starting with nextcloud v33
 def trigger_handler(providerId: str):
+    # runs in a separate thread from the main thread, which is why we need threading.Event
     global TRIGGER
     TRIGGER.set()
 
