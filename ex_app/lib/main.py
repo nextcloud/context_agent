@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import concurrent.futures
 import os
+import threading
 import traceback
 from contextlib import asynccontextmanager
 from json import JSONDecodeError
@@ -164,12 +165,14 @@ async def background_thread_task():
             await log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
             tg.create_task(handle_task(task, nc))
 
+NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
 NUM_RUNNING_TASKS = 0
 
 async def handle_task(task, nc: AsyncNextcloudApp):
     global NUM_RUNNING_TASKS
     try:
-        NUM_RUNNING_TASKS += 1
+        async with NUM_RUNNING_TASKS_LOCK:
+            NUM_RUNNING_TASKS += 1
         nextcloud = AsyncNextcloudApp()
         if task['userId']:
             await nextcloud.set_user(task['userId'])
@@ -183,7 +186,8 @@ async def handle_task(task, nc: AsyncNextcloudApp):
             tb_str = ''.join(traceback.format_exception(net_err))
             await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
         finally:
-            NUM_RUNNING_TASKS -= 1
+            async with NUM_RUNNING_TASKS_LOCK:
+                NUM_RUNNING_TASKS -= 1
         return
     try:
         await nc.providers.task_processing.report_result(
@@ -194,7 +198,8 @@ async def handle_task(task, nc: AsyncNextcloudApp):
         tb_str = ''.join(traceback.format_exception(e))
         await log(nc, LogLvl.ERROR, "Network error trying to report the task result: " + tb_str)
     finally:
-        NUM_RUNNING_TASKS -= 1
+        async with NUM_RUNNING_TASKS_LOCK:
+            NUM_RUNNING_TASKS -= 1
 
 
 
