@@ -145,7 +145,9 @@ async def background_thread_task():
             try:
                 response = await nc.providers.task_processing.next_task([provider.id], [provider.task_type])
                 if not response or not 'task' in response:
-                    if NUM_RUNNING_TASKS == 0:
+                    async with NUM_RUNNING_TASKS_LOCK:
+                        no_tasks_running = NUM_RUNNING_TASKS == 0
+                    if no_tasks_running:
                         # if there are no running tasks we will get a trigger
                         await wait_for_task()
                     else:
