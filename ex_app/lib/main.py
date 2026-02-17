@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import concurrent.futures
 import os
-import threading
 import traceback
 from contextlib import asynccontextmanager
 from json import JSONDecodeError
@@ -194,9 +193,12 @@ async def handle_task(task, nc: AsyncNextcloudApp):
             task["id"],
             output,
         )
-    except (NextcloudException, RequestException, JSONDecodeError) as e:
-        tb_str = ''.join(traceback.format_exception(e))
-        await log(nc, LogLvl.ERROR, "Network error trying to report the task result: " + tb_str)
+    except Exception as e:
+        try:
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.ERROR, "Error trying to report the task result: " + tb_str)
+        except Exception:
+            pass
     finally:
         async with NUM_RUNNING_TASKS_LOCK:
             NUM_RUNNING_TASKS -= 1
