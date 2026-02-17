@@ -41,7 +41,7 @@ http_mcp_app = mcp.http_app("/", transport="http")
 fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
 app_enabled = Event()
-TRIGGER = Event()
+TRIGGER = asyncio.Event()
 IDLE_POLLING_INTERVAL = 5
 IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5 * 60
 
@@ -208,8 +208,8 @@ def start_bg_task():
     loop.create_task(background_thread_task())
 
 # Trigger event is available starting with nextcloud v33
-def trigger_handler(providerId: str):
-    # runs in a separate thread from the main thread, which is why we need threading.Event
+async def trigger_handler(providerId: str):
+    # now runs in the same thread as the task processing, which is why we can use asyncio.Event
     global TRIGGER
     TRIGGER.set()
 
@@ -222,12 +222,12 @@ async def wait_for_task(interval = None):
     global IDLE_POLLING_INTERVAL_WITH_TRIGGER
     if interval is None:
         interval = IDLE_POLLING_INTERVAL
-    # Call TRIGGER.wait() in a separate thread
-    loop = asyncio.get_running_loop()
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        was_event = await loop.run_in_executor(pool, TRIGGER.wait, interval)
-    if was_event:
+    try:
+        await asyncio.wait_for(TRIGGER.wait(), timeout=interval)
+        # In case we received the event, we change the polling interval
         IDLE_POLLING_INTERVAL = IDLE_POLLING_INTERVAL_WITH_TRIGGER
+    except asyncio.TimeoutError:
+        pass
     TRIGGER.clear()
 
 
