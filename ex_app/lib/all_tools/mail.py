@@ -42,6 +42,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 				i += 1
 				await sleep(1)
 				continue
+		raise Exception("Failed to send email")
 
 	@tool
 	@safe_tool

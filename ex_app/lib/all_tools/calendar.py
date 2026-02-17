@@ -10,13 +10,11 @@ import pytz
 from ics import Calendar, Event, Attendee, Organizer, Todo
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp, NextcloudApp
-from nc_py_api.ex_app import LogLvl
 import xml.etree.ElementTree as ET
 import vobject
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool, timed_memoize
+from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
-from ex_app.lib.logger import log
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -83,10 +81,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 					ConnectionError,
 					Timeout
 			) as e:
-				log(ncSync, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1
 				time.sleep(1)
 				continue
+
+		if i >= 20:
+			raise Exception('Error fetching current user information')
 
 		# ...and set the organizer
 		e.organizer = Organizer(common_name=json['displayname'], email=json['email'])
@@ -194,7 +194,7 @@ END:VCALENDAR
 		:param end_time: the end time of the range within which to check for free slots (by default this will be 7 days after start_time; use the following format: 2025-01-31)
 		:return:
 		"""
-		available_slots = asyncio.to_thread(find_free_time_slot_in_calendar_sync, participants, slot_duration, start_time, end_time)
+		available_slots = await asyncio.to_thread(find_free_time_slot_in_calendar_sync, participants, slot_duration, start_time, end_time)
 		return available_slots
 
 	def add_task_sync(calendar_name: str, title: str, description: str, due_date: Optional[str],
@@ -250,7 +250,7 @@ END:VCALENDAR
 		:return: bool
 		"""
 
-		asyncio.to_thread(add_task_sync, calendar_name, title, description, due_date, due_time, timezone)
+		await asyncio.to_thread(add_task_sync, calendar_name, title, description, due_date, due_time, timezone)
 
 		return True
 
