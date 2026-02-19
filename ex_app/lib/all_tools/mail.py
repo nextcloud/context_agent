@@ -1,20 +1,20 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-from time import sleep
+from asyncio import sleep
 
 from niquests import ConnectionError, Timeout
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 from ex_app.lib.logger import log
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@dangerous_tool
-	def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
+	async def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
 		"""
 		Send an email to a list of email addresses
 		:param subject: The subject of the email
@@ -26,7 +26,7 @@ async def get_tools(nc: Nextcloud):
 		body_with_ai_note = f"{body}\n\n---\n\nThis email was sent by Nextcloud AI Assistant."
 		while i < 20:
 			try:
-				return nc.ocs('POST', '/ocs/v2.php/apps/mail/message/send', json={
+				return await nc.ocs('POST', '/ocs/v2.php/apps/mail/message/send', json={
 					'accountId': account_id,
 					'fromEmail': from_email,
 					'subject': subject,
@@ -38,14 +38,15 @@ async def get_tools(nc: Nextcloud):
 					ConnectionError,
 					Timeout
 			) as e:
-				log(nc, LogLvl.DEBUG, "Ignored error during task polling")
+				await log(nc, LogLvl.DEBUG, "Ignored error during task polling")
 				i += 1
-				sleep(1)
+				await sleep(1)
 				continue
+		raise Exception("Failed to send email")
 
 	@tool
 	@safe_tool
-	def get_mail_account_list():
+	async def get_mail_account_list():
 		"""
 		Lists all available email accounts of the current user including their account id
 		:param subject: The subject of the email
@@ -53,8 +54,8 @@ async def get_tools(nc: Nextcloud):
 		:param account_id: The id of the account to send from
 		:param to_emails: The emails to send
 		"""
-		
-		return nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
+
+		return await nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
 		
 
 	return [
@@ -65,9 +66,9 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Mail"
 
-def is_available(nc: Nextcloud):
+async def is_available(nc: AsyncNextcloudApp):
 	try: 
-		res = nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
+		await nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
 	except:
 		return False
 	return True

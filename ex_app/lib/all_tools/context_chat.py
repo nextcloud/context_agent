@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@safe_tool
-	def ask_context_chat(question: str) -> str:
+	async def ask_context_chat(question: str) -> str:
 		"""
 		Ask the context chat oracle a question about the user's documents. It knows the contents of all of the users documents.
 		:param question: The question to ask
@@ -24,7 +24,7 @@ async def get_tools(nc: Nextcloud):
 			'scopeList': [],
 			'scopeListMeta': '',
 		}
-		task_output = run_task(nc,  "context_chat:context_chat", task_input).output
+		task_output = (await run_task(nc,  "context_chat:context_chat", task_input)).output
 		return task_output['output']
 
 	return [
@@ -34,6 +34,6 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Context chat"
 
-def is_available(nc: Nextcloud):
-	tasktypes = nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes')['types'].keys()
+async def is_available(nc: AsyncNextcloudApp):
+	tasktypes = (await nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes'))['types'].keys()
 	return 'context_chat:context_chat' in tasktypes

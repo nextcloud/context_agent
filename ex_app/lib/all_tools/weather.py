@@ -1,26 +1,25 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import typing
-import urllib.parse
 
 import niquests
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@safe_tool
-	def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:
+	async def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:
 		"""
 		Retrieve the current weather for a given latitude and longitude
 		:param lat: Latitude
 		:param lon: Longitude
 		:return:
 		"""
-		res = niquests.get('https://api.met.no/weatherapi/locationforecast/2.0/compact', params={
+		res = await niquests.async_api.get('https://api.met.no/weatherapi/locationforecast/2.0/compact', params={
 			'lat': lat,
 			'lon': lon,
 		},
@@ -39,5 +38,5 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Weather"
 
-def is_available(nc: Nextcloud):
+async def is_available(nc: AsyncNextcloudApp):
 	return True

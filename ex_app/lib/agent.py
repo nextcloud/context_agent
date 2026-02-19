@@ -8,7 +8,7 @@ from datetime import date
 
 from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig, RunnableLambda
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import persistent_storage
 
 from ex_app.lib.signature import verify_signature
@@ -93,7 +93,7 @@ def export_conversation(checkpointer):
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token
 
-async def react(task, nc: Nextcloud):
+async def react(task, nc: AsyncNextcloudApp):
 	safe_tools, dangerous_tools = await get_tools(nc)
 
 	model.bind_nextcloud(nc)

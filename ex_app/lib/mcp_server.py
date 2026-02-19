@@ -4,14 +4,14 @@ import time
 from functools import wraps
 
 from fastmcp.server.dependencies import get_context
-from nc_py_api import NextcloudApp
+from nc_py_api import AsyncNextcloudApp, NextcloudApp
 from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.tools import Tool
 from mcp import types as mt
 from ex_app.lib.tools import get_tools
 import requests
 
-def get_user(authorization_header: str, nc: NextcloudApp) -> str:
+def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
 	response = requests.get(
 		f"{nc.app_cfg.endpoint}/ocs/v2.php/cloud/user",
 		headers={
@@ -31,9 +31,9 @@ class UserAuthMiddleware(Middleware):
 		authorization_header = context.fastmcp_context.request_context.request.headers.get("Authorization")
 		if authorization_header is None:
 			raise Exception("Authorization header is missing/invalid")
-		nc = NextcloudApp()
+		nc = AsyncNextcloudApp()
 		user = get_user(authorization_header, nc)
-		nc.set_user(user)
+		await nc.set_user(user)
 		context.fastmcp_context.set_state("nextcloud", nc)
 		return await call_next(context)
 

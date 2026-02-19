@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import json
-import time
 import typing
 from typing import Optional, Any, Sequence, Union, Callable
 
@@ -13,7 +13,7 @@ from langchain_core.outputs import ChatResult, ChatGeneration
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from nc_py_api import Nextcloud, NextcloudApp, NextcloudException
+from nc_py_api import AsyncNextcloudApp, NextcloudException
 from nc_py_api.ex_app import LogLvl
 from pydantic import BaseModel, ValidationError
 
@@ -33,13 +33,16 @@ class Response(BaseModel):
 
 # Custom formatting for chat inputs
 class ChatWithNextcloud(BaseChatModel):
-	nc: Nextcloud = NextcloudApp()
+	nc: AsyncNextcloudApp = AsyncNextcloudApp()
 	tools: Sequence[
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
 	TIMEOUT: int = 60 * 20 # 20 minutes
 	MAX_MESSAGE_HISTORY: int = 13
 
-	def _generate(
+	def _generate(self, messages: list[BaseMessage], stop: Optional[list[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any):
+		raise Exception("Use _agenerate instead")
+
+	async def _agenerate(
 			self,
 			messages: list[BaseMessage],
 			stop: Optional[list[str]] = None,
@@ -88,12 +91,12 @@ class ChatWithNextcloud(BaseChatModel):
 			task_input['tool_message'] = ''
 
 
-		log(nc, LogLvl.DEBUG, task_input)
+		await log(nc, LogLvl.DEBUG, task_input)
 
 		i = 0
 		while i < 20:
 			try:
-				response = nc.ocs(
+				response = await nc.ocs(
 					"POST",
 					"/ocs/v1.php/taskprocessing/schedule",
 					json={"type": "core:text2text:chatwithtools", "appId": "context_agent", "input": task_input},
@@ -104,41 +107,44 @@ class ChatWithNextcloud(BaseChatModel):
 					Timeout
 
 			) as e:
-				log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
+				await log(nc, LogLvl.DEBUG, "Ignored error during task scheduling")
 				i += 1
-				sleep(1)
+				await asyncio.sleep(1)
 				continue
+
+		if i >= 20:
+			raise Exception("Failed to schedule task")
 
 		try:
 			task = Response.model_validate(response).task
-			log(nc, LogLvl.DEBUG, task)
+			await log(nc, LogLvl.DEBUG, task)
 
 			i = 0
 			wait_time = 5
 			# wait for TIMEOUT (one i ^= 5 sec)
 			while task.status != "STATUS_SUCCESSFUL" and task.status != "STATUS_FAILED" and i < self.TIMEOUT / wait_time:
-				time.sleep(wait_time)
+				await asyncio.sleep(wait_time)
 				i += 1
 				try:
-					response = nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
+					response = await nc.ocs("GET", f"/ocs/v1.php/taskprocessing/task/{task.id}")
 				except (
 						ConnectionError,
 						Timeout
 
 				) as e:
-					log(nc, LogLvl.DEBUG, "Ignored error during task polling")
-					time.sleep(5)
+					await log(nc, LogLvl.DEBUG, "Ignored error during task polling")
+					await asyncio.sleep(5)
 					i += 1
 					continue
 				except NextcloudException as e:
 					if e.status_code == 429:
-						log(nc, LogLvl.INFO, "Rate limited during task polling, waiting 10s more")
-						time.sleep(10)
+						await log(nc, LogLvl.INFO, "Rate limited during task polling, waiting 10s more")
+						await asyncio.sleep(10)
 						i += 2
 						continue
 					raise Exception("Nextcloud error when polling task") from e
 				task = Response.model_validate(response).task
-				log(nc, LogLvl.DEBUG, task)
+				await log(nc, LogLvl.DEBUG, task)
 		except ValidationError as e:
 			raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
 
@@ -169,7 +175,7 @@ class ChatWithNextcloud(BaseChatModel):
 		return self
 
 	def bind_nextcloud(self,
-					   nc: Nextcloud):
+					   nc: AsyncNextcloudApp):
 		self.nc = nc
 
 	def _llm_type(self) -> str:

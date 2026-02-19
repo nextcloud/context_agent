@@ -3,24 +3,24 @@
 import typing
 
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
+from nc_py_api import AsyncNextcloudApp
 import xml.etree.ElementTree as ET
 import vobject
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@safe_tool
-	def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:
+	async def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:
 		"""
 		Find a person's contact information from their name
 		:param name: the name to search for
 		:return: a dictionary with the person's email, phone and address
 		"""
 		username = nc._session.user
-		response = nc._session._create_adapter(True).request('PROPFIND', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/", headers={
+		response = await nc._session._create_adapter(True).request('PROPFIND', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/", headers={
 			"Content-Type": "application/xml; charset=utf-8",
 		})
 		print(response.text)
@@ -49,7 +49,7 @@ async def get_tools(nc: Nextcloud):
 	  </C:filter>
 	</C:addressbook-query>
 	""".replace('{NAME}', name)
-			response = nc._session._create_adapter(True).request('REPORT', f"{nc.app_cfg.endpoint}{link}", headers={
+			response = await nc._session._create_adapter(True).request('REPORT', f"{nc.app_cfg.endpoint}{link}", headers={
 				"Content-Type": "application/xml; charset=utf-8",
 				"Depth": "1",
 			}, content=xml_body)
@@ -78,13 +78,13 @@ async def get_tools(nc: Nextcloud):
 
 	@tool
 	@safe_tool
-	def find_details_of_current_user() -> dict[str, typing.Any]:
+	async def find_details_of_current_user() -> dict[str, typing.Any]:
 		"""
 		Find the current user's personal information
 		:return: a dictionary with the person's personal information
 		"""
 
-		return nc.ocs('GET', '/ocs/v2.php/cloud/user')
+		return await nc.ocs('GET', '/ocs/v2.php/cloud/user')
 
 
 	return [
@@ -94,5 +94,5 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Contacts"
 
-def is_available(nc: Nextcloud):
+async def is_available(nc: AsyncNextcloudApp):
 	return True

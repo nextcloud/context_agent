@@ -11,7 +11,7 @@ import asyncio
 from niquests import RequestException
 import json
 from fastapi import FastAPI
-from nc_py_api import NextcloudApp, NextcloudException
+from nc_py_api import NextcloudApp, NextcloudException, AsyncNextcloudApp
 from nc_py_api.ex_app import (
     AppAPIAuthMiddleware,
     LogLvl,
@@ -40,7 +40,7 @@ http_mcp_app = mcp.http_app("/", transport="http")
 fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
 app_enabled = Event()
-TRIGGER = Event()
+TRIGGER = asyncio.Event()
 IDLE_POLLING_INTERVAL = 5
 IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5 * 60
 
@@ -109,83 +109,101 @@ SETTINGS = SettingsForm(
 )
 
 
-def enabled_handler(enabled: bool, nc: NextcloudApp) -> str:
+async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
     # This will be called each time application is `enabled` or `disabled`
     # NOTE: `user` is unavailable on this step, so all NC API calls that require it will fail as unauthorized.
-    log(nc, LogLvl.INFO, f"enabled={enabled}")
+    await log(nc, LogLvl.INFO, f"enabled={enabled}")
     if enabled:
-        nc.providers.task_processing.register(provider)
+        await nc.providers.task_processing.register(provider)
         app_enabled.set()
-        log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
+        await log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
 
-        nc.ui.settings.register_form(SETTINGS)
-        pref_settings = json.loads(nc.appconfig_ex.get_value('tool_status', default = "{}"))
+        await nc.ui.settings.register_form(SETTINGS)
+        pref_settings = json.loads(await nc.appconfig_ex.get_value('tool_status', default = "{}"))
         for key in categories.keys(): # populate new settings values
             if key not in pref_settings:
                 pref_settings[key] = True
-        nc.appconfig_ex.set_value('tool_status', json.dumps(pref_settings))
+        await nc.appconfig_ex.set_value('tool_status', json.dumps(pref_settings))
 
     else:
-        nc.providers.task_processing.unregister(provider.id)
+        await nc.providers.task_processing.unregister(provider.id)
         app_enabled.clear()
-        log(nc, LogLvl.WARNING, f"App disabled: {nc.app_cfg.app_name}")
+        await log(nc, LogLvl.WARNING, f"App disabled: {nc.app_cfg.app_name}")
     # In case of an error, a non-empty short string should be returned, which will be shown to the NC administrator.
     return ""
 
 
 async def background_thread_task():
-    nc = NextcloudApp()
+    nc = AsyncNextcloudApp()
 
-    while True:
-        if not app_enabled.is_set():
-            await asyncio.sleep(5)
-            continue
-
-        try:
-            response = nc.providers.task_processing.next_task([provider.id], [provider.task_type])
-            if not response or not 'task' in response:
-                await wait_for_task()
+    async with asyncio.TaskGroup() as tg:
+        while True:
+            if not app_enabled.is_set():
+                await asyncio.sleep(5)
                 continue
-        except (NextcloudException, RequestException, JSONDecodeError) as e:
-            tb_str = ''.join(traceback.format_exception(e))
-            log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
-            await wait_for_task(5)
-            continue
-        except RequestException as e:
-            log(nc, LogLvl.DEBUG, "Ignored error during task polling")
-            await wait_for_task(2)
-            continue
 
-        task = response["task"]
-        log(nc, LogLvl.INFO, 'New Task incoming')
-        log(nc, LogLvl.DEBUG, str(task))
-        log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
-        asyncio.create_task(handle_task(task, nc))
+            try:
+                response = await nc.providers.task_processing.next_task([provider.id], [provider.task_type])
+                if not response or not 'task' in response:
+                    async with NUM_RUNNING_TASKS_LOCK:
+                        no_tasks_running = NUM_RUNNING_TASKS == 0
+                    if no_tasks_running:
+                        # if there are no running tasks we will get a trigger
+                        await wait_for_task()
+                    else:
+                        # otherwise, wait with fast frequency
+                        await asyncio.sleep(2)
+                    continue
+            except (NextcloudException, RequestException, JSONDecodeError) as e:
+                tb_str = ''.join(traceback.format_exception(e))
+                await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
+                await wait_for_task(5)
+                continue
 
+            task = response["task"]
+            await log(nc, LogLvl.INFO, 'New Task incoming')
+            await log(nc, LogLvl.DEBUG, str(task))
+            await log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
+            tg.create_task(handle_task(task, nc))
 
-async def handle_task(task, nc: NextcloudApp):
+NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
+NUM_RUNNING_TASKS = 0
+
+async def handle_task(task, nc: AsyncNextcloudApp):
+    global NUM_RUNNING_TASKS
     try:
-        nextcloud = NextcloudApp()
+        async with NUM_RUNNING_TASKS_LOCK:
+            NUM_RUNNING_TASKS += 1
+        nextcloud = AsyncNextcloudApp()
         if task['userId']:
-            nextcloud.set_user(task['userId'])
+            await nextcloud.set_user(task['userId'])
         output = await react(task, nextcloud)
     except Exception as e:  # noqa
-        tb_str = ''.join(traceback.format_exception(e))
-        log(nc, LogLvl.ERROR, "Error: " + tb_str)
         try:
-            nc.providers.task_processing.report_result(task["id"], error_message=str(e))
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.ERROR, "Error: " + tb_str)
+            await nc.providers.task_processing.report_result(task["id"], error_message=str(e))
         except (NextcloudException, RequestException) as net_err:
             tb_str = ''.join(traceback.format_exception(net_err))
-            log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
+            await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
+        finally:
+            async with NUM_RUNNING_TASKS_LOCK:
+                NUM_RUNNING_TASKS -= 1
         return
     try:
-        NextcloudApp().providers.task_processing.report_result(
+        await nc.providers.task_processing.report_result(
             task["id"],
             output,
         )
-    except (NextcloudException, RequestException, JSONDecodeError) as e:
-        tb_str = ''.join(traceback.format_exception(e))
-        log(nc, LogLvl.ERROR, "Network error trying to report the task result: " + tb_str)
+    except Exception as e:
+        try:
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.ERROR, "Error trying to report the task result: " + tb_str)
+        except Exception:
+            pass
+    finally:
+        async with NUM_RUNNING_TASKS_LOCK:
+            NUM_RUNNING_TASKS -= 1
 
 
 
@@ -194,7 +212,8 @@ def start_bg_task():
     loop.create_task(background_thread_task())
 
 # Trigger event is available starting with nextcloud v33
-def trigger_handler(providerId: str):
+async def trigger_handler(providerId: str):
+    # now runs in the same thread as the task processing, which is why we can use asyncio.Event
     global TRIGGER
     TRIGGER.set()
 
@@ -207,12 +226,12 @@ async def wait_for_task(interval = None):
     global IDLE_POLLING_INTERVAL_WITH_TRIGGER
     if interval is None:
         interval = IDLE_POLLING_INTERVAL
-    # Call TRIGGER.wait() in a separate thread
-    loop = asyncio.get_running_loop()
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        was_event = await loop.run_in_executor(pool, TRIGGER.wait, interval)
-    if was_event:
+    try:
+        await asyncio.wait_for(TRIGGER.wait(), timeout=interval)
+        # In case we received the event, we change the polling interval
         IDLE_POLLING_INTERVAL = IDLE_POLLING_INTERVAL_WITH_TRIGGER
+    except asyncio.TimeoutError:
+        pass
     TRIGGER.clear()
 
 

@@ -1,23 +1,22 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from langchain_core.tools import tool
-from nc_py_api import Nextcloud
-from nc_py_api.ex_app import LogLvl
+from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 
 
-async def get_tools(nc: Nextcloud):
+async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@safe_tool
-	def list_boards():
+	async def list_boards():
 		"""
 		List all existing kanban boards available in the Nextcloud Deck app for the current user with their available info
 		:return: a dictionary with all decks of the user
 		"""
 
-		response = nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards?details=true", headers={
+		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards?details=true", headers={
 			"Content-Type": "application/json",
 		})
 
@@ -27,7 +26,7 @@ async def get_tools(nc: Nextcloud):
 
 	@tool
 	@dangerous_tool
-	def add_card(board_id: int, stack_id: int, title: str):
+	async def add_card(board_id: int, stack_id: int, title: str):
 		"""
 		Create a new card in a list of a kanban board in the Nextcloud Deck app.
 		When using this tool, you need to specify in which board and map the card should be created.
@@ -37,7 +36,7 @@ async def get_tools(nc: Nextcloud):
 		:return: bool
 		"""
 
-		response = nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
+		await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
 			"Content-Type": "application/json",
 		}, json={
 					'title': title,
@@ -57,5 +56,5 @@ async def get_tools(nc: Nextcloud):
 def get_category_name():
 	return "Deck"
 
-def is_available(nc: Nextcloud):
-	return 'deck' in nc.capabilities
+async def is_available(nc: AsyncNextcloudApp):
+	return 'deck' in await nc.capabilities
