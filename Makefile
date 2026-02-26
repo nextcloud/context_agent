@@ -4,7 +4,7 @@
 
 APP_ID := context_agent
 APP_NAME := Nextcloud Context Agent
-APP_VERSION := 2.3.0
+APP_VERSION := 2.4.0
 JSON_INFO := "{\"id\":\"$(APP_ID)\",\"name\":\"$(APP_NAME)\",\"daemon_config_name\":\"manual_install\",\"version\":\"$(APP_VERSION)\",\"secret\":\"12345\",\"port\":9081}"
 
 

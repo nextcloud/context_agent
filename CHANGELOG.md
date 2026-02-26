@@ -8,6 +8,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.4.0] - 2026-02-26
+
+### Added
+- Make the app fully non-blocking
+
+### Changed
+- some prompt engineering to improve tool use
+
+
 ## [2.3.0] - 2025-12-29
 
 ### Added
