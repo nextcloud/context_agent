@@ -12,7 +12,7 @@ async def get_tools(nc: AsyncNextcloudApp):
     for provider in providers:
         def make_tool(p):
             async def tool(search_query: dict[str, str]):
-                results = await nc.ocs('GET', f'/ocs/v2.php/search/providers/{p['id']}/search', params=search_query)
+                results = await nc.ocs('GET', f"/ocs/v2.php/search/providers/{p['id']}/search", params=search_query)
                 return json.dumps(results['entries'])
             return tool
 
