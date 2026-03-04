@@ -123,6 +123,7 @@ Today is {CURRENT_DATE}.
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
 If you get a link as a tool output, always add the link to your response.
+At the end of each message to the user, if you have carried out a task or answered a question, suggest up to three actions for things you can do for the user based on the tools you have available and details of the previous task. For example: If the user wants to know the weather for some location, they might be planning an event, you can suggest to create an event for them, or if they searched for a file, they may want to share it with others, suggest to create a share link for them, if they want a summary of something, you can suggest them to send the summary to somebody.
 """
 		if tool_enabled("duckduckgo_results_json"):
 			system_prompt_text += "Only use the duckduckgo_results_json tool if the user explicitly asks for a web search.\n"
