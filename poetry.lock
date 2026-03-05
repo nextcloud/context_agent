@@ -310,27 +310,28 @@ files = [
 
 [[package]]
 name = "caldav"
-version = "1.3.6"
+version = "3.0.0"
 description = "CalDAV (RFC4791) client library"
 optional = false
-python-versions = "*"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "caldav-1.3.6-py3-none-any.whl", hash = "sha256:ec48bae60d23ad8c409508048033fbe40f7bf4e6e3bc1112eaac71085a92f9e7"},
-    {file = "caldav-1.3.6.tar.gz", hash = "sha256:33966ea6ca012b4618278f01ee471528583714814965f9147bb7fc7c157a9d9e"},
+    {file = "caldav-3.0.0-py3-none-any.whl", hash = "sha256:98830afb47fada371dd07042b4d0a071d9e4987ef23048f63215479d267ea681"},
+    {file = "caldav-3.0.0.tar.gz", hash = "sha256:002f0c675c5fbe8d8e87387e19fb1a8ef6ee74e41ecf31978fe37b48869be841"},
 ]
 
 [package.dependencies]
-icalendar = "*"
+dnspython = "*"
+icalendar = ">6.0.0"
+icalendar-searcher = ">=1.0.5,<2"
 lxml = "*"
-pytz = "*"
+niquests = "*"
+python-dateutil = "*"
+pyyaml = "*"
 recurring-ical-events = ">=2.0.0"
-requests = "*"
-tzlocal = "*"
-vobject = "*"
 
 [package.extras]
-test = ["coverage", "pytest", "pytest-coverage", "sphinx", "xandikos"]
+test = ["coverage", "deptry (>=0.24.0) ; python_version >= \"3.10\"", "httpx", "manuel", "proxy-py", "pyfakefs", "pytest", "pytest-asyncio", "radicale", "tzlocal", "vobject", "xandikos (>=0.3.3)"]
 
 [[package]]
 name = "certifi"
@@ -819,6 +820,18 @@ websockets = ">=15.0.1"
 openai = ["openai (>=1.102.0)"]
 
 [[package]]
+name = "filelock"
+version = "3.25.0"
+description = "A platform independent file lock."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "filelock-3.25.0-py3-none-any.whl", hash = "sha256:5ccf8069f7948f494968fc0713c10e5c182a9c9d9eef3a636307a20c2490f047"},
+    {file = "filelock-3.25.0.tar.gz", hash = "sha256:8f00faf3abf9dc730a1ffe9c354ae5c04e079ab7d3a683b7c32da5dd05f26af3"},
+]
+
+[[package]]
 name = "frozenlist"
 version = "1.6.0"
 description = "A list-like structure which implements collections.abc.MutableSequence"
@@ -1091,6 +1104,26 @@ tzdata = "*"
 
 [package.extras]
 test = ["coverage", "hypothesis", "pytest", "pytz"]
+
+[[package]]
+name = "icalendar-searcher"
+version = "1.0.5"
+description = "Search, filter and sort iCalendar components"
+optional = false
+python-versions = "<4.0,>=3.10"
+groups = ["main"]
+files = [
+    {file = "icalendar_searcher-1.0.5-py3-none-any.whl", hash = "sha256:66f6f5ece50041ceda5ea91995cd2ed80fa0b065a42b3b3f420f89343614b2a3"},
+    {file = "icalendar_searcher-1.0.5.tar.gz", hash = "sha256:abd99bf1ac9c9d675d84151101db4883a97e9958755708804c55abd30df58f6c"},
+]
+
+[package.dependencies]
+icalendar = ">=6.0"
+recurring-ical-events = ">=3.8.0"
+
+[package.extras]
+collation = ["pyicu"]
+dev = ["deptry (>=0.24.0)", "pre-commit", "pyicu", "pytest (>=8.0.0,<10.0.0)", "ruff"]
 
 [[package]]
 name = "ics"
@@ -2062,19 +2095,20 @@ files = [
 
 [[package]]
 name = "nc-py-api"
-version = "0.22.0"
+version = "0.24.2"
 description = "Nextcloud Python Framework"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "nc_py_api-0.22.0-py3-none-any.whl", hash = "sha256:a4c797dd075984678bccf662a3dbfa9295c0829c4a3695ae0299465a32f3e25c"},
-    {file = "nc_py_api-0.22.0.tar.gz", hash = "sha256:68a86894dec264858e772e0304f47cb8ad6bbfa8356736e067bfaf55ca2cea6b"},
+    {file = "nc_py_api-0.24.2-py3-none-any.whl", hash = "sha256:671ffe28df1c0205b782e6bbbfc143c96a447a66f85332c906334e5022230362"},
+    {file = "nc_py_api-0.24.2.tar.gz", hash = "sha256:05a1f214577fc50e38ec2f8fb28c55d09246f93b81ac9bba4385185043d13bae"},
 ]
 
 [package.dependencies]
-caldav = {version = "1.3.6", optional = true, markers = "extra == \"calendar\""}
+caldav = {version = ">=2.2.6", optional = true, markers = "extra == \"calendar\""}
 fastapi = ">=0.109.2"
+filelock = ">=3.20.3,<4"
 niquests = ">=3,<4"
 pydantic = ">=2.1.1"
 python-dotenv = ">=1"
@@ -2083,10 +2117,9 @@ xmltodict = ">=0.13"
 [package.extras]
 app = ["uvicorn[standard] (>=0.23.2)"]
 bench = ["matplotlib", "numpy", "py-cpuinfo", "uvicorn[standard] (>=0.23.2)"]
-calendar = ["caldav (==1.3.6)"]
-dev = ["caldav (==1.3.6)", "coverage", "huggingface-hub", "matplotlib", "numpy", "pillow", "pre-commit", "py-cpuinfo", "pylint", "pytest", "pytest-asyncio", "uvicorn[standard] (>=0.23.2)"]
+calendar = ["caldav (>=2.2.6)"]
+dev = ["caldav (>=2.2.6)", "coverage", "huggingface-hub", "matplotlib", "numpy", "pillow", "pre-commit", "py-cpuinfo", "pylint", "pytest", "pytest-asyncio", "uvicorn[standard] (>=0.23.2)"]
 dev-min = ["coverage", "huggingface-hub", "pillow", "pre-commit", "pylint", "pytest", "pytest-asyncio"]
-docs = ["autodoc-pydantic (>=2.0.1)", "caldav (==1.3.6)", "sphinx (<8)", "sphinx-copybutton", "sphinx-inline-tabs", "sphinx-issues (>=3.0.1)", "sphinx-rtd-theme (<3)", "uvicorn[standard] (>=0.23.2)"]
 
 [[package]]
 name = "niquests"
@@ -3079,18 +3112,18 @@ files = [
 
 [[package]]
 name = "recurring-ical-events"
-version = "3.7.0"
+version = "3.8.1"
 description = "Calculate recurrence times of events, todos, alarms and journals based on icalendar RFC5545."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "recurring_ical_events-3.7.0-py3-none-any.whl", hash = "sha256:c4b575967938939df64d7a25cb84e0dd9b907f21b4842fcf44eab6e9acfabaec"},
-    {file = "recurring_ical_events-3.7.0.tar.gz", hash = "sha256:abf635ec48dbfd8204dc5bea2d038a4c283a59161aab55ed140d03aa8494bb30"},
+    {file = "recurring_ical_events-3.8.1-py3-none-any.whl", hash = "sha256:3bb3aaa0c87a4d3ab5951360480686bd69f1512945f478be6a2c0f141da0bf78"},
+    {file = "recurring_ical_events-3.8.1.tar.gz", hash = "sha256:c3eb2490a00559fb963d2bdee39acf2f287c91c07dcea4ce80ade1c60a8c3acf"},
 ]
 
 [package.dependencies]
-icalendar = ">=6.1.0,<7.0.0"
+icalendar = ">=6.1.0,<8.0.0"
 python-dateutil = ">=2.8.1,<3.0.0"
 tzdata = "*"
 x-wr-timezone = {version = ">=1.0.0,<3.0.0", markers = "python_version >= \"3.9\""}
@@ -3615,24 +3648,6 @@ files = [
     {file = "tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8"},
     {file = "tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9"},
 ]
-
-[[package]]
-name = "tzlocal"
-version = "5.3.1"
-description = "tzinfo object for the local timezone"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "tzlocal-5.3.1-py3-none-any.whl", hash = "sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d"},
-    {file = "tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd"},
-]
-
-[package.dependencies]
-tzdata = {version = "*", markers = "platform_system == \"Windows\""}
-
-[package.extras]
-devenv = ["check-manifest", "pytest (>=4.3)", "pytest-cov", "pytest-mock (>=3.3)", "zest.releaser"]
 
 [[package]]
 name = "urllib3"
@@ -4236,4 +4251,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "99c6c57cb9fec8197da94b0c9d5045b159bb0edbd82242ae794a238d365e0f97"
+content-hash = "d1d40563db19865cecaec75c2395fc0cb0e1e12d141c20921dd793254c4be3eb"
