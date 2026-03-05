@@ -8,6 +8,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.5.0] - 2026-03-05
+
+### Added
+- Unified search provider tools
+- Suggest tools for the user based on their interaction
+
+### Changed 
+- ny_py_api updated to 0.24.2
+
+
 ## [2.4.0] - 2026-02-26
 
 ### Added
