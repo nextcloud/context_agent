@@ -54,7 +54,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def get_folder_tree(depth: int):
 		"""
-		Get the folder tree of the user
+		Get the folder tree of the user (lists the files the user has in Nextcloud Files)
 		:param depth: the depth of the returned folder tree
 		:return:
 		"""
