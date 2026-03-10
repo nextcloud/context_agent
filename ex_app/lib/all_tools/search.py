@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+import re
 
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -19,7 +20,7 @@ async def get_tools(nc: AsyncNextcloudApp):
             return tool
 
         tool_func = make_tool(provider)
-        tool_func.__name__ = "search_" + provider['name'].lower()
+        tool_func.__name__ = re.sub(r"[a-zA-Z0-9_-]+", '_', "search_" + provider['name'].lower())
         tool_func.__doc__ = (
             f"Searches {provider['name']} in Nextcloud.\n"
             f":param search_query: A mapping of filter names to filter values to use for the search. "
