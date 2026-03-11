@@ -268,16 +268,25 @@ END:VCALENDAR
 		for cal in calendars_to_check:
 			todos = cal.todos()
 			for todo in todos:
-				task_data = {
-					'calendar': cal.name,
-					'summary': todo.instance.vtodo.summary.value if hasattr(todo.instance.vtodo, 'summary') else '',
-					'uid': todo.instance.vtodo.uid.value if hasattr(todo.instance.vtodo, 'uid') else '',
-					'status': todo.instance.vtodo.status.value if hasattr(todo.instance.vtodo, 'status') else 'NEEDS-ACTION',
-					'due': str(todo.instance.vtodo.due.value) if hasattr(todo.instance.vtodo, 'due') else None,
-					'priority': todo.instance.vtodo.priority.value if hasattr(todo.instance.vtodo, 'priority') else None,
-					'description': todo.instance.vtodo.description.value if hasattr(todo.instance.vtodo, 'description') else '',
-				}
-				tasks.append(task_data)
+				# Parse the todo data using ics library
+				try:
+					ical_data = todo.data
+					parsed_cal = Calendar(ical_data)
+
+					for ics_todo in parsed_cal.todos:
+						task_data = {
+							'calendar': cal.name,
+							'summary': ics_todo.name or '',
+							'uid': ics_todo.uid or '',
+							'status': ics_todo.status or 'NEEDS-ACTION',
+							'due': str(ics_todo.due) if ics_todo.due else None,
+							'priority': ics_todo.priority,
+							'description': ics_todo.description or '',
+						}
+						tasks.append(task_data)
+				except:
+					# Fallback if parsing fails
+					continue
 
 		return tasks
 
@@ -304,12 +313,23 @@ END:VCALENDAR
 
 		todos = calendar.todos()
 		for todo in todos:
-			if hasattr(todo.instance.vtodo, 'uid') and todo.instance.vtodo.uid.value == task_uid:
-				todo.instance.vtodo.status.value = 'COMPLETED'
-				todo.instance.vtodo.add('completed')
-				todo.instance.vtodo.completed.value = datetime.now(timezone.utc)
-				todo.save()
-				return True
+			# Parse the todo data using ics library
+			try:
+				ical_data = todo.data
+				parsed_cal = Calendar(ical_data)
+
+				for ics_todo in parsed_cal.todos:
+					if ics_todo.uid == task_uid:
+						# Mark as completed
+						ics_todo.status = 'COMPLETED'
+						ics_todo.completed = datetime.now(timezone.utc)
+
+						# Serialize and save
+						todo.data = str(parsed_cal)
+						todo.save()
+						return True
+			except:
+				continue
 
 		return False
 
@@ -331,33 +351,40 @@ END:VCALENDAR
 
 		todos = calendar.todos()
 		for todo in todos:
-			if hasattr(todo.instance.vtodo, 'uid') and todo.instance.vtodo.uid.value == task_uid:
-				if title:
-					todo.instance.vtodo.summary.value = title
-				if description:
-					todo.instance.vtodo.description.value = description
-				if priority is not None:
-					if not hasattr(todo.instance.vtodo, 'priority'):
-						todo.instance.vtodo.add('priority')
-					todo.instance.vtodo.priority.value = priority
-				if due_date:
-					parsed_date = datetime.strptime(due_date, "%Y-%m-%d")
-					if due_time:
-						parsed_time = datetime.strptime(due_time, "%I:%M %p").time()
-						due_datetime = datetime.combine(parsed_date, parsed_time)
-					else:
-						due_datetime = parsed_date
+			# Parse the todo data using ics library
+			try:
+				ical_data = todo.data
+				parsed_cal = Calendar(ical_data)
 
-					if timezone_str:
-						tz = pytz.timezone(timezone_str)
-						due_datetime = tz.localize(due_datetime)
+				for ics_todo in parsed_cal.todos:
+					if ics_todo.uid == task_uid:
+						# Update fields if provided
+						if title:
+							ics_todo.name = title
+						if description:
+							ics_todo.description = description
+						if priority is not None:
+							ics_todo.priority = priority
+						if due_date:
+							parsed_date = datetime.strptime(due_date, "%Y-%m-%d")
+							if due_time:
+								parsed_time = datetime.strptime(due_time, "%I:%M %p").time()
+								due_datetime = datetime.combine(parsed_date, parsed_time)
+							else:
+								due_datetime = parsed_date
 
-					if not hasattr(todo.instance.vtodo, 'due'):
-						todo.instance.vtodo.add('due')
-					todo.instance.vtodo.due.value = due_datetime
+							if timezone_str:
+								tz = pytz.timezone(timezone_str)
+								due_datetime = tz.localize(due_datetime)
 
-				todo.save()
-				return True
+							ics_todo.due = due_datetime
+
+						# Serialize and save
+						todo.data = str(parsed_cal)
+						todo.save()
+						return True
+			except:
+				continue
 
 		return False
 
@@ -385,9 +412,18 @@ END:VCALENDAR
 
 		todos = calendar.todos()
 		for todo in todos:
-			if hasattr(todo.instance.vtodo, 'uid') and todo.instance.vtodo.uid.value == task_uid:
-				todo.delete()
-				return True
+			# Parse the todo data using ics library to find the right one
+			try:
+				ical_data = todo.data
+				parsed_cal = Calendar(ical_data)
+
+				for ics_todo in parsed_cal.todos:
+					if ics_todo.uid == task_uid:
+						# Delete the todo
+						todo.delete()
+						return True
+			except:
+				continue
 
 		return False
 
