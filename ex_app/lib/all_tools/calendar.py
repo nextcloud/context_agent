@@ -254,11 +254,163 @@ END:VCALENDAR
 
 		return True
 
+	def list_tasks_sync(calendar_name: Optional[str] = None):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+
+		tasks = []
+		if calendar_name:
+			calendar = {cal.name: cal for cal in calendars}[calendar_name]
+			calendars_to_check = [calendar]
+		else:
+			calendars_to_check = calendars
+
+		for cal in calendars_to_check:
+			todos = cal.todos()
+			for todo in todos:
+				task_data = {
+					'calendar': cal.name,
+					'summary': todo.instance.vtodo.summary.value if hasattr(todo.instance.vtodo, 'summary') else '',
+					'uid': todo.instance.vtodo.uid.value if hasattr(todo.instance.vtodo, 'uid') else '',
+					'status': todo.instance.vtodo.status.value if hasattr(todo.instance.vtodo, 'status') else 'NEEDS-ACTION',
+					'due': str(todo.instance.vtodo.due.value) if hasattr(todo.instance.vtodo, 'due') else None,
+					'priority': todo.instance.vtodo.priority.value if hasattr(todo.instance.vtodo, 'priority') else None,
+					'description': todo.instance.vtodo.description.value if hasattr(todo.instance.vtodo, 'description') else '',
+				}
+				tasks.append(task_data)
+
+		return tasks
+
+	@tool
+	@safe_tool
+	async def list_tasks(calendar_name: Optional[str] = None, filter_status: Optional[str] = None):
+		"""
+		List tasks from calendars. Can filter by calendar name and status.
+		:param calendar_name: Optional name of the calendar to list tasks from (obtainable via list_calendars). If not provided, lists from all calendars.
+		:param filter_status: Optional filter by status - one of: 'NEEDS-ACTION', 'COMPLETED', 'IN-PROCESS', 'CANCELLED'
+		:return: list of tasks with their details
+		"""
+		tasks = await asyncio.to_thread(list_tasks_sync, calendar_name)
+
+		if filter_status:
+			tasks = [t for t in tasks if t.get('status') == filter_status]
+
+		return tasks
+
+	def complete_task_sync(calendar_name: str, task_uid: str):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+
+		todos = calendar.todos()
+		for todo in todos:
+			if hasattr(todo.instance.vtodo, 'uid') and todo.instance.vtodo.uid.value == task_uid:
+				todo.instance.vtodo.status.value = 'COMPLETED'
+				todo.instance.vtodo.add('completed')
+				todo.instance.vtodo.completed.value = datetime.now(timezone.utc)
+				todo.save()
+				return True
+
+		return False
+
+	@tool
+	@dangerous_tool
+	async def complete_task(calendar_name: str, task_uid: str):
+		"""
+		Mark a task as completed
+		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
+		:param task_uid: The UID of the task to complete (obtainable via list_tasks)
+		:return: bool indicating success
+		"""
+		return await asyncio.to_thread(complete_task_sync, calendar_name, task_uid)
+
+	def update_task_sync(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone_str: Optional[str] = None, priority: Optional[int] = None):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+
+		todos = calendar.todos()
+		for todo in todos:
+			if hasattr(todo.instance.vtodo, 'uid') and todo.instance.vtodo.uid.value == task_uid:
+				if title:
+					todo.instance.vtodo.summary.value = title
+				if description:
+					todo.instance.vtodo.description.value = description
+				if priority is not None:
+					if not hasattr(todo.instance.vtodo, 'priority'):
+						todo.instance.vtodo.add('priority')
+					todo.instance.vtodo.priority.value = priority
+				if due_date:
+					parsed_date = datetime.strptime(due_date, "%Y-%m-%d")
+					if due_time:
+						parsed_time = datetime.strptime(due_time, "%I:%M %p").time()
+						due_datetime = datetime.combine(parsed_date, parsed_time)
+					else:
+						due_datetime = parsed_date
+
+					if timezone_str:
+						tz = pytz.timezone(timezone_str)
+						due_datetime = tz.localize(due_datetime)
+
+					if not hasattr(todo.instance.vtodo, 'due'):
+						todo.instance.vtodo.add('due')
+					todo.instance.vtodo.due.value = due_datetime
+
+				todo.save()
+				return True
+
+		return False
+
+	@tool
+	@dangerous_tool
+	async def update_task(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone: Optional[str] = None, priority: Optional[int] = None):
+		"""
+		Update an existing task
+		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
+		:param task_uid: The UID of the task to update (obtainable via list_tasks)
+		:param title: New title for the task
+		:param description: New description for the task
+		:param due_date: New due date in the form: YYYY-MM-DD e.g. '2024-12-01'
+		:param due_time: New due time in the form: HH:MM AM/PM e.g. '3:00 PM'
+		:param timezone: Timezone (e.g., 'America/New_York')
+		:param priority: Priority from 0 (undefined) to 9 (lowest), where 1 is highest priority
+		:return: bool indicating success
+		"""
+		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, title, description, due_date, due_time, timezone, priority)
+
+	def delete_task_sync(calendar_name: str, task_uid: str):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+
+		todos = calendar.todos()
+		for todo in todos:
+			if hasattr(todo.instance.vtodo, 'uid') and todo.instance.vtodo.uid.value == task_uid:
+				todo.delete()
+				return True
+
+		return False
+
+	@tool
+	@dangerous_tool
+	async def delete_task(calendar_name: str, task_uid: str):
+		"""
+		Delete a task
+		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
+		:param task_uid: The UID of the task to delete (obtainable via list_tasks)
+		:return: bool indicating success
+		"""
+		return await asyncio.to_thread(delete_task_sync, calendar_name, task_uid)
+
 	return [
 		list_calendars,
 		schedule_event,
 		find_free_time_slot_in_calendar,
-		add_task
+		add_task,
+		list_tasks,
+		complete_task,
+		update_task,
+		delete_task
 	]
 
 def get_category_name():
