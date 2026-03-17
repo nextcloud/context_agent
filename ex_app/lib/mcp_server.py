@@ -97,7 +97,6 @@ class ToolListMiddleware(Middleware):
 			pass
 		return await call_next(context)
 
-
 # Regenerates the tools with the correct nc object
 def mcp_tool(tool):
 	@wraps(tool)
