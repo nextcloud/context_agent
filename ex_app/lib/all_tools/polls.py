@@ -15,36 +15,32 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all polls the current user has access to
 		:return: a list of polls with their id, title, and status
 		"""
-		return await nc.ocs('GET', '/ocs/v2.php/apps/polls/polls')
+		return await nc.ocs('GET', '/ocs/v2.php/apps/polls/api/v1.0/polls')
 
 	@tool
 	@safe_tool
 	async def get_poll_details(poll_id: int):
 		"""
-		Get detailed information about a specific poll
+		Get detailed information about a specific poll including options, votes, comments, and shares
 		:param poll_id: the id of the poll (obtainable via list_polls)
 		:return: complete poll information including options and votes
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/polls/poll/{poll_id}')
+		return await nc.ocs('GET', f'/ocs/v2.php/apps/polls/api/v1.0/poll/{poll_id}')
 
 	@tool
 	@dangerous_tool
-	async def create_poll(title: str, description: Optional[str] = None, poll_type: str = 'datePoll'):
+	async def create_poll(title: str, poll_type: str = 'textPoll'):
 		"""
 		Create a new poll
 		:param title: the title of the poll
-		:param description: optional description for the poll
 		:param poll_type: type of poll - 'datePoll' for date/time polls or 'textPoll' for text-based polls
 		:return: the created poll with its id
 		"""
-		description_with_ai_note = f"{description or ''}\n\n---\n\nThis poll was created by Nextcloud AI Assistant."
-
 		payload = {
 			'title': title,
-			'description': description_with_ai_note,
 			'type': poll_type
 		}
-		return await nc.ocs('POST', '/ocs/v2.php/apps/polls/poll', json=payload)
+		return await nc.ocs('POST', '/ocs/v2.php/apps/polls/api/v1.0/poll', json=payload)
 
 	@tool
 	@dangerous_tool
@@ -52,17 +48,19 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Add an option to a poll
 		:param poll_id: the id of the poll to add the option to (obtainable via list_polls)
-		:param option_text: the text of the option
+		:param option_text: the text of the option (for text polls)
 		:param timestamp: for date polls, the unix timestamp of the date/time option
 		:return: the created option
 		"""
-		payload = {
-			'pollOptionText': option_text
+		option = {
+			'text': option_text
 		}
 		if timestamp is not None:
-			payload['timestamp'] = timestamp
+			option['timestamp'] = timestamp
 
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/polls/option/{poll_id}', json=payload)
+		return await nc.ocs('POST', f'/ocs/v2.php/apps/polls/api/v1.0/poll/{poll_id}/option', json={
+			'option': option
+		})
 
 	@tool
 	@safe_tool
@@ -72,23 +70,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param poll_id: the id of the poll (obtainable via list_polls)
 		:return: all votes cast on the poll
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/polls/votes/{poll_id}')
+		return await nc.ocs('GET', f'/ocs/v2.php/apps/polls/api/v1.0/poll/{poll_id}/votes')
 
 	@tool
 	@dangerous_tool
-	async def vote_on_poll(poll_id: int, option_id: int, answer: str = 'yes'):
+	async def vote_on_poll(option_id: int, answer: str = 'yes'):
 		"""
 		Cast a vote on a poll option
-		:param poll_id: the id of the poll (obtainable via list_polls)
 		:param option_id: the id of the option to vote on (obtainable via get_poll_details)
 		:param answer: the vote - 'yes', 'no', or 'maybe' (for polls that allow maybe)
 		:return: the recorded vote
 		"""
-		payload = {
-			'optionId': option_id,
-			'setTo': answer
-		}
-		return await nc.ocs('PUT', f'/ocs/v2.php/apps/polls/vote/{poll_id}', json=payload)
+		return await nc.ocs('PUT', f'/ocs/v2.php/apps/polls/api/v1.0/option/{option_id}/vote/{answer}')
 
 	@tool
 	@dangerous_tool
@@ -98,7 +91,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param poll_id: the id of the poll to delete (obtainable via list_polls)
 		:return: confirmation of deletion
 		"""
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/polls/poll/{poll_id}')
+		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/polls/api/v1.0/poll/{poll_id}')
 
 	@tool
 	@dangerous_tool
@@ -108,7 +101,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param poll_id: the id of the poll to close (obtainable via list_polls)
 		:return: the updated poll
 		"""
-		return await nc.ocs('PUT', f'/ocs/v2.php/apps/polls/poll/{poll_id}/close')
+		return await nc.ocs('PUT', f'/ocs/v2.php/apps/polls/api/v1.0/poll/{poll_id}/close')
 
 	@tool
 	@dangerous_tool
@@ -118,7 +111,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param poll_id: the id of the poll to reopen (obtainable via list_polls)
 		:return: the updated poll
 		"""
-		return await nc.ocs('PUT', f'/ocs/v2.php/apps/polls/poll/{poll_id}/reopen')
+		return await nc.ocs('PUT', f'/ocs/v2.php/apps/polls/api/v1.0/poll/{poll_id}/reopen')
 
 	return [
 		list_polls,

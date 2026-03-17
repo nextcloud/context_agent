@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from asyncio import sleep
-from typing import Optional
 
 from niquests import ConnectionError, Timeout
 from langchain_core.tools import tool
@@ -50,14 +49,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def get_mail_account_list():
 		"""
 		Lists all available email accounts of the current user including their account id
-		:param subject: The subject of the email
-		:param body: The body of the email
-		:param account_id: The id of the account to send from
-		:param to_emails: The emails to send
+		:return: list of email accounts with their ids and configuration
 		"""
 
 		return await nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')
-		
+
 
 	@tool
 	@safe_tool
@@ -65,66 +61,70 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		List all mail folders/mailboxes for an account
 		:param account_id: The id of the account (obtainable via get_mail_account_list)
-		:return: list of folders with their names and message counts
+		:return: list of folders with their ids, names, and message counts
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/mail/account/{account_id}/mailboxes')
+		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/mailboxes", headers={
+			"Content-Type": "application/json",
+		}, params={'accountId': account_id})
+		return response.json()
 
 	@tool
 	@safe_tool
-	async def search_emails(account_id: int, search_term: str, mailbox_name: Optional[str] = None, limit: int = 20):
-		"""
-		Search for emails in an account
-		:param account_id: The id of the account (obtainable via get_mail_account_list)
-		:param search_term: The text to search for in emails
-		:param mailbox_name: Optional mailbox/folder to search in (e.g., "INBOX", "Sent")
-		:param limit: Maximum number of results to return (default 20)
-		:return: list of matching emails
-		"""
-		params = {
-			'searchQuery': search_term,
-			'limit': limit
-		}
-		if mailbox_name:
-			params['mailboxName'] = mailbox_name
-
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/mail/account/{account_id}/messages', params=params)
-
-	@tool
-	@safe_tool
-	async def get_email_messages(account_id: int, mailbox_name: str = 'INBOX', limit: int = 20):
+	async def get_email_messages(mailbox_id: int, limit: int = 20):
 		"""
 		Get messages from a specific mailbox
-		:param account_id: The id of the account (obtainable via get_mail_account_list)
-		:param mailbox_name: The mailbox/folder name (default "INBOX")
+		:param mailbox_id: The id of the mailbox (obtainable via list_mail_folders)
 		:param limit: Maximum number of messages to return (default 20)
 		:return: list of email messages
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/mail/account/{account_id}/mailboxes/{mailbox_name}/messages', params={'limit': limit})
+		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages", headers={
+			"Content-Type": "application/json",
+		}, params={'mailboxId': mailbox_id, 'limit': limit})
+		return response.json()
+
+	@tool
+	@safe_tool
+	async def search_emails(mailbox_id: int, search_term: str, limit: int = 20):
+		"""
+		Search for emails in a mailbox
+		:param mailbox_id: The id of the mailbox to search in (obtainable via list_mail_folders)
+		:param search_term: The text to search for in emails
+		:param limit: Maximum number of results to return (default 20)
+		:return: list of matching emails
+		"""
+		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages", headers={
+			"Content-Type": "application/json",
+		}, params={'mailboxId': mailbox_id, 'filter': search_term, 'limit': limit})
+		return response.json()
 
 	@tool
 	@dangerous_tool
-	async def move_email_to_folder(account_id: int, message_id: int, target_mailbox: str):
+	async def move_email_to_folder(message_id: int, dest_mailbox_id: int):
 		"""
 		Move an email to a different folder
-		:param account_id: The id of the account (obtainable via get_mail_account_list)
-		:param message_id: The id of the message to move
-		:param target_mailbox: The name of the destination folder (obtainable via list_mail_folders)
+		:param message_id: The id of the message to move (obtainable via get_email_messages or search_emails)
+		:param dest_mailbox_id: The id of the destination mailbox (obtainable via list_mail_folders)
 		:return: confirmation
 		"""
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/mail/account/{account_id}/message/{message_id}/move', json={
-			'mailboxName': target_mailbox
+		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages/{message_id}/move", headers={
+			"Content-Type": "application/json",
+		}, json={
+			'destFolderId': dest_mailbox_id
 		})
+		return response.json()
 
 	@tool
 	@dangerous_tool
-	async def delete_email(account_id: int, message_id: int):
+	async def delete_email(message_id: int):
 		"""
 		Delete an email message
-		:param account_id: The id of the account (obtainable via get_mail_account_list)
-		:param message_id: The id of the message to delete
+		:param message_id: The id of the message to delete (obtainable via get_email_messages or search_emails)
 		:return: confirmation
 		"""
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/mail/account/{account_id}/message/{message_id}')
+		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages/{message_id}", headers={
+			"Content-Type": "application/json",
+		})
+		return response.json()
 
 	return [
 		send_email,

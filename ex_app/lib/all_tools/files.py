@@ -59,7 +59,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
-		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', json={'depth': depth}, response_type='json')
+		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', params={'depth': depth}, response_type='json')
 
 	@tool
 	@dangerous_tool

@@ -15,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all forms created by the current user
 		:return: a list of forms with their id, title, and state
 		"""
-		return await nc.ocs('GET', '/ocs/v2.php/apps/forms/api/v2.4/forms')
+		return await nc.ocs('GET', '/ocs/v2.php/apps/forms/api/v3/forms')
 
 	@tool
 	@safe_tool
@@ -25,24 +25,29 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param form_id: the id of the form (obtainable via list_forms)
 		:return: complete form structure with all questions and settings
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v2.4/forms/{form_id}')
+		return await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}')
 
 	@tool
 	@dangerous_tool
 	async def create_form(title: str, description: Optional[str] = None):
 		"""
-		Create a new form
+		Create a new form. First creates the form, then updates it with the title and description.
 		:param title: the title of the form
 		:param description: optional description for the form
 		:return: the created form with its id
 		"""
 		description_with_ai_note = f"{description or ''}\n\n---\n\nThis form was created by Nextcloud AI Assistant."
 
-		payload = {
+		# Create the form first
+		form = await nc.ocs('POST', '/ocs/v2.php/apps/forms/api/v3/forms')
+		form_id = form.get('id')
+
+		# Then update it with the title and description
+		key_value_pairs = {
 			'title': title,
 			'description': description_with_ai_note
 		}
-		return await nc.ocs('POST', '/ocs/v2.php/apps/forms/api/v2.4/form', json=payload)
+		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}', json={'keyValuePairs': key_value_pairs})
 
 	@tool
 	@dangerous_tool
@@ -56,19 +61,24 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param options: list of options for multiple choice, dropdown, etc. (required for multiple/dropdown types)
 		:return: the created question
 		"""
-		payload = {
+		question = await nc.ocs('POST', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/questions', json={
 			'type': question_type,
-			'text': question_text,
-			'isRequired': is_required
-		}
+			'text': question_text
+		})
 
-		question = await nc.ocs('POST', f'/ocs/v2.php/apps/forms/api/v2.4/form/{form_id}/question', json=payload)
+		question_id = question.get('id')
+
+		# Update isRequired if set
+		if is_required:
+			await nc.ocs('PATCH', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/questions/{question_id}', json={
+				'keyValuePairs': {'isRequired': is_required}
+			})
 
 		# Add options if provided and question type supports them
 		if options and question_type in ['multiple', 'multiple_unique', 'dropdown']:
-			question_id = question.get('id')
-			for option_text in options:
-				await nc.ocs('POST', f'/ocs/v2.php/apps/forms/api/v2.4/question/{question_id}/option', json={'text': option_text})
+			await nc.ocs('POST', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/questions/{question_id}/options', json={
+				'optionTexts': options
+			})
 
 		return question
 
@@ -80,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param form_id: the id of the form (obtainable via list_forms)
 		:return: all responses with answers
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v2.4/submissions/{form_id}')
+		return await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/submissions')
 
 	@tool
 	@dangerous_tool
@@ -90,7 +100,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param form_id: the id of the form to delete (obtainable via list_forms)
 		:return: confirmation of deletion
 		"""
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/forms/api/v2.4/form/{form_id}')
+		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}')
 
 	@tool
 	@dangerous_tool
@@ -104,17 +114,17 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param expires: expiration timestamp (unix time)
 		:return: the updated form
 		"""
-		payload = {}
+		key_value_pairs = {}
 		if is_anonymous is not None:
-			payload['isAnonymous'] = is_anonymous
+			key_value_pairs['isAnonymous'] = is_anonymous
 		if submit_multiple is not None:
-			payload['submitMultiple'] = submit_multiple
+			key_value_pairs['submitMultiple'] = submit_multiple
 		if show_expiration is not None:
-			payload['showExpiration'] = show_expiration
+			key_value_pairs['showExpiration'] = show_expiration
 		if expires is not None:
-			payload['expires'] = expires
+			key_value_pairs['expires'] = expires
 
-		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/forms/api/v2.4/form/update/{form_id}', json=payload)
+		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}', json={'keyValuePairs': key_value_pairs})
 
 	return [
 		list_forms,

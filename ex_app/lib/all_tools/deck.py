@@ -21,7 +21,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Content-Type": "application/json",
 		})
 
-		return response.text
+		return response.json()
 
 	
 
