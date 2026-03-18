@@ -5,11 +5,34 @@ from functools import wraps
 
 from fastmcp.server.dependencies import get_context
 from nc_py_api import AsyncNextcloudApp, NextcloudApp
+from nc_py_api._session import AsyncNcSessionApp, NcSessionApp
 from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.tools import Tool
 from mcp import types as mt
 from ex_app.lib.tools import get_tools
 import requests
+
+
+def _patch_disable_http3() -> None:
+	original_async = AsyncNcSessionApp._create_adapter
+	original_sync = NcSessionApp._create_adapter
+
+	def _sync_wrapper(self, dav=False):
+		session = original_sync(self, dav)
+		session._disable_http3 = True
+		return session
+
+	def _async_wrapper(self, dav=False):
+		session = original_async(self, dav)
+		session._disable_http3 = True
+		return session
+
+	NcSessionApp._create_adapter = _sync_wrapper
+	AsyncNcSessionApp._create_adapter = _async_wrapper
+
+
+_patch_disable_http3()
+
 
 def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
 	response = requests.get(
