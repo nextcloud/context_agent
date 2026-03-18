@@ -18,6 +18,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/recipes", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		recipes = response.json()
 
@@ -36,6 +37,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/search/{search_term}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -49,6 +51,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/recipes/{recipe_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -86,6 +89,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/recipes", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=recipe_data)
 		return response.json()
 
@@ -107,6 +111,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		# Get current recipe
 		current_response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/recipes/{recipe_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		current = current_response.json()
 
@@ -123,6 +128,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/recipes/{recipe_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=recipe_data)
 		return response.json()
 
@@ -136,6 +142,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/recipes/{recipe_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -148,6 +155,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/categories", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 

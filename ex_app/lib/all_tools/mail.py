@@ -65,6 +65,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/mailboxes", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'accountId': account_id})
 		return response.json()
 
@@ -79,6 +80,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'mailboxId': mailbox_id, 'limit': limit})
 		return response.json()
 
@@ -94,6 +96,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'mailboxId': mailbox_id, 'filter': search_term, 'limit': limit})
 		return response.json()
 
@@ -108,6 +111,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages/{message_id}/move", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'destFolderId': dest_mailbox_id
 		})
@@ -123,6 +127,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/mail/api/messages/{message_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 

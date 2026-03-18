@@ -17,6 +17,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -30,6 +31,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -43,6 +45,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'name': name
 		})
@@ -59,6 +62,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('PATCH', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'name': new_name
 		})
@@ -74,6 +78,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -88,6 +93,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}/files", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'fileId': file_id
 		})
@@ -104,6 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}/files/{file_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 

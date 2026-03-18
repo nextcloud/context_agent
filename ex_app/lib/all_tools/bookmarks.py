@@ -30,6 +30,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params=params)
 		return response.json()
 
@@ -43,6 +44,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'search': search_term})
 		return response.json()
 
@@ -73,6 +75,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 		return response.json()
 
@@ -100,6 +103,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark/{bookmark_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 		return response.json()
 
@@ -113,6 +117,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark/{bookmark_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -125,6 +130,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/folder", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -145,6 +151,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/folder", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 		return response.json()
 
@@ -157,6 +164,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/tag", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 

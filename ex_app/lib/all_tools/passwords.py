@@ -17,6 +17,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/folder/list", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		return response.json()
 
@@ -30,6 +31,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/list", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 		all_passwords = response.json()
 
@@ -60,6 +62,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/show", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'id': password_id})
 
 		return response.json()
@@ -92,6 +95,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/create", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 
 		return response.json()
@@ -112,6 +116,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		# First get the current password entry
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/show", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'id': password_id})
 		current = response.json()
 
@@ -128,6 +133,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('PATCH', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/update", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 
 		return response.json()
@@ -142,6 +148,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/delete", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, params={'id': password_id})
 
 		return response.json()
@@ -163,6 +170,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/folder/create", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 
 		return response.json()

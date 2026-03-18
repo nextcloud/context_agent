@@ -19,6 +19,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards?details=true", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 
 		return response.json()
@@ -51,6 +52,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 
 		return response.json()
@@ -78,6 +80,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json=payload)
 
 		return response.json()
@@ -96,6 +99,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/reorder", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'stackId': new_stack_id,
 			'order': order
@@ -116,6 +120,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignLabel", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'labelId': label_id
 		})
@@ -135,6 +140,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignUser", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'userId': user_id
 		})
@@ -154,6 +160,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/comments", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		}, json={
 			'message': comment
 		})
@@ -172,6 +179,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}", headers={
 			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
 		})
 
 		return response.json()
