@@ -50,20 +50,13 @@ def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
 
 class UserAuthMiddleware(Middleware):
 	async def on_message(self, context: MiddlewareContext, call_next):
-		nc = NextcloudApp()
-		authorization_header = None
-		try:
-			authorization_header = context.fastmcp_context.request_context.request.headers.get("Authorization")
-		except Exception:
-			authorization_header = None
-
-		if authorization_header:
-			try:
-				user = get_user(authorization_header, nc)
-				nc.set_user(user)
-			except Exception:
-				pass
-
+		# Middleware stores user info in context state
+		authorization_header = context.fastmcp_context.request_context.request.headers.get("Authorization")
+		if authorization_header is None:
+			raise Exception("Authorization header is missing/invalid")
+		nc = AsyncNextcloudApp()
+		user = get_user(authorization_header, nc)
+		await nc.set_user(user)
 		context.fastmcp_context.set_state("nextcloud", nc)
 		return await call_next(context)
 
@@ -81,20 +74,17 @@ class ToolListMiddleware(Middleware):
 			call_next: CallNext[mt.ListToolsRequest, list[Tool]],
 	) -> list[Tool]:
 		global LAST_MCP_TOOL_UPDATE
-		try:
+		if LAST_MCP_TOOL_UPDATE + 60 < time.time():
+			safe, dangerous = await get_tools(context.fastmcp_context.get_state("nextcloud"))
+			tools = await self.mcp.get_tools()
 			if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-				safe, dangerous = await get_tools(context.fastmcp_context.get_state("nextcloud"))
-				tools = await self.mcp.get_tools()
-				if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-					for tool in tools.keys():
-						self.mcp.remove_tool(tool)
-					for tool in safe + dangerous:
-						if not hasattr(tool, "func") or tool.func is None:
-							continue
-						self.mcp.tool()(mcp_tool(tool.func))
-					LAST_MCP_TOOL_UPDATE = time.time()
-		except Exception:
-			pass
+				for tool in tools.keys():
+					self.mcp.remove_tool(tool)
+				for tool in safe + dangerous:
+					if not hasattr(tool, "func") or tool.func is None:
+						continue
+					self.mcp.tool()(mcp_tool(tool.func))
+				LAST_MCP_TOOL_UPDATE = time.time()
 		return await call_next(context)
 
 # Regenerates the tools with the correct nc object
