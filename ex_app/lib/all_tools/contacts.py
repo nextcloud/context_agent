@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import json
 import typing
 
 from langchain_core.tools import tool
@@ -13,17 +14,34 @@ from ex_app.lib.all_tools.lib.decorator import safe_tool
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@safe_tool
+	async def find_person_in_users(search_term: str):
+		"""
+		Search for users
+		:param search_term: The search term to find the user by. Use this to find a user's ID
+		Returns:
+		"""
+		users = await nc.ocs('GET', '/ocs/v2.php/apps/files_sharing/api/v1/sharees', params={
+			'search': search_term,
+			'shareType': 0,
+			'itemType': 'user',
+		})
+		dict = {}
+		for user in users.get('exact', {}).get('users', []) + users.get('users', []):
+			dict[user.get('label')] = user.get('value', {}).get('shareWith')
+		return json.dumps(dict)
+
+	@tool
+	@safe_tool
 	async def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:
 		"""
 		Find a person's contact information from their name
 		:param name: the name to search for
 		:return: a dictionary with the person's email, phone and address
 		"""
-		username = nc._session.user
+		username = await nc._session.user
 		response = await nc._session._create_adapter(True).request('PROPFIND', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/", headers={
 			"Content-Type": "application/xml; charset=utf-8",
 		})
-		print(response.text)
 		namespace = {"DAV": "DAV:"}  # Define the namespace
 		root = ET.fromstring(response.text)
 		hrefs = root.findall(".//DAV:href", namespace)
@@ -53,7 +71,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 				"Content-Type": "application/xml; charset=utf-8",
 				"Depth": "1",
 			}, content=xml_body)
-			print(response.text)
+
 			if response.status_code != 207:  # Multi-Status
 				raise Exception(f"Error: {response.status_code} - {response.reason_phrase}")
 
@@ -88,7 +106,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 
 	return [
-		find_person_in_contacts, find_details_of_current_user
+		find_person_in_users,
+		find_person_in_contacts,
+		find_details_of_current_user
 	]
 
 def get_category_name():
