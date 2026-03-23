@@ -133,6 +133,8 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Use the list_calendars tool to check which calendars exist.\nIf an item should be added to a list, check list_calendars for a fitting calendar and add the item as a task there.\n"
 		if tool_enabled("find_person_in_contacts"):
 			system_prompt_text += "Use the find_person_in_contacts tool to find a person's email address and location.\n"
+		if tool_enabled("find_person_in_users"):
+			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
 		if tool_enabled("find_details_of_current_user"):
 			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location.\n"
 
