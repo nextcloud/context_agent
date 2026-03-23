@@ -15,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all RSS/news feeds
 		:return: list of feeds with their id, title, and URL
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -27,7 +27,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all news feed folders
 		:return: list of folders with their id and name
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/folders", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/folders", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -49,7 +49,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if feed_id:
 			params['id'] = feed_id
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items", headers={
 			"Content-Type": "application/json",
 		}, params=params)
 		return response.json()
@@ -72,7 +72,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if feed_id:
 			params['id'] = feed_id
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items", headers={
 			"Content-Type": "application/json",
 		}, params=params)
 		return response.json()
@@ -92,7 +92,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if folder_id is not None:
 			payload['folderId'] = folder_id
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 		return response.json()
@@ -105,7 +105,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param article_id: the id of the article (obtainable via get_unread_articles or get_articles)
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items/{article_id}/read", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items/{article_id}/read", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -118,7 +118,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param article_id: the id of the article (obtainable via get_articles)
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items/{article_id}/unread", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/items/{article_id}/unread", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -131,7 +131,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param feed_id: the id of the feed (obtainable via list_news_feeds)
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds/{feed_id}/read", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds/{feed_id}/read", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -144,7 +144,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param feed_id: the id of the feed to delete (obtainable via list_news_feeds)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds/{feed_id}", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/feeds/{feed_id}", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -157,7 +157,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param name: name for the folder
 		:return: the created folder
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/folders", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/news/api/v1-3/folders", headers={
 			"Content-Type": "application/json",
 		}, json={'name': name})
 		return response.json()

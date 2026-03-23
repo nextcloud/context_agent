@@ -15,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all password folders
 		:return: list of folders with their id, label, and parent folder
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/folder/list", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/folder/list", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -28,7 +28,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param search_term: text to search for in password labels and URLs
 		:return: list of matching password entries (without the actual password values)
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/list", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/list", headers={
 			"Content-Type": "application/json",
 		})
 		all_passwords = response.json()
@@ -58,7 +58,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param password_id: the id of the password entry (obtainable via search_passwords)
 		:return: complete password entry including the password value
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/show", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/show", headers={
 			"Content-Type": "application/json",
 		}, params={'id': password_id})
 
@@ -90,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if folder_id:
 			payload['folder'] = folder_id
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/create", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/create", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 
@@ -110,7 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: the updated password entry
 		"""
 		# First get the current password entry
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/show", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/show", headers={
 			"Content-Type": "application/json",
 		}, params={'id': password_id})
 		current = response.json()
@@ -126,7 +126,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'folder': current.get('folder')
 		}
 
-		response = await nc._session._create_adapter(True).request('PATCH', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/update", headers={
+		response = await nc._session._create_adapter().request('PATCH', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/update", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 
@@ -140,7 +140,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param password_id: the id of the password to delete (obtainable via search_passwords)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/delete", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/password/delete", headers={
 			"Content-Type": "application/json",
 		}, params={'id': password_id})
 
@@ -161,7 +161,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if parent_folder_id:
 			payload['parent'] = parent_folder_id
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/folder/create", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/passwords/api/1.0/folder/create", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 

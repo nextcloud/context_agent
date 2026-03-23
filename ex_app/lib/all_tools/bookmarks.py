@@ -28,7 +28,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if tags:
 			params['tags[]'] = tags
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
 			"Content-Type": "application/json",
 		}, params=params)
 		return response.json()
@@ -41,7 +41,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param search_term: text to search for in bookmark titles, urls, and descriptions
 		:return: list of matching bookmarks
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
 			"Content-Type": "application/json",
 		}, params={'search': search_term})
 		return response.json()
@@ -71,7 +71,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if folder_id is not None:
 			payload['folders'] = [folder_id]
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 		return response.json()
@@ -98,7 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if tags is not None:
 			payload['tags'] = tags
 
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark/{bookmark_id}", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark/{bookmark_id}", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 		return response.json()
@@ -111,7 +111,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param bookmark_id: the id of the bookmark to delete (obtainable via list_bookmarks)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark/{bookmark_id}", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/bookmark/{bookmark_id}", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -123,7 +123,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all bookmark folders
 		:return: list of folders with their id, title, and parent folder
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/folder", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/folder", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
@@ -143,7 +143,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if parent_folder_id is not None:
 			payload['parent_folder'] = parent_folder_id
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/folder", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/folder", headers={
 			"Content-Type": "application/json",
 		}, json=payload)
 		return response.json()
@@ -155,7 +155,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all bookmark tags with usage counts
 		:return: list of tags with the number of bookmarks using each tag
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/tag", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/tag", headers={
 			"Content-Type": "application/json",
 		})
 		return response.json()
