@@ -49,10 +49,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def get_mail_account_list():
 		"""
 		Lists all available email accounts of the current user including their account id
-		:param subject: The subject of the email
-		:param body: The body of the email
-		:param account_id: The id of the account to send from
-		:param to_emails: The emails to send
+		:return: list of email accounts with their ids and configuration
 		"""
 
 		return await nc.ocs('GET', '/ocs/v2.php/apps/mail/account/list')

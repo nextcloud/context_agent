@@ -254,11 +254,199 @@ END:VCALENDAR
 
 		return True
 
+	def list_tasks_sync(calendar_name: Optional[str] = None):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+
+		tasks = []
+		if calendar_name:
+			calendar = {cal.name: cal for cal in calendars}[calendar_name]
+			calendars_to_check = [calendar]
+		else:
+			calendars_to_check = calendars
+
+		for cal in calendars_to_check:
+			todos = cal.todos()
+			for todo in todos:
+				# Parse the todo data using ics library
+				try:
+					ical_data = todo.data
+					parsed_cal = Calendar(ical_data)
+
+					for ics_todo in parsed_cal.todos:
+						task_data = {
+							'calendar': cal.name,
+							'summary': ics_todo.name or '',
+							'uid': ics_todo.uid or '',
+							'status': ics_todo.status or 'NEEDS-ACTION',
+							'due': str(ics_todo.due) if ics_todo.due else None,
+							'priority': ics_todo.priority,
+							'description': ics_todo.description or '',
+						}
+						tasks.append(task_data)
+				except:
+					# Fallback if parsing fails
+					continue
+
+		return tasks
+
+	@tool
+	@safe_tool
+	async def list_tasks(calendar_name: Optional[str] = None, filter_status: Optional[str] = None):
+		"""
+		List tasks from calendars. Can filter by calendar name and status.
+		:param calendar_name: Optional name of the calendar to list tasks from (obtainable via list_calendars). If not provided, lists from all calendars.
+		:param filter_status: Optional filter by status - one of: 'NEEDS-ACTION', 'COMPLETED', 'IN-PROCESS', 'CANCELLED'
+		:return: list of tasks with their details
+		"""
+		tasks = await asyncio.to_thread(list_tasks_sync, calendar_name)
+
+		if filter_status:
+			tasks = [t for t in tasks if t.get('status') == filter_status]
+
+		return tasks
+
+	def complete_task_sync(calendar_name: str, task_uid: str):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+
+		todos = calendar.todos()
+		for todo in todos:
+			# Parse the todo data using ics library
+			try:
+				ical_data = todo.data
+				parsed_cal = Calendar(ical_data)
+
+				for ics_todo in parsed_cal.todos:
+					if ics_todo.uid == task_uid:
+						# Mark as completed
+						ics_todo.status = 'COMPLETED'
+						ics_todo.completed = datetime.now(timezone.utc)
+
+						# Serialize and save
+						todo.data = str(parsed_cal)
+						todo.save()
+						return True
+			except:
+				continue
+
+		return False
+
+	@tool
+	@dangerous_tool
+	async def complete_task(calendar_name: str, task_uid: str):
+		"""
+		Mark a task as completed
+		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
+		:param task_uid: The UID of the task to complete (obtainable via list_tasks)
+		:return: bool indicating success
+		"""
+		return await asyncio.to_thread(complete_task_sync, calendar_name, task_uid)
+
+	def update_task_sync(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone_str: Optional[str] = None, priority: Optional[int] = None):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+
+		todos = calendar.todos()
+		for todo in todos:
+			# Parse the todo data using ics library
+			try:
+				ical_data = todo.data
+				parsed_cal = Calendar(ical_data)
+
+				for ics_todo in parsed_cal.todos:
+					if ics_todo.uid == task_uid:
+						# Update fields if provided
+						if title:
+							ics_todo.name = title
+						if description:
+							ics_todo.description = description
+						if priority is not None:
+							ics_todo.priority = priority
+						if due_date:
+							parsed_date = datetime.strptime(due_date, "%Y-%m-%d")
+							if due_time:
+								parsed_time = datetime.strptime(due_time, "%I:%M %p").time()
+								due_datetime = datetime.combine(parsed_date, parsed_time)
+							else:
+								due_datetime = parsed_date
+
+							if timezone_str:
+								tz = pytz.timezone(timezone_str)
+								due_datetime = tz.localize(due_datetime)
+
+							ics_todo.due = due_datetime
+
+						# Serialize and save
+						todo.data = str(parsed_cal)
+						todo.save()
+						return True
+			except:
+				continue
+
+		return False
+
+	@tool
+	@dangerous_tool
+	async def update_task(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone: Optional[str] = None, priority: Optional[int] = None):
+		"""
+		Update an existing task
+		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
+		:param task_uid: The UID of the task to update (obtainable via list_tasks)
+		:param title: New title for the task
+		:param description: New description for the task
+		:param due_date: New due date in the form: YYYY-MM-DD e.g. '2024-12-01'
+		:param due_time: New due time in the form: HH:MM AM/PM e.g. '3:00 PM'
+		:param timezone: Timezone (e.g., 'America/New_York')
+		:param priority: Priority from 0 (undefined) to 9 (lowest), where 1 is highest priority
+		:return: bool indicating success
+		"""
+		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, title, description, due_date, due_time, timezone, priority)
+
+	def delete_task_sync(calendar_name: str, task_uid: str):
+		principal = ncSync.cal.principal()
+		calendars = principal.calendars()
+		calendar = {cal.name: cal for cal in calendars}[calendar_name]
+
+		todos = calendar.todos()
+		for todo in todos:
+			# Parse the todo data using ics library to find the right one
+			try:
+				ical_data = todo.data
+				parsed_cal = Calendar(ical_data)
+
+				for ics_todo in parsed_cal.todos:
+					if ics_todo.uid == task_uid:
+						# Delete the todo
+						todo.delete()
+						return True
+			except:
+				continue
+
+		return False
+
+	@tool
+	@dangerous_tool
+	async def delete_task(calendar_name: str, task_uid: str):
+		"""
+		Delete a task
+		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
+		:param task_uid: The UID of the task to delete (obtainable via list_tasks)
+		:return: bool indicating success
+		"""
+		return await asyncio.to_thread(delete_task_sync, calendar_name, task_uid)
+
 	return [
 		list_calendars,
 		schedule_event,
 		find_free_time_slot_in_calendar,
-		add_task
+		add_task,
+		list_tasks,
+		complete_task,
+		update_task,
+		delete_task
 	]
 
 def get_category_name():
