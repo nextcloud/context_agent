@@ -56,7 +56,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Add a question to an existing form
 		:param form_id: the id of the form to add the question to (obtainable via list_forms)
 		:param question_text: the text of the question
-		:param question_type: type of question - one of: 'multiple', 'multiple_unique', 'dropdown', 'short', 'long', 'date', 'datetime', 'time'
+		:param question_type: type of question - one of: 'multiple', 'multiple_unique', 'dropdown', 'short', 'long', 'date', 'datetime', 'time', 'number'
 		:param is_required: whether the question is required
 		:param options: list of options for multiple choice, dropdown, etc. (required for multiple/dropdown types)
 		:return: the created question
