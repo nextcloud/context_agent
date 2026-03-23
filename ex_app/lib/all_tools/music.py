@@ -16,7 +16,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param limit: maximum number of artists to return (default 50)
 		:return: list of artists with their id and name
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/artists", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/artists", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, params={'limit': limit})
@@ -35,7 +35,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if artist_id is not None:
 			params['artist'] = artist_id
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/albums", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/albums", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, params=params)
@@ -57,7 +57,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if artist_id is not None:
 			params['artist'] = artist_id
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/tracks", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/tracks", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, params=params)
@@ -71,7 +71,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param search_term: text to search for
 		:return: search results with matching artists, albums, and tracks
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/search", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/search", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, params={'query': search_term})
@@ -84,7 +84,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all music playlists
 		:return: list of playlists with their id, name, and track count
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -98,7 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param playlist_id: the id of the playlist (obtainable via list_music_playlists)
 		:return: list of tracks in the playlist
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -112,7 +112,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param name: name for the playlist
 		:return: the created playlist
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -129,7 +129,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param track_id: the id of the track to add (obtainable via list_music_tracks or search_music)
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}/add", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}/add", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -146,7 +146,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param track_index: the position/index of the track in the playlist (0-based)
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}/remove", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}/remove", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -162,7 +162,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param playlist_id: the id of the playlist to delete (obtainable via list_music_playlists)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -177,7 +177,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param new_name: new name for the playlist
 		:return: the updated playlist
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/music/api/playlists/{playlist_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={

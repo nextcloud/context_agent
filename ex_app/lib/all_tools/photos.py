@@ -15,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all photo albums
 		:return: list of albums with their id, name, and metadata
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -29,7 +29,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param album_id: the id of the album (obtainable via list_photo_albums)
 		:return: list of photos in the album
 		"""
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -43,7 +43,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param name: name for the album
 		:return: the created album
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -60,7 +60,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param new_name: new name for the album
 		:return: the updated album
 		"""
-		response = await nc._session._create_adapter(True).request('PATCH', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
+		response = await nc._session._create_adapter().request('PATCH', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -76,7 +76,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param album_id: the id of the album to delete (obtainable via list_photo_albums)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -91,7 +91,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param file_id: the file id of the photo to add
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}/files", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}/files", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -108,7 +108,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param file_id: the file id of the photo to remove
 		:return: confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}/files/{file_id}", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/photos/api/v1/albums/{album_id}/files/{file_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})

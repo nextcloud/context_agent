@@ -17,7 +17,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: a dictionary with all decks of the user
 		"""
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards?details=true", headers={
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards?details=true", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -50,7 +50,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if due_date:
 			payload['duedate'] = due_date
 
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json=payload)
@@ -59,11 +59,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@dangerous_tool
-	async def update_card(board_id: int, stack_id: int, card_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None):
+	async def update_card(card_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None):
 		"""
 		Update an existing card in a kanban board
-		:param board_id: the id of the board (obtainable with list_boards)
-		:param stack_id: the id of the stack (obtainable with list_boards)
 		:param card_id: the id of the card to update (obtainable with list_boards)
 		:param title: New title for the card
 		:param description: New description for the card
@@ -78,7 +76,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if due_date is not None:
 			payload['duedate'] = due_date
 
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/cards/{card_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json=payload)
@@ -87,17 +85,17 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@dangerous_tool
-	async def move_card(board_id: int, stack_id: int, card_id: int, new_stack_id: int, order: int = 999):
+	async def move_card(board_id: int, stack_id: int, card_id: int, new_stack_id: int, order: int):
 		"""
 		Move a card to a different stack (column) on the board
 		:param board_id: the id of the board (obtainable with list_boards)
-		:param stack_id: the current stack id (obtainable with list_boards)
+		:param stack_id: the id of the stack (obtainable with list_boards)
 		:param card_id: the id of the card to move (obtainable with list_boards)
 		:param new_stack_id: the id of the destination stack (obtainable with list_boards)
-		:param order: the position in the new stack (default: 999, which puts it at the end)
+		:param order: the position in the new stack (999 puts it at the end)
 		:return: the moved card
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/reorder", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/reorder", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -118,7 +116,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param label_id: the id of the label to add (obtainable with list_boards - labels are listed in board details)
 		:return: success confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignLabel", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignLabel", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -138,7 +136,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param user_id: the user id to assign the card to
 		:return: success confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignUser", headers={
+		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignUser", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -158,7 +156,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param comment: the comment text to add
 		:return: the created comment
 		"""
-		response = await nc._session._create_adapter(True).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/comments", headers={
+		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/comments", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json={
@@ -177,7 +175,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param card_id: the id of the card to delete (obtainable with list_boards)
 		:return: success confirmation
 		"""
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}", headers={
+		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})

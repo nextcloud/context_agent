@@ -7,6 +7,14 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 
+# Nextcloud Circles member type constants
+TYPE_USER = 1
+TYPE_GROUP = 2
+TYPE_MAIL = 4
+TYPE_CONTACT = 8
+TYPE_CIRCLE = 16
+TYPE_APP = 10000
+
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
@@ -29,6 +37,17 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}'))
 
 	@tool
+	@safe_tool
+	async def list_circle_members(circle_id: str):
+		"""
+		List all members of a specific circle (team)
+		:param circle_id: the id of the circle (obtainable via list_circles)
+		:return: list of members with their id, display name, type, and level
+		"""
+		circle_members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		return json.dumps(circle_members)
+
+	@tool
 	@dangerous_tool
 	async def create_circle(name: str, description: Optional[str] = None, is_personal: bool = False):
 		"""
@@ -49,19 +68,21 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@dangerous_tool
-	async def add_member_to_circle(circle_id: str, user_id: str, member_type: str = 'user'):
+	async def add_member_to_circle(circle_id: str, member_id: str, member_type: int = TYPE_USER):
 		"""
 		Add a member to a circle (team)
 		:param circle_id: the id of the circle (obtainable via list_circles)
-		:param user_id: the user id or email to add
-		:param member_type: type of member - 'user', 'group', 'mail', or 'contact'
+		:param member_id: the user id, email, group name, or circle id to add
+		:param member_type: type of member as integer constant - 1=user, 2=group, 4=mail, 8=contact, 16=circle (default: 1 for user)
 		:return: the added member information
 		"""
 		payload = {
-			'userId': user_id,
-			'type': member_type
+			"members": [{
+				'id': member_id,
+				'type': member_type
+			}],
 		}
-		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members', json=payload))
+		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/multi', json=payload))
 
 	@tool
 	@dangerous_tool
@@ -69,8 +90,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Remove a member from a circle (team)
 		:param circle_id: the id of the circle (obtainable via list_circles)
-		:param member_id: the id of the member to remove (obtainable via get_circle_details)
-		:return: confirmation of removal
+		:param member_id: the id of the member to remove (obtainable via list_circle_members)
+		:return:
 		"""
 		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/{member_id}'))
 
@@ -82,15 +103,13 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param circle_id: the id of the circle to update (obtainable via list_circles)
 		:param name: new name for the circle
 		:param description: new description
-		:return: the updated circle
+		:return:
 		"""
-		payload = {}
 		if name is not None:
-			payload['name'] = name
+			await nc.ocs('PUT', f'/ocs/v2.php/apps/circles/circles/{circle_id}/name', json={'value': name})
 		if description is not None:
-			payload['description'] = description
-
-		return json.dumps(await nc.ocs('PUT', f'/ocs/v2.php/apps/circles/circles/{circle_id}', json=payload))
+			await nc.ocs('PUT', f'/ocs/v2.php/apps/circles/circles/{circle_id}/description', json={'value': description})
+		return
 
 	@tool
 	@dangerous_tool
@@ -98,9 +117,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Delete a circle (team)
 		:param circle_id: the id of the circle to delete (obtainable via list_circles)
-		:return: confirmation of deletion
+		:return:
 		"""
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
+		await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
 
 	@tool
 	@dangerous_tool
@@ -122,6 +141,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	return [
 		list_circles,
 		get_circle_details,
+		list_circle_members,
 		create_circle,
 		add_member_to_circle,
 		remove_member_from_circle,
