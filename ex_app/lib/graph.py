@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import traceback
 from typing import Sequence
 
 from langchain_core.messages import ToolMessage, BaseMessage
@@ -21,6 +22,8 @@ class AgentState(TypedDict):
 def handle_tool_error(state) -> dict:
 	error = state.get("error")
 	tool_calls = state["messages"][-1].tool_calls
+	lines = traceback.format_exception(error)
+	print("\n".join(lines))
 	return {
 		"messages": [
 			ToolMessage(
