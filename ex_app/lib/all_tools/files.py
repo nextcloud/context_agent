@@ -90,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
 			"Content-Type": "text/plain",
-		}, content=content)
+		}, data=content)
 
 		return {"status": "success", "path": path}
 
@@ -160,40 +160,6 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		return {"status": "success", "deleted": path}
 
-	@tool
-	@dangerous_tool
-	async def add_file_tag(file_id: int, tag_name: str):
-		"""
-		Add a tag to a file
-		:param file_id: the file id
-		:param tag_name: the tag to add
-		:return: success confirmation
-		"""
-		# First, ensure the tag exists
-		await nc.ocs('POST', '/ocs/v2.php/apps/files/api/v1/tags', json={'name': tag_name})
-
-		# Then assign it to the file
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/files/api/v1/files/{file_id}/tags/{tag_name}')
-
-	@tool
-	@safe_tool
-	async def search_files_by_tag(tag_name: str):
-		"""
-		Search for files by tag
-		:param tag_name: the tag to search for
-		:return: list of files with that tag
-		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/files/api/v1/tags/{tag_name}/files')
-
-	@tool
-	@safe_tool
-	async def list_file_tags():
-		"""
-		List all available file tags
-		:return: list of tags
-		"""
-		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/tags')
-
 	return [
 		get_file_content,
 		get_file_content_by_file_link,
@@ -203,10 +169,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		create_folder,
 		move_file,
 		copy_file,
-		delete_file,
-		add_file_tag,
-		search_files_by_tag,
-		list_file_tags
+		delete_file
 	]
 
 def get_category_name():
