@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import json
 from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -22,7 +23,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"OCS-APIREQUEST": "true",
 		})
 
-		return response.json()
+		return json.dumps(response.json())
 
 	
 
@@ -55,55 +56,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"OCS-APIREQUEST": "true",
 		}, json=payload)
 
-		return response.json()
-
-	@tool
-	@dangerous_tool
-	async def update_card(card_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None):
-		"""
-		Update an existing card in a kanban board
-		:param card_id: the id of the card to update (obtainable with list_boards)
-		:param title: New title for the card
-		:param description: New description for the card
-		:param due_date: New due date in ISO format (YYYY-MM-DD)
-		:return: the updated card
-		"""
-		payload = {}
-		if title is not None:
-			payload['title'] = title
-		if description is not None:
-			payload['description'] = description
-		if due_date is not None:
-			payload['duedate'] = due_date
-
-		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/cards/{card_id}", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		}, json=payload)
-
-		return response.json()
-
-	@tool
-	@dangerous_tool
-	async def move_card(board_id: int, stack_id: int, card_id: int, new_stack_id: int, order: int):
-		"""
-		Move a card to a different stack (column) on the board
-		:param board_id: the id of the board (obtainable with list_boards)
-		:param stack_id: the id of the stack (obtainable with list_boards)
-		:param card_id: the id of the card to move (obtainable with list_boards)
-		:param new_stack_id: the id of the destination stack (obtainable with list_boards)
-		:param order: the position in the new stack (999 puts it at the end)
-		:return: the moved card
-		"""
-		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/reorder", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		}, json={
-			'stackId': new_stack_id,
-			'order': order
-		})
-
-		return response.json()
+		return json.dumps(response.json())
 
 	@tool
 	@dangerous_tool
@@ -123,7 +76,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'labelId': label_id
 		})
 
-		return response.json()
+		return json.dumps(response.json())
 
 	@tool
 	@dangerous_tool
@@ -143,27 +96,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'userId': user_id
 		})
 
-		return response.json()
-
-	@tool
-	@dangerous_tool
-	async def add_card_comment(board_id: int, stack_id: int, card_id: int, comment: str):
-		"""
-		Add a comment to a card
-		:param board_id: the id of the board (obtainable with list_boards)
-		:param stack_id: the id of the stack (obtainable with list_boards)
-		:param card_id: the id of the card (obtainable with list_boards)
-		:param comment: the comment text to add
-		:return: the created comment
-		"""
-		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/comments", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		}, json={
-			'message': comment
-		})
-
-		return response.json()
+		return json.dumps(response.json())
 
 	@tool
 	@dangerous_tool
@@ -180,16 +113,13 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"OCS-APIREQUEST": "true",
 		})
 
-		return response.json()
+		return json.dumps(response.json())
 
 	return [
 		list_boards,
 		add_card,
-		update_card,
-		move_card,
 		add_card_label,
 		assign_card_to_user,
-		add_card_comment,
 		delete_card
 	]
 
