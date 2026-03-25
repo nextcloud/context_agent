@@ -59,7 +59,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
-		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', json={'depth': depth}, response_type='json')
+		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', params={'depth': depth}, response_type='json')
 
 	@tool
 	@dangerous_tool
@@ -77,11 +77,99 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		return response
 
+	@tool
+	@dangerous_tool
+	async def upload_file(path: str, content: str):
+		"""
+		Upload or create a new file with text content
+		:param path: the path where the file should be created (e.g., "/Documents/myfile.txt")
+		:param content: the text content to write to the file
+		:return: success confirmation
+		"""
+		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
+
+		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
+			"Content-Type": "text/plain",
+		}, data=content)
+
+		return {"status": "success", "path": path}
+
+	@tool
+	@dangerous_tool
+	async def create_folder(path: str):
+		"""
+		Create a new folder
+		:param path: the path of the folder to create (e.g., "/Documents/NewFolder")
+		:return: success confirmation
+		"""
+		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
+
+		response = await nc._session._create_adapter(True).request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
+			"Content-Type": "application/json",
+		})
+
+		return {"status": "success", "path": path}
+
+	@tool
+	@dangerous_tool
+	async def move_file(source_path: str, destination_path: str):
+		"""
+		Move or rename a file or folder
+		:param source_path: the current path of the file/folder
+		:param destination_path: the new path for the file/folder
+		:return: success confirmation
+		"""
+		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
+
+		response = await nc._session._create_adapter(True).request('MOVE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
+			"Destination": f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{destination_path}",
+		})
+
+		return {"status": "success", "from": source_path, "to": destination_path}
+
+	@tool
+	@dangerous_tool
+	async def copy_file(source_path: str, destination_path: str):
+		"""
+		Copy a file or folder
+		:param source_path: the path of the file/folder to copy
+		:param destination_path: the destination path
+		:return: success confirmation
+		"""
+		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
+
+		response = await nc._session._create_adapter(True).request('COPY', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
+			"Destination": f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{destination_path}",
+		})
+
+		return {"status": "success", "from": source_path, "to": destination_path}
+
+	@tool
+	@dangerous_tool
+	async def delete_file(path: str):
+		"""
+		Delete a file or folder
+		:param path: the path of the file/folder to delete
+		:return: success confirmation
+		"""
+		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
+
+		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
+			"Content-Type": "application/json",
+		})
+
+		return {"status": "success", "deleted": path}
+
 	return [
 		get_file_content,
 		get_file_content_by_file_link,
 		get_folder_tree,
 		create_public_sharing_link,
+		upload_file,
+		create_folder,
+		move_file,
+		copy_file,
+		delete_file
 	]
 
 def get_category_name():
