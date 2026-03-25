@@ -59,6 +59,10 @@ class ChatWithNextcloud(BaseChatModel):
 		# Impose a history limit to avoid the token intake exploding
 		messages = messages[-self.MAX_MESSAGE_HISTORY:]
 
+		# first message cannot be a tool message
+		while len(messages) > 0 and messages[0].type == 'tool':
+			messages = messages[1:]
+
 		task_input['input'] = ''
 		task_input['tool_message'] = []
 		task_input['tools'] = json.dumps(self.tools)
