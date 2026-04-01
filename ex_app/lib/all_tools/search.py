@@ -24,7 +24,7 @@ async def get_tools(nc: AsyncNextcloudApp):
         tool_func.__doc__ = (
             f"Searches {provider['name']} in Nextcloud.\n"
             f":param search_query: A mapping of filter names to filter values to use for the search. "
-            f"Choose filters from {json.dumps(provider['filters'])}. (The 'person' filter, if available, takes a userID, use find_person_in_users to obtain it.)"
+            f"Choose filters from {json.dumps(provider['filters'])}. (The 'person' filter, if available, takes a userID. Use find_person_in_users to obtain it.)"
             'For example: {"term": "hans", ...}\n'
         )
         tools.append(tool(safe_tool(tool_func)))
