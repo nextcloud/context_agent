@@ -186,6 +186,57 @@ jobs:
         run: |
           ./occ app_api:app:register context_agent manual_install --json-info "{\"appid\":\"context_agent\",\"name\":\"Nextcloud Assistant Context Agent\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9081,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
 
+      - name: Verify MCP tool discovery includes async calendar tools
+        env:
+          CREDS: "alice:alice"
+        run: |
+          set -euo pipefail
+
+          MCP_URL="http://localhost:8080/index.php/apps/app_api/proxy/context_agent/mcp/"
+          INIT_HEADERS=$(mktemp)
+          INIT_BODY=$(mktemp)
+
+          # Retry initialize until context_agent endpoint is responsive.
+          ATTEMPT=0
+          until [ "$ATTEMPT" -ge 20 ]; do
+            STATUS=$(curl -sS -o "$INIT_BODY" -D "$INIT_HEADERS" -w "%{http_code}" \
+              -u "$CREDS" \
+              -H "Accept: application/json, text/event-stream" \
+              -H "Content-Type: application/json" \
+              -H "oCS-APIRequest: true" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"integration-test","version":"1.0"}}}' \
+              "$MCP_URL" || true)
+
+            if [ "$STATUS" = "200" ]; then
+              break
+            fi
+
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "initialize attempt $ATTEMPT failed with status=$STATUS, retrying..."
+            sleep 3
+          done
+
+          [ "$STATUS" = "200" ]
+
+          SESSION_ID=$(grep -i '^mcp-session-id:' "$INIT_HEADERS" | awk '{print $2}' | tr -d '\r')
+          if [ -z "$SESSION_ID" ]; then
+            echo "Missing mcp-session-id in initialize response"
+            cat "$INIT_HEADERS"
+            exit 1
+          fi
+
+          TOOLS_RESPONSE=$(curl -sS \
+            -u "$CREDS" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "Content-Type: application/json" \
+            -H "oCS-APIRequest: true" \
+            -H "mcp-session-id: $SESSION_ID" \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            "$MCP_URL")
+
+          echo "$TOOLS_RESPONSE"
+          echo "$TOOLS_RESPONSE" | grep -q 'list_calendars'
+
 
       - name: Run task
         env:
