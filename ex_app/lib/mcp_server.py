@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2024 LangChain, Inc.
 # SPDX-License-Identifier: MIT
 import time
+import asyncio
+import inspect
 from functools import wraps
 
 from fastmcp.server.dependencies import get_context
@@ -58,22 +60,37 @@ class ToolListMiddleware(Middleware):
 				for tool in tools.keys():
 					self.mcp.remove_tool(tool)
 				for tool in safe + dangerous:
-					if not hasattr(tool, "func") or tool.func is None:
+					tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
+					if tool_action is None:
 						continue
-					self.mcp.tool()(mcp_tool(tool.func))
+					tool_name = getattr(tool, "name", None)
+					if tool_name:
+						self.mcp.tool(name=tool_name)(mcp_tool(tool_action, tool_name=tool_name))
+					else:
+						self.mcp.tool()(mcp_tool(tool_action))
 				LAST_MCP_TOOL_UPDATE = time.time()
 		return await call_next(context)
 
 # Regenerates the tools with the correct nc object
-def mcp_tool(tool):
+def mcp_tool(tool, tool_name: str | None = None):
 	@wraps(tool)
 	async def wrapper(*args, **kwargs):
 		ctx = get_context()
 		nc = ctx.get_state('nextcloud')
 		safe, dangerous = await get_tools(nc)
 		tools = safe + dangerous
+		invoked_name = tool_name or tool.__name__
 		for t in tools:
-			if hasattr(t, "func") and t.func and t.name == tool.__name__:
-				return t.func(*args, **kwargs)
+			action = getattr(t, "coroutine", None) or getattr(t, "func", None)
+			if action is None:
+				continue
+			candidate_name = getattr(t, "name", None) or getattr(action, "__name__", None)
+			if candidate_name == invoked_name:
+				if inspect.iscoroutinefunction(action):
+					return await action(*args, **kwargs)
+				result = await asyncio.to_thread(action, *args, **kwargs)
+				if inspect.isawaitable(result):
+					return await result
+				return result
 		raise RuntimeError("Tool not found")
 	return wrapper
