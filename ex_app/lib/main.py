@@ -34,8 +34,7 @@ from fastmcp import FastMCP
 mcp = FastMCP(name="nextcloud")
 mcp.add_middleware(UserAuthMiddleware())
 mcp.add_middleware(ToolListMiddleware(mcp))
-mcp.stateless_http = True
-http_mcp_app = mcp.http_app("/", transport="http")
+http_mcp_app = mcp.http_app("/", transport="http", stateless_http=True)
 
 fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
