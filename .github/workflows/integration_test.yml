@@ -184,7 +184,7 @@ jobs:
 
       - name: Register backend
         run: |
-          ./occ app_api:app:register context_agent manual_install --json-info "{\"appid\":\"context_agent\",\"name\":\"Nextcloud Assistant Context Agent\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9081,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
+          ./occ app_api:app:register context_agent manual_install --info-xml "$GITHUB_WORKSPACE/context_agent/appinfo/info.xml" --force-scopes --wait-finish
 
       - name: Verify MCP tool discovery includes async calendar tools
         env:
