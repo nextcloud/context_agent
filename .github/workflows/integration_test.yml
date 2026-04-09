@@ -197,6 +197,7 @@ jobs:
           INIT_BODY=$(mktemp)
           CREDS=$(OC_PASS=alice ./occ user:add-app-password --password-from-env alice | tail -n 1)
 
+          sleep 300
           # Retry initialize until context_agent endpoint is responsive.
           ATTEMPT=0
           until [ "$ATTEMPT" -ge 20 ]; do
@@ -243,7 +244,6 @@ jobs:
         env:
           CREDS: "alice:alice"
         run: |
-          sleep 300
           TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "List the files I have in Nextcloud", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
           echo $TASK
           TASK_ID=$(echo $TASK | jq '.ocs.data.task.id')
