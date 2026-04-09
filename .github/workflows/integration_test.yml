@@ -200,7 +200,7 @@ jobs:
                   {
                     url: "mcp",
                     verb: "POST,GET,DELETE",
-                    access_level: "USER",
+                    access_level: 1,
                     headers_to_exclude: "[]"
                   }
                 ]
