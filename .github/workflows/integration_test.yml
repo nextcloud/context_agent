@@ -195,7 +195,7 @@ jobs:
           MCP_URL="http://localhost:8080/index.php/apps/app_api/proxy/context_agent/mcp/"
           INIT_HEADERS=$(mktemp)
           INIT_BODY=$(mktemp)
-          CREDS=$(NC_PASS=alice ./occ user:add-app-password --password-from-env alice | tail -n 1)
+          CREDS=$(OC_PASS=alice ./occ user:add-app-password --password-from-env alice | tail -n 1)
 
           # Retry initialize until context_agent endpoint is responsive.
           ATTEMPT=0
