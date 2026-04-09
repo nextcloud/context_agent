@@ -227,7 +227,7 @@ jobs:
           fi
 
           TOOLS_RESPONSE=$(curl -sS \
-            -u "$CREDS" \
+            -H "Authorization: Bearer $CREDS" \
             -H "Accept: application/json, text/event-stream" \
             -H "Content-Type: application/json" \
             -H "oCS-APIRequest: true" \
