@@ -218,43 +218,32 @@ jobs:
 
           sleep 300
 
-          # Retry initialize until context_agent endpoint is responsive
           ATTEMPT=0
-          INIT_BODY=$(mktemp)
           until [ "$ATTEMPT" -ge 20 ]; do
-            STATUS=$(curl -sS -o "$INIT_BODY" -w "%{http_code}" \
+            TOOLS_RESPONSE=$(curl -sS -w "\n%{http_code}" \
               -H "Authorization: Bearer $CREDS" \
               -H "Accept: application/json, text/event-stream" \
               -H "Content-Type: application/json" \
               -H "oCS-APIRequest: true" \
-              -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"integration-test","version":"1.0"}}}' \
-              "$MCP_URL" || true)
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+              "$MCP_URL")
+
+            STATUS=$(echo "$TOOLS_RESPONSE" | tail -1)
+            BODY=$(echo "$TOOLS_RESPONSE" | sed '$d')
 
             if [ "$STATUS" = "200" ]; then
               break
             fi
 
             ATTEMPT=$((ATTEMPT + 1))
-            echo "initialize attempt $ATTEMPT failed with status=$STATUS, retrying..."
-            cat "$INIT_BODY"
+            echo "tools/list attempt $ATTEMPT failed with status=$STATUS, retrying..."
+            echo "$BODY"
             sleep 3
           done
 
           [ "$STATUS" = "200" ]
-          echo "Initialize response:"
-          cat "$INIT_BODY"
-
-          # In stateless mode, no session ID needed — just send tools/list directly
-          TOOLS_RESPONSE=$(curl -sS \
-            -H "Authorization: Bearer $CREDS" \
-            -H "Accept: application/json, text/event-stream" \
-            -H "Content-Type: application/json" \
-            -H "oCS-APIRequest: true" \
-            -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-            "$MCP_URL")
-
-          echo "$TOOLS_RESPONSE"
-          echo "$TOOLS_RESPONSE" | grep -q 'list_calendars'
+          echo "$BODY"
+          echo "$BODY" | grep -q 'list_calendars'
 
       - name: Run task
         env:
