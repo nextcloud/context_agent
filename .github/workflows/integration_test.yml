@@ -201,7 +201,7 @@ jobs:
           ATTEMPT=0
           until [ "$ATTEMPT" -ge 20 ]; do
             STATUS=$(curl -sS -o "$INIT_BODY" -D "$INIT_HEADERS" -w "%{http_code}" \
-              -u "$CREDS" \
+              -H "Authorization: Bearer $CREDS" \
               -H "Accept: application/json, text/event-stream" \
               -H "Content-Type: application/json" \
               -H "oCS-APIRequest: true" \
