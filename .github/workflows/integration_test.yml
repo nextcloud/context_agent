@@ -184,14 +184,71 @@ jobs:
 
       - name: Register backend
         run: |
-          ./occ app_api:app:register context_agent manual_install --json-info "{\"appid\":\"context_agent\",\"name\":\"Nextcloud Assistant Context Agent\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9081,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
+          ./occ app_api:app:register context_agent manual_install --json-info \
+            "$(jq -nc \
+              --arg version "${{ fromJson(steps.context_agent_appinfo.outputs.result).version }}" \
+              '{
+                appid: "context_agent",
+                name: "Nextcloud Assistant Context Agent",
+                daemon_config_name: "manual_install",
+                version: $version,
+                secret: "12345",
+                port: 9081,
+                scopes: ["AI_PROVIDERS", "TASK_PROCESSING"],
+                system_app: 0,
+                routes: [
+                  {
+                    url: "mcp",
+                    verb: "POST,GET,DELETE",
+                    access_level: 1,
+                    headers_to_exclude: "[]"
+                  }
+                ]
+              }'
+            )" --force-scopes --wait-finish
 
+      - name: Verify MCP tool discovery includes async calendar tools
+        env:
+          CREDS: "alice:alice"
+        run: |
+          set -euo pipefail
+
+          MCP_URL="http://localhost:8080/index.php/apps/app_api/proxy/context_agent/mcp/"
+          CREDS=$(OC_PASS=alice ./occ user:add-app-password --password-from-env alice | tail -n 1)
+
+          sleep 300
+
+          ATTEMPT=0
+          until [ "$ATTEMPT" -ge 20 ]; do
+            TOOLS_RESPONSE=$(curl -sS -w "\n%{http_code}" \
+              -H "Authorization: Bearer $CREDS" \
+              -H "Accept: application/json, text/event-stream" \
+              -H "Content-Type: application/json" \
+              -H "oCS-APIRequest: true" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+              "$MCP_URL")
+
+            STATUS=$(echo "$TOOLS_RESPONSE" | tail -1)
+            BODY=$(echo "$TOOLS_RESPONSE" | sed '$d')
+
+            if [ "$STATUS" = "200" ]; then
+              break
+            fi
+
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "tools/list attempt $ATTEMPT failed with status=$STATUS, retrying..."
+            echo "$BODY"
+            sleep 3
+          done
+
+          [ "$STATUS" = "200" ]
+          echo "$BODY"
+          echo "$BODY" | grep -q 'list_calendars'
 
       - name: Run task
         env:
           CREDS: "alice:alice"
         run: |
-          sleep 300
           TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json --data-raw '{"input": {"input": "List the files I have in Nextcloud", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": ""}')
           echo $TASK
           TASK_ID=$(echo $TASK | jq '.ocs.data.task.id')
