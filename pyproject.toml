@@ -18,11 +18,11 @@ pytz = "^2025.2"
 langchain-community = "^0.3.23"
 vobject = "^0.9.9"
 youtube-search = "^2.1.2"
-duckduckgo-search = "^8.0.1"
 uvicorn = "^0.34.2"
 langchain-mcp-adapters = "^0.1.9"
 fastmcp = "^2.11.2"
 niquests = "^3.17.0"
+ddgs = "^9.13.1"
 
 [build-system]
 requires = ["poetry-core"]
