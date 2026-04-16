@@ -8,6 +8,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.6.0] - 2026-04-16
+
+### Added
+- lots of more tools for
+  - Bookmarks
+  - Calendar
+  - Circles
+  - Cookbook
+  - Deck
+  - Files
+  - Forms
+  - Mail 
+  - Shares
+- "find user" tool
+- Register and invoke async tools in MCP middleware
+
+
+### Changed
+- updated dependencies
+
+### Fixed 
+- Log tool error in handle_tool_error
+- First history item cannot be a tool message
+
+
 ## [2.5.1] - 2026-03-10
 
 ### Changed
