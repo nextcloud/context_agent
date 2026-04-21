@@ -17,6 +17,7 @@ from ex_app.lib.graph import AgentState, get_graph
 from ex_app.lib.nc_model import model
 from ex_app.lib.tools import get_tools
 from ex_app.lib.memorysaver import MemorySaver
+from ex_app.lib.jsonplus import JsonPlusSerializer
 
 
 # Dummy thread id as we return the whole state
@@ -66,7 +67,7 @@ def load_conversation(conversation_token: str):
 	# Verify whether this was signed by this instance of context_agent
 	serialized_state = verify_signature(conversation_token, key)
 	# Deserialize the saved state
-	conversation = checkpointer.serde.loads(serialized_state.encode())
+	conversation = JsonPlusSerializer().loads(serialized_state.encode())
 	# Get the last checkpoint state
 	last_checkpoint = conversation['last_checkpoint']
 	# get the last checkpointer config
@@ -88,7 +89,8 @@ def export_conversation(checkpointer):
 	last_checkpoint = checkpointer.storage[last_config['configurable']['thread_id']][last_config['configurable']['checkpoint_ns']][last_config['configurable']['checkpoint_id']]
 	# prepare the to-serialize blob
 	state = {"last_config": last_config, "last_checkpoint": last_checkpoint}
-	serialized_state = checkpointer.serde.dumps(state)
+	serialized_state = JsonPlusSerializer().dumps(state)
+	print(serialized_state)
 	# sign the serialized state
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token

@@ -24,7 +24,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - "find user" tool
 - Register and invoke async tools in MCP middleware
 
-
 ### Changed
 - updated dependencies
 
