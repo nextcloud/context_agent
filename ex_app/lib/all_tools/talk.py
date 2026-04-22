@@ -182,7 +182,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Get the current state and results of a poll
 		:param conversation_name: The name of the conversation (obtainable via list_talk_conversations)
 		:param poll_id: The id of the poll (obtainable from create_poll or from message parameters in list_messages_in_conversation)
-		:return: poll data including question, options, votes, status, and who voted
+		:return: poll data including question, options (0-based, e.g. [0] refers to the first option, [2] refers to the third option, etc.), votes, status, and who voted
 		"""
 		token = await _get_token(conversation_name)
 		return await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}')
