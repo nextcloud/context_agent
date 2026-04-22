@@ -192,7 +192,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param parent_id: optional id of a parent comment for threaded replies (obtainable with list_card_comments)
 		:return: the created comment
 		"""
-		payload = {'message': message}
+		message_with_ai_note = f"{message}\n\nPosted by Nextcloud AI Assistant."
+		payload = {'message': message_with_ai_note}
 		if parent_id is not None:
 			payload['parentId'] = parent_id
 		return await nc.ocs('POST', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments', json=payload)
@@ -207,8 +208,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param message: the new comment text (max 1000 characters)
 		:return: the updated comment
 		"""
+		message_with_ai_note = f"{message}\n\nEdited by Nextcloud AI Assistant."
 		return await nc.ocs('PUT', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments/{comment_id}', json={
-			'message': message,
+			'message': message_with_ai_note,
 		})
 
 	@tool
