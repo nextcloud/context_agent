@@ -177,10 +177,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param offset: pagination offset (default 0)
 		:return: list of comments with id, message, author, and creation date
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments', params={
+		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments', params={
 			'limit': limit,
 			'offset': offset,
-		})
+		}))
 
 	@tool
 	@dangerous_tool
@@ -196,7 +196,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		payload = {'message': message_with_ai_note}
 		if parent_id is not None:
 			payload['parentId'] = parent_id
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments', json=payload)
+		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments', json=payload))
 
 	@tool
 	@dangerous_tool
@@ -209,9 +209,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: the updated comment
 		"""
 		message_with_ai_note = f"{message}\n\nEdited by Nextcloud AI Assistant."
-		return await nc.ocs('PUT', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments/{comment_id}', json={
+		return json.dumps(await nc.ocs('PUT', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments/{comment_id}', json={
 			'message': message_with_ai_note,
-		})
+		}))
 
 	@tool
 	@dangerous_tool
@@ -222,7 +222,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param comment_id: the id of the comment to delete (obtainable with list_card_comments)
 		:return: confirmation of deletion
 		"""
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments/{comment_id}')
+		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments/{comment_id}'))
 
 	return [
 		list_boards,
