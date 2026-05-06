@@ -59,7 +59,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def get_mail_folder_list(account_id: int):
 		"""
-		Lists all mail folders for an account. You need to get the correct account id matching the request first before using this tool. 
+		Lists all mail folders for an email account 
 		:param account_id: The id of the account to list as integer, obtainable via get_mail_account_list
 		"""
 		return await nc.ocs('GET', '/ocs/v2.php/apps/mail/ocs/mailboxes', json={'accountId': account_id})
@@ -69,12 +69,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def list_mails(folder_id: int, n_mails: int = 30):
 		"""
-		Lists all messages in a mailbox folder. You need to get the correct folder id matching the request first before using this tool. 
+		Lists all messages in a mailbox folder
 		:param folder_id: The id of the folder to list as integer, obtainable via get_mail_folder_list
 		:param n_mails: The number of mails to receive. Optional, default is 30
 		:return: a list of mails/messages, including timestamps
 		"""
-		print(await nc.ocs('GET', f'/ocs/v2.php/apps/mail/ocs/mailboxes/{folder_id}/messages', json={'limit': n_mails}))
 		return await nc.ocs('GET', f'/ocs/v2.php/apps/mail/ocs/mailboxes/{folder_id}/messages', json={'limit': n_mails})
 		
 
