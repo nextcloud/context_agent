@@ -90,7 +90,6 @@ def export_conversation(checkpointer):
 	# prepare the to-serialize blob
 	state = {"last_config": last_config, "last_checkpoint": last_checkpoint}
 	serialized_state = JsonPlusSerializer().dumps(state)
-	print(serialized_state)
 	# sign the serialized state
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token
