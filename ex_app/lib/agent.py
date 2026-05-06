@@ -90,7 +90,6 @@ def export_conversation(checkpointer):
 	# prepare the to-serialize blob
 	state = {"last_config": last_config, "last_checkpoint": last_checkpoint}
 	serialized_state = JsonPlusSerializer().dumps(state)
-	print(serialized_state)
 	# sign the serialized state
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token
@@ -139,6 +138,8 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
 		if tool_enabled("find_details_of_current_user"):
 			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location.\n"
+		if tool_enabled("list_mails"):
+			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 
 		if task['input'].get('memories', None) is not None:
 			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
