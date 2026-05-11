@@ -171,7 +171,7 @@ At the end of each message to the user, if you have carried out a task or answer
 				"messages": [
 					ToolMessage(
 						tool_call_id=tool_call["id"],
-						content=f"API call denied by user. Reasoning: '{task['input']['input']}'. Continue assisting, accounting for the user's input.",
+						content=f"API call denied by user. Reasoning: '{task['input']['input']}'. Continue assisting, accounting for the user's input. If the user gave additional instructrions, adapt the tool call.",
 					)
 					for tool_call in state_snapshot.values['messages'][-1].tool_calls
 				]
