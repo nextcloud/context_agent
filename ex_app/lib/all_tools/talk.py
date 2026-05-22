@@ -58,7 +58,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		conversation = {conv.display_name: conv for conv in conversations}[conversation_name]
 		message_with_ai_note = f"{message}\n\nThis message was sent by Nextcloud AI Assistant."
 		await nc.talk.send_message(message_with_ai_note, conversation)
-		return True
+		return "Message sent successfully."
 
 	@tool
 	@safe_tool
@@ -95,9 +95,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: all reactions on the message grouped by emoji
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/reaction/{token}/{message_id}', json={
+		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/reaction/{token}/{message_id}', json={
 			'reaction': reaction,
-		})
+		}))
 
 	@tool
 	@dangerous_tool
@@ -111,9 +111,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: remaining reactions on the message grouped by emoji
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/spreed/api/v1/reaction/{token}/{message_id}', json={
+		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/spreed/api/v1/reaction/{token}/{message_id}', json={
 			'reaction': reaction,
-		})
+		}))
 
 	@tool
 	@safe_tool
@@ -129,7 +129,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		params = {}
 		if reaction is not None:
 			params['reaction'] = reaction
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/reaction/{token}/{message_id}', params=params)
+		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/reaction/{token}/{message_id}', params=params))
 
 	# --- Reply to message ---
 
@@ -147,11 +147,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		token = await _get_token(conversation_name)
 		message_with_ai_note = f"{message}\n\nThis message was sent by Nextcloud AI Assistant."
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/chat/{token}', json={
+		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/chat/{token}', json={
 			'message': message_with_ai_note,
 			'replyTo': message_id,
 			'silent': silent,
-		})
+		}))
 
 	# --- Polls ---
 
@@ -168,12 +168,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: the created poll with its id, question, options, and status
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}', json={
+		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}', json={
 			'question': question,
 			'options': options,
 			'resultMode': result_mode,
 			'maxVotes': max_votes,
-		})
+		}))
 
 	@tool
 	@safe_tool
@@ -185,7 +185,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: poll data including question, options (0-based, e.g. [0] refers to the first option, [2] refers to the third option, etc.), votes, status, and who voted
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}')
+		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}'))
 
 	@tool
 	@dangerous_tool
@@ -199,9 +199,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: updated poll data with vote counts and own votes
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}', json={
+		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}', json={
 			'optionIds': option_ids,
-		})
+		}))
 
 	@tool
 	@dangerous_tool
@@ -214,7 +214,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: final poll data with complete vote counts and details
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}')
+		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}'))
 
 	# --- File sharing ---
 
@@ -238,22 +238,27 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if caption is not None:
 			caption_with_ai_note = f"{caption}\n\nShared by Nextcloud AI Assistant."
 			payload['talkMetaData'] = json.dumps({'caption': caption_with_ai_note})
-		return await nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json=payload)
+		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json=payload))
 
 	@tool
 	@safe_tool
-	async def list_shared_files(conversation_name: str, limit: int = 100):
+	async def list_shared_items(conversation_name: str, object_type: str, limit: int = 100):
 		"""
-		List files that have been shared in a Talk conversation
+		List items of a specific type that have been shared in a Talk conversation.
+		For a grouped overview across all types, use list_shared_items_overview instead.
+		Note: polls have their own dedicated tools (get_poll, vote_on_poll); for polls the
+		dedicated tools are usually more direct than listing them through this one.
 		:param conversation_name: The name of the conversation (obtainable via list_talk_conversations)
+		:param object_type: The kind of shared item to list. One of "file", "media",
+			"audio", "voice", "poll", "location", "deckcard", "recording", "o-talk", "other".
 		:param limit: Maximum number of results (default 100, max 200)
-		:return: list of chat messages containing shared files with file metadata (name, size, mimetype, link)
+		:return: list of chat messages containing shared items of the requested type with their metadata
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/chat/{token}/share', params={
-			'objectType': 'file',
+		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/chat/{token}/share', params={
+			'objectType': object_type,
 			'limit': limit,
-		})
+		}))
 
 	@tool
 	@safe_tool
@@ -265,9 +270,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: shared items grouped by type (audio, file, media, poll, etc.)
 		"""
 		token = await _get_token(conversation_name)
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/chat/{token}/share/overview', params={
+		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/chat/{token}/share/overview', params={
 			'limit': limit,
-		})
+		}))
 
 	return [
 		list_talk_conversations,
@@ -283,7 +288,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		vote_on_poll,
 		close_poll,
 		share_file_to_conversation,
-		list_shared_files,
+		list_shared_items,
 		list_shared_items_overview,
 	]
 
