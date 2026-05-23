@@ -23,7 +23,7 @@ from nc_py_api.ex_app import (
 
 from ex_app.lib.agent import react
 from ex_app.lib.logger import log
-from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
+from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware, MCPAuthHeaderMiddleware
 from ex_app.lib.provider import provider
 from ex_app.lib.tools import get_categories
 
@@ -72,6 +72,7 @@ async def exapp_lifespan(app: FastAPI):
 
 APP = FastAPI(lifespan=lifespan)
 APP.add_middleware(AppAPIAuthMiddleware)  # set global AppAPI authentication middleware
+APP.add_middleware(MCPAuthHeaderMiddleware)  # captures Authorization into ContextVar for FastMCP tasks
 categories=get_categories()
 
 SETTINGS = SettingsForm(
