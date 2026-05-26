@@ -12,13 +12,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@dangerous_tool
-	async def create_assignment(prompt: str, recurrence_rule: str, starts_at: None|str = None):
+	async def create_assignment(title: str, prompt: str, recurrence_rule: str, starts_at: None|str = None):
 		"""
 		Create a recurring assignment for the assistant that will be carried out autonomously.
 		The user will still have to approve sensitive actions.
 		For example, the user could ask to transcribe new files in a certain folder every hour. Then the
 		prompt argument for this tool would be "Transcribe new files in folder /Audio" and the recurrence_rule would be "FREQ=HOURLY".
 		After having created the assignment, let the user know that the assignment will run in a newly created chat session.
+		:param title: A title for the assignment, e.g. "Transcribe audio files" -- This is only for the user's reference and has no effect on the execution of the assignment.
 		:param prompt: The instructions for the AI carrying out the assignment
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the assignment. For example "FREQ=DAILY;INTERVAL=1" to run the assignment every day.
 		:param starts_at: A date time string in ISO 8601 format that defines when the assignment should start. For example "2025-01-01T09:00:00Z". If not provided, the assignment will start immediately.
@@ -26,6 +27,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 
 		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
+			'title': title,
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
 			'startsAt': int(datetime.datetime.fromisoformat(starts_at.replace('Z', '+00:00')).timestamp()) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
