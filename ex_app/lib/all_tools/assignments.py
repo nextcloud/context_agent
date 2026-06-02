@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import datetime
 
+import pytz
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
@@ -12,17 +13,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@dangerous_tool
-	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, starts_at: None|str = None):
+	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, timezone: str|None = None, starts_at: None|str = None):
 		"""
-		Create a recurring Scheduled Task for the assistant that will be carried out autonomously.
+		Create a Scheduled Task for the assistant that will be carried out autonomously.
 		The user will still have to approve sensitive actions.
 		For example, the user could ask to transcribe new files in a certain folder every hour. Then the
 		prompt argument for this tool would be "Transcribe new files in folder /Audio" and the recurrence_rule would be "FREQ=HOURLY".
 		After having created the Scheduled Task, let the user know that the Scheduled Task will run in a newly created chat session.
 		:param title: A title for the Scheduled Task, e.g. "Transcribe audio files" -- This is only for the user's reference and has no effect on the execution of the Scheduled Task.
 		:param prompt: The instructions for the AI carrying out the Scheduled Task
-		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day.
-		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately.
+		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day, an empty string as the recurrence_rule means the task does not repeat.
+		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Make sure to use the user's timezone for this, obtainable with find_details_of_current_user
+		:param timezone: Timezone (e.g., 'America/New_York') defaults to the user's current time zone
 		:return:
 		"""
 
@@ -31,6 +33,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
 			'startsAt': int(datetime.datetime.fromisoformat(starts_at.replace('Z', '+00:00')).timestamp()) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
+			'timezone': pytz.timezone(timezone).zone if timezone is not None else None
 		})
 
 		return True
@@ -39,7 +42,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def list_scheduled_tasks():
 		"""
-		List all recurring assistant Scheduled Tasks by the current user.
+		List all assistant Scheduled Tasks by the current user.
 		:return:
 		"""
 
@@ -47,12 +50,13 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@dangerous_tool
-	async def update_scheduled_task(id: int, prompt: None|str = None, recurrence_rule: None|str = None, starts_at: None|str = None):
+	async def update_scheduled_task(id: int, prompt: None|str = None, recurrence_rule: None|str = None, timezone: str|None = None, starts_at: None|str = None):
 		"""
-		Update a recurring assistant Scheduled Task
+		Update a assistant Scheduled Task
 		:param id: The ID of the Scheduled Task to update, you can obtain this from the list_scheduled_tasks tool
 		:param prompt: The instructions for the AI carrying out the Scheduled Task. Pass `None` to leave this unchanged.
-		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day. Pass `None` to leave this unchanged.
+		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day. An empty string means, it does not repeat. Pass `None` to leave this unchanged.
+		:param timezone A timezone for the scheduled task, set to None to leave this as is.
 		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Pass `None` to leave this unchanged.
 		:return:
 		"""
@@ -61,6 +65,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
 			'startsAt': int(datetime.datetime.fromisoformat(starts_at.replace('Z', '+00:00')).timestamp()) if starts_at is not None else None,
+			'timezone': pytz.timezone(timezone).zone if timezone is not None else None
 		})
 
 	@tool

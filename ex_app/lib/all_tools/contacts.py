@@ -98,7 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def find_details_of_current_user() -> dict[str, typing.Any]:
 		"""
-		Find the current user's personal information
+		Find the current user's personal information, such as name, location, timezone, language
 		:return: a dictionary with the person's personal information
 		"""
 

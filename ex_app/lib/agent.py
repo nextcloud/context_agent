@@ -137,7 +137,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		if tool_enabled("find_person_in_users"):
 			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
 		if tool_enabled("find_details_of_current_user"):
-			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location.\n"
+			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location and timezone.\n"
 		if tool_enabled("list_mails"):
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 
