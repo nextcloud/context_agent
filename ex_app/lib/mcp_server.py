@@ -1,21 +1,19 @@
 # SPDX-FileCopyrightText: 2024 LangChain, Inc.
 # SPDX-License-Identifier: MIT
-import time
 import asyncio
 import inspect
-import logging
+import time
 from contextvars import ContextVar
 from functools import wraps
+from typing import Any, Callable, cast
 
 from fastmcp.server.dependencies import get_context
-from nc_py_api import AsyncNextcloudApp, NextcloudApp
+from nc_py_api import AsyncNextcloudApp
 from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.tools import Tool
 from mcp import types as mt
 from ex_app.lib.tools import get_tools
 import requests
-
-logger = logging.getLogger(__name__)
 
 # ContextVar to propagate the Authorization header into FastMCP background tasks.
 # asyncio.create_task() copies the current context snapshot at task-creation time,
@@ -67,19 +65,7 @@ def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
 
 class UserAuthMiddleware(Middleware):
 	async def on_message(self, context: MiddlewareContext, call_next):
-		# 1. Primary path: read from ContextVar — always works, including inside
-		#    FastMCP background tasks where the Starlette request context is gone.
 		authorization_header = _mcp_auth_header.get()
-
-		# 2. Fallback: try the live request context (works for non-background paths
-		#    and keeps compatibility if the transport behaviour changes).
-		if authorization_header is None:
-			try:
-				authorization_header = (
-					context.fastmcp_context.request_context.request.headers.get("Authorization")
-				)
-			except Exception:
-				pass
 
 		if not authorization_header:
 			raise Exception("Authorization header is missing/invalid")
@@ -105,25 +91,25 @@ class ToolListMiddleware(Middleware):
 	) -> list[Tool]:
 		global LAST_MCP_TOOL_UPDATE
 		nc = context.fastmcp_context.get_state("nextcloud")
-		# Guard: only refresh the tool list when auth succeeded (nc is set) and
-		# the cache has expired. Previously this would crash on every message
-		# type (including `initialize`) because nc was None after auth failures.
-		if nc is not None and LAST_MCP_TOOL_UPDATE + 60 < time.time():
+		if nc is None:
+			return await call_next(context)
+
+		now = time.time()
+		if LAST_MCP_TOOL_UPDATE + 60 < now:
 			safe, dangerous = await get_tools(nc)
 			tools = await self.mcp.get_tools()
-			if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-				for tool in tools.keys():
-					self.mcp.remove_tool(tool)
-				for tool in safe + dangerous:
-					tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
-					if tool_action is None:
-						continue
-					tool_name = getattr(tool, "name", None)
-					if tool_name:
-						self.mcp.tool(name=tool_name)(mcp_tool(tool_action, tool_name=tool_name))
-					else:
-						self.mcp.tool()(mcp_tool(tool_action))
-				LAST_MCP_TOOL_UPDATE = time.time()
+			for tool in tools.keys():
+				self.mcp.remove_tool(tool)
+			for tool in safe + dangerous:
+				tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
+				if tool_action is None:
+					continue
+				tool_name = getattr(tool, "name", None)
+				if tool_name:
+					self.mcp.tool(name=tool_name)(mcp_tool(tool_action, tool_name=tool_name))
+				else:
+					self.mcp.tool()(mcp_tool(tool_action))
+			LAST_MCP_TOOL_UPDATE = now
 		return await call_next(context)
 
 # Regenerates the tools with the correct nc object
@@ -139,6 +125,7 @@ def mcp_tool(tool, tool_name: str | None = None):
 			action = getattr(t, "coroutine", None) or getattr(t, "func", None)
 			if action is None:
 				continue
+			action = cast(Callable[..., Any], action)
 			candidate_name = getattr(t, "name", None) or getattr(action, "__name__", None)
 			if candidate_name == invoked_name:
 				if inspect.iscoroutinefunction(action):
