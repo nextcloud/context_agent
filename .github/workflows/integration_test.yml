@@ -273,7 +273,7 @@ jobs:
         run: |
           tail data/nextcloud.log
 
-      - name: Show context_chat logs
+      - name: Show context_agent logs
         if: always()
         run: |
           [ -f ${{ env.APP_NAME }}/logs ] && cat ${{ env.APP_NAME }}/logs || echo "No context_chat logs"
