@@ -154,7 +154,8 @@ jobs:
           poetry install
 
       - name: Cache llm2 models
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
+        id: cache-llm2-models-restore
         env:
           cache-name: cache-llm2-models
         with:
@@ -173,7 +174,6 @@ jobs:
       - name: Register backend
         run: |
           ./occ app_api:app:register llm2 manual_install --json-info "{\"appid\":\"llm2\",\"name\":\"Local large language model\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.llm2_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9080,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
-
 
       - name: Install context_agent app
         working-directory: ${{ env.APP_NAME }}
@@ -253,6 +253,14 @@ jobs:
           [ "$STATUS" = "200" ]
           echo "$BODY"
           echo "$BODY" | grep -q 'list_calendars'
+  
+      - name: Cache llm2 models
+        uses: actions/cache/save@v5
+        env:
+          cache-name: cache-llm2-models
+        with:
+          path: llm2-persistent_storage/
+          key: ${{ steps.cache-llm2-models-restore.outputs.cache-primary-key }}
 
       - name: Run task
         env:
