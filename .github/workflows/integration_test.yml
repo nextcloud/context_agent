@@ -150,6 +150,7 @@ jobs:
           sudo apt-get update
           sudo apt install pipx
           pipx install poetry
+          mkdir -p ../llm2-persistent_storage
           poetry install
 
       - name: Cache llm2 models
@@ -157,7 +158,7 @@ jobs:
         env:
           cache-name: cache-llm2-models
         with:
-          path: ~/.npm # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: llm2-persistent_storage/
           key: ${{ runner.os }}-llm2-models-${{ env.cache-name }}-${{ hashFiles('llm2/lib/main.py') }}
 
       - name: Init llm2
@@ -167,7 +168,7 @@ jobs:
           APP_PORT: 9080
           APP_VERSION: ${{ fromJson(steps.llm2_appinfo.outputs.result).version }}
         run: |
-          poetry run python3 main.py > ../logs 2>&1 &
+          APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent-storage/" poetry run python3 main.py > ../logs 2>&1 &
 
       - name: Register backend
         run: |
