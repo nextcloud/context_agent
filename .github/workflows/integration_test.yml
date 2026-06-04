@@ -152,6 +152,14 @@ jobs:
           pipx install poetry
           poetry install
 
+      - name: Cache llm2 models
+        uses: actions/cache@v5
+        env:
+          cache-name: cache-llm2-models
+        with:
+          path: ~/.npm # npm cache files are stored in `~/.npm` on Linux/macOS
+          key: ${{ runner.os }}-llm2-models-${{ env.cache-name }}-${{ hashFiles('llm2/lib/main.py') }}
+
       - name: Init llm2
         working-directory: llm2/lib
         env:
