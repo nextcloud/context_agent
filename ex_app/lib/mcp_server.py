@@ -8,6 +8,7 @@ from functools import wraps
 from fastmcp.server.dependencies import get_context
 from nc_py_api import AsyncNextcloudApp, NextcloudApp
 from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
+from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 from mcp import types as mt
 from ex_app.lib.tools import get_tools
@@ -30,7 +31,7 @@ def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
 class UserAuthMiddleware(Middleware):
 	async def on_message(self, context: MiddlewareContext, call_next):
 		# Middleware stores user info in context state
-		authorization_header = context.fastmcp_context.request_context.request.headers.get("Authorization")
+		authorization_header = get_http_headers().get("authorization")
 		if authorization_header is None:
 			raise Exception("Authorization header is missing/invalid")
 		nc = AsyncNextcloudApp()
