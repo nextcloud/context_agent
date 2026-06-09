@@ -70,7 +70,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			response = await nc._session._create_adapter(True).request('REPORT', f"{nc.app_cfg.endpoint}{link}", headers={
 				"Content-Type": "application/xml; charset=utf-8",
 				"Depth": "1",
-			}, content=xml_body)
+			}, data=xml_body)
 
 			if response.status_code != 207:  # Multi-Status
 				raise Exception(f"Error: {response.status_code} - {response.reason_phrase}")

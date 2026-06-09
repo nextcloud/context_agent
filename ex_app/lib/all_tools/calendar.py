@@ -165,7 +165,7 @@ END:VCALENDAR
 																	   headers={
 																		   "Content-Type": "text/calendar; charset=utf-8",
 																		   "Depth": "0",
-																	   }, content=freebusyRequest)
+																	   }, data=freebusyRequest)
 			print(freebusyRequest)
 			print(response.text)
 
