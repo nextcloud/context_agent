@@ -15,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def get_file_content(file_path: str):
 		"""
-		Get the content of a file
+		Get the content of a nextcloud-internal file of the current user
 		:param file_path: the path of the file
 		:return:
 		"""
@@ -33,7 +33,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def get_file_content_by_file_link(file_url: str):
 		"""
 		Get the content of a file given an internal Nextcloud link (e.g., https://host/index.php/f/12345)
-		:param file_url: the internal file URL
+		:param file_url: the nextcloud-internal file URL
 		:return: text content of the file
 		"""
 
