@@ -4,10 +4,13 @@ import json
 import os
 import string
 import random
+from collections.abc import Awaitable, Callable
 from datetime import date
+from time import monotonic
+from typing import Any, cast
 
-from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig, RunnableLambda
+from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage, AIMessageChunk
+from langchain_core.runnables import RunnableConfig
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import persistent_storage
 
@@ -94,7 +97,11 @@ def export_conversation(checkpointer):
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token
 
-async def react(task, nc: AsyncNextcloudApp):
+async def react(
+		task,
+		nc: AsyncNextcloudApp,
+		stream_output: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+):
 	safe_tools, dangerous_tools = await get_tools(nc)
 
 	model.bind_nextcloud(nc)
@@ -183,14 +190,64 @@ At the end of each message to the user, if you have carried out a task or answer
 	else:
 		new_input = {"messages": [("user", task['input']['input'])]}
 
-	async for event in graph.astream(new_input, thread, stream_mode="values"):
+	snapshot_messages = state_snapshot.values.get('messages', [])
+	last_message: AIMessage = AIMessage("")
+	if len(snapshot_messages) > 0:
+		last_message = cast(AIMessage, snapshot_messages[-1])
+	source_list: list[str] = []
+	known_sources: set[str] = set()
+	streamed_output = ''
+	last_stream_update = 0.0
+	last_reported_stream_state: dict[str, Any] | None = None
+	prefer_streaming = bool(task.get('preferStreaming'))
+	stream_mode = ["messages", "values"] if prefer_streaming and stream_output is not None else "values"
+
+	async def report_stream_state(force: bool = False):
+		nonlocal last_stream_update
+		nonlocal last_reported_stream_state
+		if stream_output is None:
+			return
+		stream_state = {'output': streamed_output, 'sources': source_list.copy()}
+		if last_reported_stream_state == stream_state:
+			return
+		now = monotonic()
+		if not force and last_reported_stream_state is not None and (now - last_stream_update) < 0.5:
+			return
+		await stream_output(stream_state)
+		last_stream_update = now
+		last_reported_stream_state = stream_state
+
+	async for event in graph.astream(new_input, thread, stream_mode=stream_mode):
+		if isinstance(event, tuple):
+			mode, payload = event
+		else:
+			mode, payload = "values", event
+
+		if mode == 'messages':
+			message_chunk, metadata = payload
+			if metadata.get('langgraph_node') != 'agent' or not isinstance(message_chunk, AIMessageChunk):
+				continue
+			chunk_content = message_chunk.content
+			if isinstance(chunk_content, str) and chunk_content != '':
+				streamed_output += chunk_content
+				await report_stream_state()
+			continue
+
+		event = payload
 		last_message = event['messages'][-1]
 		for message in event['messages']:
 			if isinstance(message, HumanMessage):
 				source_list = []
+				known_sources = set()
 			if isinstance(message, AIMessage) and message.tool_calls:
 					for tool_call in message.tool_calls:
-						source_list.append(tool_call['name'])
+						tool_name = tool_call['name']
+						if tool_name not in known_sources:
+							known_sources.add(tool_name)
+							source_list.append(tool_name)
+							await report_stream_state(force=True)
+
+	await report_stream_state(force=True)
 
 	state_snapshot = graph.get_state(thread)
 	actions = ''
