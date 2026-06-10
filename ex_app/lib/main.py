@@ -176,7 +176,26 @@ async def handle_task(task, nc: AsyncNextcloudApp):
         nextcloud = AsyncNextcloudApp()
         if task['userId']:
             await nextcloud.set_user(task['userId'])
-        output = await react(task, nextcloud)
+
+        stream_updates_enabled = task.get('preferStreaming', None) is True
+        stream_update_failed = False
+
+        async def stream_output(intermediate_output):
+            nonlocal stream_update_failed
+            if not stream_updates_enabled or stream_update_failed:
+                return
+            try:
+                await nc.ocs(
+                    "POST",
+                    f"/ocs/v2.php/taskprocessing/tasks_provider/{task['id']}/stream-result",
+                    json={"output": intermediate_output},
+                )
+            except (NextcloudException, RequestException) as stream_err:
+                stream_update_failed = True
+                tb_str = ''.join(traceback.format_exception(stream_err))
+                await log(nc, LogLvl.WARNING, "Error streaming intermediate task result: " + tb_str)
+
+        output = await react(task, nextcloud, stream_output=stream_output if stream_updates_enabled else None)
     except Exception as e:  # noqa
         try:
             tb_str = ''.join(traceback.format_exception(e))
