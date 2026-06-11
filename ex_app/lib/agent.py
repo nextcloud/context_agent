@@ -236,9 +236,6 @@ At the end of each message to the user, if you have carried out a task or answer
 		event = payload
 		last_message = event['messages'][-1]
 		for message in event['messages']:
-			if isinstance(message, HumanMessage):
-				source_list = []
-				known_sources = set()
 			if isinstance(message, AIMessage) and message.tool_calls:
 					for tool_call in message.tool_calls:
 						tool_name = tool_call['name']
