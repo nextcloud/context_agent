@@ -37,7 +37,7 @@ class ChatWithNextcloud(BaseChatModel):
 	tools: Sequence[
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
 	TIMEOUT: int = 60 * 30 # 30 minutes
-	MAX_MESSAGE_HISTORY: int = 13
+	MAX_MESSAGE_HISTORY: int = 42
 
 	def _generate(self, messages: list[BaseMessage], stop: Optional[list[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any):
 		raise Exception("Use _agenerate instead")

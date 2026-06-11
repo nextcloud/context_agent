@@ -127,7 +127,7 @@ If you get a link as a tool output, always add the link to your response.
 At the end of each message to the user, if you have carried out a task or answered a question, suggest up to three actions for things you can do for the user based on the tools you have available and details of the previous task. For example: If the user wants to know the weather for some location, they might be planning an event, you can suggest to create an event for them, or if they searched for a file, they may want to share it with others, suggest to create a share link for them, if they want a summary of something, you can suggest them to send the summary to somebody.
 """
 		if tool_enabled("duckduckgo_results_json"):
-			system_prompt_text += "Only use the duckduckgo_results_json tool if the user explicitly asks for a web search.\n"
+			system_prompt_text += "Use the duckduckgo_results_json tool if the user explicitly asks for a web search or you don't know about a topic or concept that the user is referencing.\n"
 		if tool_enabled("list_talk_conversations"):
 			system_prompt_text += "Use the list_talk_conversations tool to check which conversations exist.\n"
 		if tool_enabled("list_calendars"):
@@ -137,11 +137,13 @@ At the end of each message to the user, if you have carried out a task or answer
 		if tool_enabled("find_person_in_users"):
 			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
 		if tool_enabled("find_details_of_current_user"):
-			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location.\n"
+			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location and timezone.\n"
 		if tool_enabled("list_mails"):
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
+		if tool_enabled("web_fetch"):
+			system_prompt_text += "Use the web_fetch tool to fetch web content. You can fetch the complete page content of a duckduckgo search result using web_fetch as well.\n"
 
-		if task['input'].get('memories', None) is not None:
+		if task['input'].get('memories', None) is not None and task['input'].get('memories', None) is not []:
 			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
