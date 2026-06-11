@@ -122,6 +122,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 		selection_options: Optional[str] = None,
 		selection_default: Optional[str] = None,
 		datetime_default: Optional[str] = None,
+		usergroup_default: Optional[str] = None,
+		usergroup_multiple_items: Optional[bool] = None,
+		usergroup_select_users: Optional[bool] = None,
+		usergroup_select_groups: Optional[bool] = None,
+		usergroup_select_teams: Optional[bool] = None,
+		usergroup_show_user_status: Optional[bool] = None,
 	):
 		"""
 		Create a new column in a table.
@@ -138,6 +144,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 		- text columns: text_default, text_max_length
 		- selection columns: selection_options (JSON string, e.g. '[{"id": 1, "label": "Option A"}]'), selection_default
 		- datetime columns: datetime_default (ISO 8601 format)
+		- usergroup columns: set usergroup_select_users / usergroup_select_groups / usergroup_select_teams
+		  to True for each entity type the Tables UI should offer in its picker (these are UI hints
+		  only — the API itself does NOT enforce them on row writes). usergroup_multiple_items
+		  controls whether the UI allows > 1 entry per cell (also UI-only, not server-enforced).
+		  usergroup_default is a JSON string matching the row-value shape (defaults to empty).
+		  usergroup_show_user_status toggles whether the UI renders an online/away dot (cosmetic).
+		  Send all four boolean flags explicitly when creating a usergroup column — leaving them
+		  at their None default produces a column the Tables UI treats as misconfigured.
 
 		:param table_id: the id of the table (obtainable with list_tables)
 		:param title: the column title
@@ -179,6 +193,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 			payload['selectionDefault'] = selection_default
 		if datetime_default is not None:
 			payload['datetimeDefault'] = datetime_default
+		if usergroup_default is not None:
+			payload['usergroupDefault'] = usergroup_default
+		if usergroup_multiple_items is not None:
+			payload['usergroupMultipleItems'] = usergroup_multiple_items
+		if usergroup_select_users is not None:
+			payload['usergroupSelectUsers'] = usergroup_select_users
+		if usergroup_select_groups is not None:
+			payload['usergroupSelectGroups'] = usergroup_select_groups
+		if usergroup_select_teams is not None:
+			payload['usergroupSelectTeams'] = usergroup_select_teams
+		if usergroup_show_user_status is not None:
+			payload['usergroupShowUserStatus'] = usergroup_show_user_status
 		response = await nc._session._create_adapter().request(
 			'POST', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}/columns",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
@@ -193,9 +219,25 @@ async def get_tools(nc: AsyncNextcloudApp):
 		title: Optional[str] = None,
 		mandatory: Optional[bool] = None,
 		description: Optional[str] = None,
+		usergroup_default: Optional[str] = None,
+		usergroup_multiple_items: Optional[bool] = None,
+		usergroup_select_users: Optional[bool] = None,
+		usergroup_select_groups: Optional[bool] = None,
+		usergroup_select_teams: Optional[bool] = None,
+		usergroup_show_user_status: Optional[bool] = None,
 	):
 		"""
-		Update a column's properties
+		Update a column's properties.
+
+		For usergroup columns, the same six usergroup_* flags accepted by create_column may
+		be updated here (e.g. to widen which entity types the UI picker accepts, or to flip
+		multi-select on/off). All flags remain UI hints — see create_column for details.
+
+		IMPORTANT: The Tables API resets any usergroup flag NOT included in this request to
+		null. To preserve existing usergroup configuration while changing one flag, call
+		list_columns first and re-send every usergroup_* flag that should keep its current
+		value alongside the one(s) you want to change.
+
 		:param column_id: the id of the column to update (obtainable with list_columns)
 		:param title: new title for the column
 		:param mandatory: whether this column is required
@@ -209,6 +251,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 			payload['mandatory'] = mandatory
 		if description is not None:
 			payload['description'] = description
+		if usergroup_default is not None:
+			payload['usergroupDefault'] = usergroup_default
+		if usergroup_multiple_items is not None:
+			payload['usergroupMultipleItems'] = usergroup_multiple_items
+		if usergroup_select_users is not None:
+			payload['usergroupSelectUsers'] = usergroup_select_users
+		if usergroup_select_groups is not None:
+			payload['usergroupSelectGroups'] = usergroup_select_groups
+		if usergroup_select_teams is not None:
+			payload['usergroupSelectTeams'] = usergroup_select_teams
+		if usergroup_show_user_status is not None:
+			payload['usergroupShowUserStatus'] = usergroup_show_user_status
 		response = await nc._session._create_adapter().request(
 			'PUT', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/columns/{column_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
@@ -263,6 +317,19 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Create a new row in a table.
 		The data parameter must be a JSON object mapping column IDs to their values.
 		Use list_columns first to find the column IDs for the target table.
+
+		For usergroup columns, the value MUST be a JSON array of objects, each with keys
+		`id` (string) and `type` (integer). Even for single-select columns
+		(usergroupMultipleItems=false) a one-element array is required; an empty array []
+		clears the cell. `type` is: 0 = user, 1 = group, 2 = team (Circle). No other integers
+		are valid — values like type:7 are silently persisted but no Tables UI renders them.
+		For type=0, `id` is the bare NC user_id (e.g. "alice"). For type=1, `id` is the
+		group_id (e.g. "developers"). For type=2, `id` is the team's `singleId` — a 31-char
+		string from the Circles app (e.g. "X4m8PoyzRrfxMcN6EqbTTAGSES7doAO"), NOT the team's
+		display name. Display names are not resolved by the server. Example for a usergroup
+		column with id 5 containing user `alice` and group `developers`:
+		'{"5": [{"id": "alice", "type": 0}, {"id": "developers", "type": 1}]}'
+
 		:param table_id: the id of the table (obtainable with list_tables)
 		:param data: JSON object mapping column IDs to values, e.g. '{"1": "some text", "2": 42, "3": "2026-01-15"}'
 		:return: the created row
@@ -282,6 +349,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Update an existing row's data.
 		The data parameter must be a JSON object mapping column IDs to their new values.
 		Only include columns you want to change.
+
+		For usergroup columns, the value MUST be a JSON array of objects with keys `id`
+		(string) and `type` (integer): 0 = user, 1 = group, 2 = team (Circle). An empty
+		array [] clears the cell. Other type integers are silently persisted but unusable.
+		For type=2 the `id` is the team's `singleId` (31-char string from the Circles app),
+		not the team's display name. Example updating column id 5 to a single user:
+		'{"5": [{"id": "alice", "type": 0}]}'
+
 		:param row_id: the id of the row to update (obtainable with list_rows)
 		:param data: JSON object mapping column IDs to new values, e.g. '{"1": "updated text", "3": "2026-02-20"}'
 		:param view_id: optional view id for permission context
