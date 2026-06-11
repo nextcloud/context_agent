@@ -150,7 +150,17 @@ jobs:
           sudo apt-get update
           sudo apt install pipx
           pipx install poetry
+          mkdir -p ../llm2-persistent_storage
           poetry install
+
+      - name: Cache llm2 models
+        uses: actions/cache/restore@v5
+        id: cache-llm2-models-restore
+        env:
+          cache-name: cache-llm2-models
+        with:
+          path: llm2-persistent_storage/
+          key: ${{ runner.os }}-llm2-models-${{ env.cache-name }}-${{ hashFiles('llm2/lib/main.py') }}
 
       - name: Init llm2
         working-directory: llm2/lib
@@ -159,12 +169,11 @@ jobs:
           APP_PORT: 9080
           APP_VERSION: ${{ fromJson(steps.llm2_appinfo.outputs.result).version }}
         run: |
-          poetry run python3 main.py > ../logs 2>&1 &
+          APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent-storage/" poetry run python3 main.py > ../logs 2>&1 &
 
       - name: Register backend
         run: |
           ./occ app_api:app:register llm2 manual_install --json-info "{\"appid\":\"llm2\",\"name\":\"Local large language model\",\"daemon_config_name\":\"manual_install\",\"version\":\"${{ fromJson(steps.llm2_appinfo.outputs.result).version }}\",\"secret\":\"12345\",\"port\":9080,\"scopes\":[\"AI_PROVIDERS\", \"TASK_PROCESSING\"],\"system_app\":0}" --force-scopes --wait-finish
-
 
       - name: Install context_agent app
         working-directory: ${{ env.APP_NAME }}
@@ -244,6 +253,14 @@ jobs:
           [ "$STATUS" = "200" ]
           echo "$BODY"
           echo "$BODY" | grep -q 'list_calendars'
+  
+      - name: Cache llm2 models
+        uses: actions/cache/save@v5
+        env:
+          cache-name: cache-llm2-models
+        with:
+          path: llm2-persistent_storage/
+          key: ${{ steps.cache-llm2-models-restore.outputs.cache-primary-key }}
 
       - name: Run task
         env:
@@ -273,7 +290,7 @@ jobs:
         run: |
           tail data/nextcloud.log
 
-      - name: Show context_chat logs
+      - name: Show context_agent logs
         if: always()
         run: |
           [ -f ${{ env.APP_NAME }}/logs ] && cat ${{ env.APP_NAME }}/logs || echo "No context_chat logs"
