@@ -207,7 +207,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		nonlocal last_reported_stream_state
 		if stream_output is None:
 			return
-		stream_state = {'output': streamed_output, 'sources': source_list.copy()}
+		stream_state = {'output': streamed_output, 'sources': json.dumps(source_list.copy())}
 		if last_reported_stream_state == stream_state:
 			return
 		now = monotonic()
