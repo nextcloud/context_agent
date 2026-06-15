@@ -285,6 +285,42 @@ jobs:
           echo $TASK | jq '.ocs.data.task.output.sources'
           echo $TASK | jq '.ocs.data.task.output.sources' | grep -q 'get_folder_tree'
 
+      - name: Run streaming task
+        if: ${{ matrix.server-versions == 'master' }}
+        env:
+          CREDS: "alice:alice"
+        run: |
+          TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" \
+            "http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json" \
+            --data-raw '{"input": {"input": "Count to 500", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": "", "preferStreaming": true}')
+          echo "$TASK"
+          TASK_ID=$(echo "$TASK" | jq '.ocs.data.task.id')
+
+          STREAMING_OBSERVED=0
+          ELAPSED=0
+          TASK_STATUS='"STATUS_SCHEDULED"'
+
+          until [ "$ELAPSED" -ge 80 ] || [ "$TASK_STATUS" = '"STATUS_SUCCESSFUL"' ] || [ "$TASK_STATUS" = '"STATUS_FAILED"' ]; do
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+            TASK=$(curl -u "$CREDS" -H "oCS-APIRequest: true" "http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json")
+            echo "$TASK"
+            TASK_STATUS=$(echo "$TASK" | jq '.ocs.data.task.status')
+            echo "Status: $TASK_STATUS"
+
+            if [ "$TASK_STATUS" = '"STATUS_RUNNING"' ]; then
+              TASK_OUTPUT=$(echo "$TASK" | jq -r '.ocs.data.task.output.output // empty')
+              if [ -n "$TASK_OUTPUT" ]; then
+                echo "Streaming update observed: $TASK_OUTPUT"
+                STREAMING_OBSERVED=1
+              fi
+            fi
+          done
+
+          curl -u "$CREDS" -H "oCS-APIRequest: true" "http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json"
+          [ "$TASK_STATUS" = '"STATUS_SUCCESSFUL"' ]
+          [ "$STREAMING_OBSERVED" -eq 1 ]
+
       - name: Show nextcloud logs
         if: always()
         run: |
