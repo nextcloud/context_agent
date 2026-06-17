@@ -194,6 +194,7 @@ At the end of each message to the user, if you have carried out a task or answer
 	last_message: AIMessage = AIMessage("")
 	if len(snapshot_messages) > 0:
 		last_message = cast(AIMessage, snapshot_messages[-1])
+	previous_message_count = len(snapshot_messages)
 	source_list: list[str] = []
 	known_sources: set[str] = set()
 	streamed_output = ''
@@ -235,7 +236,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		event = payload
 		last_message = event['messages'][-1]
-		for message in event['messages']:
+		for message in event['messages'][previous_message_count:]:
 			if isinstance(message, AIMessage) and message.tool_calls:
 					for tool_call in message.tool_calls:
 						tool_name = tool_call['name']
