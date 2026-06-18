@@ -88,13 +88,6 @@ async def __is_context_chat_available(nc: AsyncNextcloudApp):
 	return CONTEXT_CHAT_SEARCH_TASK_TYPE in tasktypes
 
 
-async def __get_user_id(nc: AsyncNextcloudApp):
-	user_obj = await nc.ocs('GET', '/ocs/v2.php/cloud/user')
-	if 'id' not in user_obj:
-		raise RuntimeError('User ID not found in the user object')
-	return user_obj['id']
-
-
 def __validate_memory_path(path: str, *, allow_folder_path: bool = False) -> tuple[str, str]:
 	"""returns tuple[full_path, memories_scoped_path]"""
 	if not path:
@@ -178,19 +171,13 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def list_memory_tree(depth: int = 2):
 		"""
 		Recursively list the memories stored in a file tree structure. Max depth is 2.
-		:return: All the memory folders and filenames at the given depth in the following form:
+		:return: All the memory folders and filenames at the given depth as a newline-separated list of paths, e.g.:
 
-			```json
-			[
-				{"id": 42, "name": "work", "children": [
-					{"id": 43, "name": "todo.md", "children": null},
-					{"id": 44, "name": "projects", "children": [
-						{"id": 45, "name": "alpha.md", "children": null}
-					]},
-					{"id": 46, "name": "issues", "children": []
-				]},
-				{"id": 50, "name": "notes.md", "children": null}
-			]
+			```
+			/work/career_plans.md
+			/work/projects/alpha_project.md
+			/personal/hobbies
+			/general_notes.md
 			```
 		"""
 
@@ -202,39 +189,20 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		prefix = MEMORY_FOLDER_PATH.rstrip('/') + '/'
 
-		# Build a lookup of scoped_path -> node dict
-		nodes_by_path: dict[str, dict] = {}
+		paths = []
 		for node in fsnode_list:
 			scoped = node.user_path.removeprefix(prefix).rstrip('/')
 			if not scoped:
 				continue  # skip the root memories folder itself
-			nodes_by_path[scoped] = {
-				'id': node.info.fileid,
-				'name': node.name,
-				'children': [] if node.is_dir else None,
-			}
+			paths.append('/' + scoped)
 
-		# Wire up parent-child relationships
-		roots = []
-		for scoped, node_dict in nodes_by_path.items():
-			parent_path = scoped.rsplit('/', 1)[0] if '/' in scoped else None
-			if parent_path and parent_path in nodes_by_path:
-				nodes_by_path[parent_path]['children'].append(node_dict)
-			else:
-				roots.append(node_dict)
-
-		return roots
+		return '\n'.join(paths)
 
 	@tool
 	@safe_tool
 	async def load_memory(path: str):
 		"""
 		Load one particular memory from the memory store identified by full path.
-		Memory is structured like a file system consisting of markdown files with a max depth of 2.
-		The memory files are encouraged to be stored in a structed pattern so they are easy to find
-			later on with folders and subfolders calassifying them based on the subject matter, and
-			the file/memory names indicating the contents of the memory.
-		Examples of memory paths would be "/abc/xyz.md", "/abc/def/xyz.md", "/xyz.md".
 		:param path: The full file path of the memory separated by and started with a forward slash (/), and the file name should end in either .md or .markdown
 		:return: The requested memory text
 		"""
@@ -247,7 +215,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return {'error': 'Invalid memory path given'}
 
 		# let the user-scoped request errors reach the agent, although it leaks the full path of the memory
-		user_id = await __get_user_id(nc)
+		user_id = await nc.user
 		response = await nc._session._create_adapter(True).request(
 			'GET',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
@@ -262,10 +230,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Stores a complete memory file overwriting it if it already exists.
 		This can also be used for editing memories but the full content of the memory must be passed.
 		Memory is structured like a file system consisting of markdown files with a max depth of 2.
-		The memory files are encouraged to be stored in a structed pattern so they are easy to find
-			later on with folders and subfolders calassifying them based on the subject matter, and
+		The memory files are encouraged to be stored in a structured pattern so they are easy to find
+			later on with folders and subfolders classifying them based on the subject matter, and
 			the file/memory names indicating the contents of the memory.
-		Examples of memory paths would be "/abc/xyz.md", "/abc/def/xyz.md", "/xyz.md".
+		Good examples: "/work/career_plans.md", "/work/projects/alpha_project.md", "/personal/hobbies/reading_list.md", "/general_notes.md".
+		Use lowercase names with underscores. Folder names should be broad categories (e.g. "work", "personal", "health").
 		:param path: The full file path of the memory separated by and started with a forward slash (/), and the file name should end in either .md or .markdown
 		:param content: The text content to store in the memory file.
 		:return: Status of the operation.
@@ -278,7 +247,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
-		user_id = await __get_user_id(nc)
+		user_id = await nc.user
 		adapter = nc._session._create_adapter(True)
 
 		# Ensure all parent folders exist
@@ -297,11 +266,6 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def delete_memory(path: str):
 		"""
 		Deletes a particular memory file identified by a full file/memory path.
-		Memory is structured like a file system consisting of markdown files with a max depth of 2.
-		The memory files are encouraged to be stored in a structed pattern so they are easy to find
-			later on with folders and subfolders calassifying them based on the subject matter, and
-			the file/memory names indicating the contents of the memory.
-		Examples of memory paths would be "/abc/xyz.md", "/abc/def/xyz.md", "/xyz.md".
 		:param path: The full file path of the memory separated by and started with a forward slash (/), and the file name should end in either .md or .markdown
 		:return: Status of the deletion operation.
 		"""
@@ -319,7 +283,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
-		user_id = await __get_user_id(nc)
+		user_id = await nc.user
 		await nc._session._create_adapter(True).request(
 			'DELETE',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
@@ -330,11 +294,6 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def delete_memory_folder(path: str):
 		"""
 		Deletes the whole folder of memories by a full path.
-		Memory is structured like a file system consisting of markdown files with a max depth of 2.
-		The memory files are encouraged to be stored in a structed pattern so they are easy to find
-			later on with folders and subfolders calassifying them based on the subject matter, and
-			the file/memory names indicating the contents of the memory.
-		Examples of memory folder paths would be "/abc" and "/abc/def.
 		:param path: The full path of the folder separated by and started with a forward slash (/).
 		:return: Status of the deletion operation.
 		"""
@@ -346,7 +305,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
-		user_id = await __get_user_id(nc)
+		user_id = await nc.user
 		await nc._session._create_adapter(True).request(
 			'DELETE',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
@@ -355,12 +314,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@safe_tool
-	async def search_memories(query: str, k: int = 5) -> list[str]:
+	async def search_memories(query: str, k: int = 5) -> list[dict[str, str]]:
 		"""
 		Do a semantic search over the contents of all the stored memories.
 		:param query: The subject matter to search for
 		:param k: No. of memories to return. Max 10 memories can be requested.
-		:return: Top k matched memories
+		:return: Top k matched memories and their paths
 		"""
 
 		files_handle = AsyncFilesAPI(nc._session)
@@ -382,12 +341,23 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if sources_list.sources == []:
 			raise RuntimeError('No memories found with the given query')
 
-		async def fetch(file_id: int) -> str:
+		prefix = MEMORY_FOLDER_PATH.rstrip('/') + '/'
+
+		async def fetch(file_id: int) -> dict[str, str]:
+			"""
+			:return: {'path': string, 'content: string}
+			"""
 			fsnode = await files_handle.by_id(file_id)
+			filepath = '/' + fsnode.user_path.removeprefix(prefix).rstrip('/')
+
 			if fsnode is None:
 				log(nc, logging.WARNING, f'Could not fetch file by id: {file_id}')
-				return ''
-			return (await files_handle.download(fsnode)).decode(errors='replace')
+				return {'path': filepath, 'content': ''}
+
+			return {
+				'path': filepath,
+				'content': (await files_handle.download(fsnode)).decode(errors='replace'),
+			}
 
 		return await asyncio.gather(*[fetch(source.file_id) for source in sources_list.sources])
 
