@@ -10,6 +10,7 @@ from urllib.parse import quote, unquote
 import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
+from nc_py_api._exceptions import NextcloudExceptionNotFound
 from nc_py_api.files.files_async import AsyncFilesAPI
 from pydantic import BaseModel, ValidationError, computed_field, field_validator
 
@@ -22,7 +23,7 @@ from ex_app.lib.logger import log
 
 CONTEXT_CHAT_SEARCH_TASK_TYPE = 'context_chat:context_chat_search'
 FILES_PROVIDER_ID = 'files__default'
-MEMORY_FOLDER_PATH = 'Assistant/Context Agent/Memories'  # inside the user's Nextcloud home mount
+MEMORIES_RELATIVE_FOLDER_PATH = 'Context Agent/Memories'  # inside the user's Assistant folder
 MAX_MEMORY_FOLDER_DEPTH = 2
 
 
@@ -69,26 +70,12 @@ class SourcesList(BaseModel):
 		return result
 
 
-# async def __get_file_content(nc: AsyncNextcloudApp, file_id: int):
-# 	# Generate a direct download link using the fileId
-# 	info = await nc.ocs('POST', '/ocs/v2.php/apps/dav/api/v1/direct', json={'fileId': file_id}, response_type='json')
-# 	download_url = info.get('ocs', {}).get('data', {}).get('url', None)
-
-# 	if not download_url:
-# 		raise RuntimeError('Could not generate download URL from file id')
-
-# 	# Download the file from the direct download URL
-# 	response = await niquests.async_api.get(download_url)
-
-# 	return response.text
-
-
-async def __is_context_chat_available(nc: AsyncNextcloudApp):
+async def __is_context_chat_available(nc: AsyncNextcloudApp, memories_folder_path: str):
 	tasktypes = (await nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes'))['types'].keys()
 	return CONTEXT_CHAT_SEARCH_TASK_TYPE in tasktypes
 
 
-def __validate_memory_path(path: str, *, allow_folder_path: bool = False) -> tuple[str, str]:
+def __validate_memory_path(path: str, memories_folder_path: str, *, allow_folder_path: bool = False) -> tuple[str, str]:
 	"""returns tuple[full_path, memories_scoped_path]"""
 	if not path:
 		raise AgentFacingError('Memory path cannot be empty')
@@ -111,22 +98,22 @@ def __validate_memory_path(path: str, *, allow_folder_path: bool = False) -> tup
 		raise AgentFacingError(f'Memory path exceeds maximum depth of {MAX_MEMORY_FOLDER_DEPTH}')
 
 	# resolve the full absolute path and verify it stays within the memory folder
-	full_path = os.path.normpath(os.path.join(MEMORY_FOLDER_PATH, decoded.lstrip('/')))
+	full_path = os.path.normpath(os.path.join(memories_folder_path, decoded.lstrip('/')))
 
-	if not full_path.startswith(MEMORY_FOLDER_PATH):
+	if not full_path.startswith(memories_folder_path):
 		raise RuntimeError('Agent tried to access directories beyond the memories folder')
 
 	# url-safe path
 	return (quote(full_path, safe='/'), decoded.lstrip('/'))
 
 
-async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquests.AsyncSession, user_id: str, scoped_path: str):
+async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquests.AsyncSession, memories_folder_path: str, user_id: str, scoped_path: str):
 	"""
 	Ensures all necessary folders exist for the given scoped_path (relative to the user's DAV root).
 	First checks and recursively creates the base memories folder, then checks and creates
 	any subfolders within it derived from scoped_path (excluding the filename).
 	"""
-	base_memories_path = quote(MEMORY_FOLDER_PATH, safe='/')
+	base_memories_path = quote(memories_folder_path, safe='/')
 
 	# Ensure base memories folder exists
 	propfind = await adapter.request(
@@ -148,7 +135,7 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 	if not scoped_folder_parts:
 		return  # file is in the memories root, no subfolder needed
 
-	full_subfolder_path = quote(f"{MEMORY_FOLDER_PATH}/{'/'.join(scoped_folder_parts)}", safe='/')
+	full_subfolder_path = quote(f"{memories_folder_path}/{'/'.join(scoped_folder_parts)}", safe='/')
 	propfind = await adapter.request(
 		'PROPFIND',
 		f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_subfolder_path}",
@@ -164,7 +151,36 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 				raise RuntimeError(f'Failed to create memory subfolder {folder_path}: {r.status_code}')
 
 
+async def __get_assistant_folder_path(nc: AsyncNextcloudApp) -> str | None:
+	try:
+		res = await nc.ocs(
+			'GET',
+			'/ocs/v2.php/apps/assistant/api/v1/assistant-folder-path',
+			response_type='json',
+		)
+	except NextcloudExceptionNotFound:
+		return None
+	except Exception as e:
+		await log(
+			nc,
+			logging.WARNING,
+			f"Failed to fetch Assistant's folder in user's home dir, user: {await nc.user}, exc: {e}",
+		)
+		return None
+
+	# /<userId>/files/Assistant
+	folder_path = res.get('ocs', {}).get('data', {}).get('path')
+
+	if not folder_path or not isinstance(folder_path, str):
+		return None
+
+	return folder_path.removeprefix(f'/{await nc.user}/files/')
+
+
 async def get_tools(nc: AsyncNextcloudApp):
+	assistant_folder_path = await __get_assistant_folder_path(nc)
+	memories_folder_path = f'{(assistant_folder_path or "").removesuffix("/")}/{MEMORIES_RELATIVE_FOLDER_PATH}'
+
 
 	@tool
 	@safe_tool
@@ -183,11 +199,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		files_handle = AsyncFilesAPI(nc._session)
 		fsnode_list = await files_handle.listdir(
-			path=MEMORY_FOLDER_PATH,
+			path=memories_folder_path,
 			depth=min(depth, MAX_MEMORY_FOLDER_DEPTH),
 		)
 
-		prefix = MEMORY_FOLDER_PATH.rstrip('/') + '/'
+		prefix = memories_folder_path.rstrip('/') + '/'
 
 		paths = []
 		for node in fsnode_list:
@@ -207,11 +223,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: The requested memory text
 		"""
 		try:
-			full_path, _ = __validate_memory_path(path)
+			full_path, _ = __validate_memory_path(path, memories_folder_path)
 		except AgentFacingError as e:
 			return {'error': str(e)}
 		except Exception as e:
-			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
+			await log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
 		# let the user-scoped request errors reach the agent, although it leaks the full path of the memory
@@ -240,18 +256,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: Status of the operation.
 		"""
 		try:
-			full_path, scoped_path = __validate_memory_path(path)
+			full_path, scoped_path = __validate_memory_path(path, memories_folder_path)
 		except AgentFacingError as e:
 			return {'error': str(e)}
 		except Exception as e:
-			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
+			await log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
 		user_id = await nc.user
 		adapter = nc._session._create_adapter(True)
 
 		# Ensure all parent folders exist
-		await __create_folders_if_not_exists(nc, adapter, user_id, scoped_path)
+		await __create_folders_if_not_exists(nc, adapter, memories_folder_path, user_id, scoped_path)
 
 		response = await adapter.request(
 			'PUT',
@@ -276,11 +292,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 			)}
 
 		try:
-			full_path, _ = __validate_memory_path(path)
+			full_path, _ = __validate_memory_path(path, memories_folder_path)
 		except AgentFacingError as e:
 			return {'error': str(e)}
 		except Exception as e:
-			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
+			await log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
 		user_id = await nc.user
@@ -298,11 +314,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: Status of the deletion operation.
 		"""
 		try:
-			full_path, _ = __validate_memory_path(path, allow_folder_path=True)
+			full_path, _ = __validate_memory_path(path, memories_folder_path, allow_folder_path=True)
 		except AgentFacingError as e:
 			return {'error': str(e)}
 		except Exception as e:
-			log(nc, logging.ERROR, f'Memory path validation failed: {e}')
+			await log(nc, logging.ERROR, f'Memory path validation failed: {e}')
 			return {'error': 'Invalid memory path given'}
 
 		user_id = await nc.user
@@ -322,8 +338,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: Top k matched memories and their paths
 		"""
 
+		if query == '':
+			raise RuntimeError('Query must not be empty')
+
 		files_handle = AsyncFilesAPI(nc._session)
-		memories_folder_fsnode = await files_handle.by_path(MEMORY_FOLDER_PATH)
+		memories_folder_fsnode = await files_handle.by_path(memories_folder_path)
 
 		task_input = {
 			'prompt': query,
@@ -341,7 +360,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if sources_list.sources == []:
 			raise RuntimeError('No memories found with the given query')
 
-		prefix = MEMORY_FOLDER_PATH.rstrip('/') + '/'
+		prefix = memories_folder_path.rstrip('/') + '/'
 
 		async def fetch(file_id: int) -> dict[str, str]:
 			"""
@@ -351,7 +370,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			filepath = '/' + fsnode.user_path.removeprefix(prefix).rstrip('/')
 
 			if fsnode is None:
-				log(nc, logging.WARNING, f'Could not fetch file by id: {file_id}')
+				await log(nc, logging.WARNING, f'Could not fetch file by id: {file_id}')
 				return {'path': filepath, 'content': ''}
 
 			return {
@@ -362,12 +381,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await asyncio.gather(*[fetch(source.file_id) for source in sources_list.sources])
 
 	return [
-		list_memory_tree,
-		load_memory,
-		store_memory,
-		delete_memory,
-		delete_memory_folder,
-		*([search_memories] if await __is_context_chat_available(nc) else []),
+		*([
+			list_memory_tree,
+			load_memory,
+			store_memory,
+			delete_memory,
+			delete_memory_folder,
+			*([search_memories] if await __is_context_chat_available(nc, memories_folder_path) else []),
+		] if assistant_folder_path else []),
 	]
 
 
