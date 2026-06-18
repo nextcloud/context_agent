@@ -41,6 +41,8 @@ class ChatWithNextcloud(BaseChatModel):
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
 	TIMEOUT: int = 60 * 30 # 30 minutes
 	MAX_MESSAGE_HISTORY: int = 42
+	TOOL_OUTPUT_TRUNCATE_AFTER: int = 10
+	TOOL_OUTPUT_MAX_LENGTH: int = 2000
 	POLL_WAIT_TIME: int = 5
 	STREAMING_POLL_WAIT_TIME: int = 1
 
@@ -54,8 +56,19 @@ class ChatWithNextcloud(BaseChatModel):
 			task_input['system_prompt'] = messages[0].content
 			messages = messages[1:]
 
-		# Impose a history limit to avoid the token intake exploding
-		messages = messages[-self.MAX_MESSAGE_HISTORY:]
+		# Impose a history limit on non-tool messages to avoid token intake exploding.
+		# Tool messages don't count toward the limit so tool_call/tool_result pairs
+		# stay intact even in tool-heavy conversations.
+		non_tool_count = 0
+		cutoff_idx = 0
+		# idx=0 is the first message, idx=len-1 is the most recent, so we walk backward
+		for i in range(len(messages) - 1, -1, -1):
+			if messages[i].type != 'tool':
+				non_tool_count += 1
+				if non_tool_count > self.MAX_MESSAGE_HISTORY:
+					cutoff_idx = i + 1
+					break
+		messages = messages[cutoff_idx:]
 
 		# first message cannot be a tool message
 		while len(messages) > 0 and messages[0].type == 'tool':
@@ -78,10 +91,14 @@ class ChatWithNextcloud(BaseChatModel):
 				else:
 					task_input['input'] = message.content
 			elif message.type == 'tool':
+				content = message.content
+				age = len(messages) - 1 - i
+				if age > self.TOOL_OUTPUT_TRUNCATE_AFTER and isinstance(content, str) and len(content) > self.TOOL_OUTPUT_MAX_LENGTH:
+					content = content[:self.TOOL_OUTPUT_MAX_LENGTH] + "…[truncated]"
 				if len(messages)-1 != i:
-					history.append(json.dumps({"role": "tool", "content": message.content, "name": message.name, "tool_call_id": message.tool_call_id}))
+					history.append(json.dumps({"role": "tool", "content": content, "name": message.name, "tool_call_id": message.tool_call_id}))
 				else:
-					task_input['tool_message'].append({"name": message.name, "content": message.content, "tool_call_id": message.tool_call_id})
+					task_input['tool_message'].append({"name": message.name, "content": content, "tool_call_id": message.tool_call_id})
 			else:
 				print(message)
 				raise Exception("Message type not found")
