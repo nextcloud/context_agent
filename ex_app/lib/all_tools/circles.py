@@ -17,13 +17,13 @@ TYPE_APP = 10000
 
 
 def _validate_circle_id(circle_id: str) -> str:
-	if not isinstance(circle_id, str) or '/' in circle_id or '\\' in circle_id:
+	if '/' in circle_id or '\\' in circle_id:
 		raise ValueError(f'Invalid circle id: {circle_id!r}')
 	return circle_id
 
 
 def _validate_member_id(member_id: str) -> str:
-	if not isinstance(member_id, str) or '/' in member_id or '\\' in member_id:
+	if '/' in member_id or '\\' in member_id:
 		raise ValueError(f'Invalid member id: {member_id!r}')
 	return member_id
 
