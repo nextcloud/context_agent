@@ -36,8 +36,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param search_term: text to search for in recipe names and descriptions
 		:return: list of matching recipes
 		"""
-		encoded_search_term = urllib.parse.quote(search_term, safe='')
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/search/{encoded_search_term}", headers={
+		if '/' in search_term or '\\' in search_term:
+			raise ValueError("Search term cannot contain slashes.")
+		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/search/{search_term}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
