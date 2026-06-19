@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
-import niquests
+from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
+from ex_app.lib.all_tools.lib.decorator import dangerous_tool, safe_tool
 from ex_app.lib.all_tools.lib.files import get_file_id_from_file_url
-
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -50,16 +50,59 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		return response.text
 
+	def __format_fs_node(fsnode: FsNode) -> dict:
+		# todo: permissions info
+		return {
+			'path': fsnode.user_path,
+			'file_id': fsnode.info.fileid,
+			'etag': fsnode.etag.replace('"', '').replace("'", ''),
+			'bytes': fsnode.info.size,
+			'creation_date': fsnode.info.creation_date.isoformat(),
+			'last_modified': fsnode.info.last_modified.isoformat(),
+			'mimetype': fsnode.info.mimetype,
+			'is_shared': fsnode.is_shared,
+			'is_favourite': fsnode.info.favorite,
+			'is_version': fsnode.info.is_version,
+			'trash_info': {
+				'in_trash': fsnode.info.in_trash,
+				**({
+					'trashbin_filename': fsnode.info.trashbin_filename,
+					'original_location': fsnode.info.trashbin_original_location,
+					'deletion_time': fsnode.info.trashbin_deletion_time,
+				} if fsnode.info.in_trash else {}),
+			},
+			'lock_info': {
+				'is_locked': fsnode.lock_info.is_locked,
+				**({
+					'owner': fsnode.lock_info.owner,
+					'owner_display_name': fsnode.lock_info.owner_display_name,
+					'type': fsnode.lock_info.type.name,
+					'creation_time': fsnode.lock_info.lock_creation_time,
+					'ttl': fsnode.lock_info.lock_ttl,
+					'locked_by_app': fsnode.lock_info.owner_editor,
+				} if fsnode.lock_info.is_locked else {}),
+			},
+		}
+
+
 	@tool
 	@safe_tool
-	async def get_folder_tree(depth: int):
+	async def get_file_tree(path: str = '/', include_metadata = False, depth: int = 1):
 		"""
-		Get the folder tree of the user (lists the files the user has in Nextcloud Files)
-		:param depth: the depth of the returned folder tree
+		Get the file tree of the user (lists the files the user has in Nextcloud Files)
+		:param path: the path to enumerate. It should start directly with the folder name from at the root like /Media and NOT /userid/files/Media
+		:param include_metadata: include the etag, file/folder id, last modified times, etc. with the file/folder paths
+		:param depth: how many directory levels should be included in output. Default = 1 (only specified directory). Max depth = 5.
 		:return:
 		"""
 
-		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', params={'depth': depth}, response_type='json')
+		files_handle = AsyncFilesAPI(nc._session)
+		fsnode_list = await files_handle.listdir(path, min(5, depth))
+		if include_metadata:
+			return [__format_fs_node(fsnode) for fsnode in fsnode_list]
+
+		return [fsnode.user_path for fsnode in fsnode_list]
+
 
 	@tool
 	@dangerous_tool
@@ -163,7 +206,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	return [
 		get_file_content,
 		get_file_content_by_file_link,
-		get_folder_tree,
+		get_file_tree,
 		create_public_sharing_link,
 		upload_file,
 		create_folder,
