@@ -89,7 +89,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def get_file_tree(path: str = '/', include_metadata = False, depth: int = 1):
 		"""
-		Get the file tree of the user (lists the files the user has in Nextcloud Files)
+		Get the file tree of the user (lists the folders and files the user has in Nextcloud Files)
 		:param path: the path to enumerate. It should start directly with the folder name from at the root like /Media and NOT /userid/files/Media
 		:param include_metadata: include the etag, file/folder id, last modified times, etc. with the file/folder paths
 		:param depth: how many directory levels should be included in output. Default = 1 (only specified directory). Max depth = 5.
@@ -103,6 +103,16 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		return [fsnode.user_path for fsnode in fsnode_list]
 
+	@tool
+	@safe_tool
+	async def get_folder_tree(depth: int):
+		"""
+		Get the folder tree of the user (lists only the folders the user has in Nextcloud Files)
+		:param depth: the depth of the returned folder tree
+		:return:
+		"""
+
+		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', params={'depth': depth}, response_type='json')
 
 	@tool
 	@dangerous_tool
@@ -207,6 +217,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		get_file_content,
 		get_file_content_by_file_link,
 		get_file_tree,
+		get_folder_tree,
 		create_public_sharing_link,
 		upload_file,
 		create_folder,
