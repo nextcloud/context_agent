@@ -9,6 +9,16 @@ from ex_app.lib.all_tools.lib.files import get_file_id_from_file_url
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
 
 
+def _validate_path(path: str) -> str:
+	"""Reject path traversal attempts in a user-supplied file path."""
+	if not isinstance(path, str):
+		raise ValueError(f'Invalid path: {path!r}')
+	for segment in path.split('/'):
+		if segment in ('.', '..'):
+			raise ValueError(f'Invalid path (traversal not allowed): {path!r}')
+	return path
+
+
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
@@ -20,6 +30,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
+		_validate_path(file_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{file_path}", headers={
@@ -70,6 +81,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
+		_validate_path(path)
 		response = await nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json={
 					'path': path,
 					'shareType': 3,
@@ -86,6 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param content: the text content to write to the file
 		:return: success confirmation
 		"""
+		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
@@ -102,6 +115,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param path: the path of the folder to create (e.g., "/Documents/NewFolder")
 		:return: success confirmation
 		"""
+		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
@@ -119,6 +133,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param destination_path: the new path for the file/folder
 		:return: success confirmation
 		"""
+		_validate_path(source_path)
+		_validate_path(destination_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('MOVE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
@@ -136,6 +152,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param destination_path: the destination path
 		:return: success confirmation
 		"""
+		_validate_path(source_path)
+		_validate_path(destination_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('COPY', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
@@ -152,6 +170,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param path: the path of the file/folder to delete
 		:return: success confirmation
 		"""
+		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={

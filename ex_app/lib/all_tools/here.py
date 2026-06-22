@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import typing
 import datetime
-import urllib.parse
 
 import niquests
 from langchain_core.tools import tool
@@ -28,11 +27,16 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 
 		if departure_time is None:
-			departure_time = urllib.parse.quote_plus(datetime.datetime.now(datetime.UTC).isoformat())
+			departure_time = datetime.datetime.now(datetime.UTC).isoformat()
 		api_key = await nc.appconfig_ex.get_value('here_api')
-		res = await niquests.async_api.get('https://transit.hereapi.com/v8/routes?transportMode=car&origin='
-			+ origin_lat + ',' + origin_lon + '&destination=' + destination_lat + ',' + destination_lon 
-			+ '&alternatives=' + str(routes-1) + '&departureTime=' + departure_time + '&apikey=' + api_key)
+		res = await niquests.async_api.get('https://transit.hereapi.com/v8/routes', params={
+			'transportMode': 'car',
+			'origin': f'{origin_lat},{origin_lon}',
+			'destination': f'{destination_lat},{destination_lon}',
+			'alternatives': str(routes - 1),
+			'departureTime': departure_time,
+			'apikey': api_key,
+		})
 		json = res.json()
 		return json
 

@@ -169,7 +169,7 @@ jobs:
           APP_PORT: 9080
           APP_VERSION: ${{ fromJson(steps.llm2_appinfo.outputs.result).version }}
         run: |
-          APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent-storage/" poetry run python3 main.py > ../logs 2>&1 &
+          APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent_storage/" poetry run python3 main.py > ../logs 2>&1 &
 
       - name: Register backend
         run: |

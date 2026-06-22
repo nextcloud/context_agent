@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import urllib.parse
 from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -35,6 +36,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param search_term: text to search for in recipe names and descriptions
 		:return: list of matching recipes
 		"""
+		if '/' in search_term or '\\' in search_term:
+			raise ValueError("Search term cannot contain slashes.")
 		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/search/{search_term}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
