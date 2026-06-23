@@ -90,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def get_file_tree(path: str = '/', include_metadata = False, depth: int = 1):
 		"""
 		Get the file tree of the user (lists the folders and files the user has in Nextcloud Files)
-		:param path: the path to enumerate. It should start directly with the folder name from at the root like /Media and NOT /userid/files/Media
+		:param path: the path to enumerate. It should be relative to the root directory like /Media and NOT /userid/files/Media
 		:param include_metadata: include the etag, file/folder id, last modified times, etc. with the file/folder paths
 		:param depth: how many directory levels should be included in output. Default = 1 (only specified directory). Max depth = 5.
 		:return:
