@@ -21,7 +21,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		prompt argument for this tool would be "Transcribe new files in folder /Audio" and the recurrence_rule would be "FREQ=HOURLY".
 		After having created the Scheduled Task, let the user know that the Scheduled Task will run in a newly created chat session.
 		:param title: A title for the Scheduled Task, e.g. "Transcribe audio files" -- This is only for the user's reference and has no effect on the execution of the Scheduled Task.
-		:param prompt: The instructions for the AI carrying out the Scheduled Task (Do not tell it to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
+		:param prompt: The instructions for the agent carrying out the Scheduled Task (Do not tell it to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day, an empty string as the recurrence_rule means the task does not repeat.
 		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Make sure to use the user's timezone for this, obtainable with find_details_of_current_user
 		:param timezone: Timezone (e.g., 'America/New_York') defaults to the user's current time zone
