@@ -3,9 +3,9 @@
 import asyncio
 import typing
 
-from niquests import ConnectionError, Timeout
 from nc_py_api import AsyncNextcloudApp, NextcloudException
 from nc_py_api.ex_app import LogLvl
+from niquests import ConnectionError, Timeout
 from pydantic import BaseModel, ValidationError
 
 from ex_app.lib.logger import log
@@ -75,7 +75,7 @@ async def run_task(nc: AsyncNextcloudApp, type, task_input):
 	if task.status != "STATUS_SUCCESSFUL":
 		raise Exception("Nextcloud TaskProcessing Task failed")
 
-	if not isinstance(task.output, dict) or all(x not in ["file", "output", "images", "slide_deck"] for x in task.output):
+	if not isinstance(task.output, dict) or all(x not in ["file", "output", "images", "slide_deck", "sources"] for x in task.output):
 		raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
 
 	return task
