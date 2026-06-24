@@ -22,7 +22,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		This is often easier than searching for documents and then fetching their contents when trying to answer questions.
 		:param question: The question to ask
 		:param scope_type: Optional. Restricts which documents the oracle searches.
-			- "none" (default): search across all of the user's documents.
+			- "none" (default): search across all of the user's documents and content providers.
 			- "source": restrict the search to specific items listed in scope_list.
 			- "provider": restrict the search to specific content providers listed in scope_list.
 		:param scope_list: Required when scope_type is "source" or "provider"; ignored otherwise.
