@@ -16,7 +16,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def list_context_chat_providers() -> str:
 		"""
 		List the content providers available to context chat (e.g., files, mail).
-		Use this to discover valid provider keys for ask_context_chat's scope_list when scope_type is "provider".
+		Use this to discover valid provider keys for ask_context_chat's scope_list when scope_type is "provider". Note that the files__default provider is always available. 
 		:return: JSON array of available providers
 		"""
 		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
