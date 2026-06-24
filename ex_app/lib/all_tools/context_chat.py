@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import json
 from typing import Literal
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -9,6 +10,20 @@ from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	@tool
+	@safe_tool
+	async def list_context_chat_providers() -> str:
+		"""
+		List the content providers available to context chat (e.g., files, mail).
+		Use this to discover valid provider keys for ask_context_chat's scope_list when scope_type is "provider".
+		:return: JSON array of available providers
+		"""
+		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
+			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
+		})
+		return json.dumps(response.json())
 
 	@tool
 	@safe_tool
@@ -45,6 +60,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	return [
 		ask_context_chat,
+		list_context_chat_providers,
 	]
 
 def get_category_name():
