@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import importlib
+import json
 import os
 import pathlib
-import json
 from os.path import dirname
 
 from nc_py_api import AsyncNextcloudApp
+
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
+
 
 @timed_memoize(1*60)
 async def get_tools(nc: AsyncNextcloudApp):
@@ -78,10 +80,15 @@ def get_categories():
 
 def get_tool_module(file, directory):
 	module_name = pathlib.Path(file).stem  # Extract module name without .py
-	module_path = os.path.join(directory, file)
 
-	spec = importlib.util.spec_from_file_location(module_name, module_path)
-	module = importlib.util.module_from_spec(spec)
-	spec.loader.exec_module(module)
+	# Resolve via the canonical dotted package name so the module is shared
+	# with the rest of the codebase via sys.modules. This means module-level
+	# state (caches, singletons) survives across `get_tools` calls and a
+	# `from ex_app.lib.all_tools.<name> import ...` elsewhere refers to the
+	# SAME module object as the one we load here. Trade-off: hot-reloading
+	# tool files during development requires a process restart, which is fine.
+	qualified = f'ex_app.lib.all_tools.{module_name}'
+	module = importlib.import_module(qualified)
+	spec = module.__spec__
 
 	return module_name, spec, module
