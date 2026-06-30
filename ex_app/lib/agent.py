@@ -2,26 +2,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 import os
-import string
 import random
+import string
 from collections.abc import Awaitable, Callable
 from datetime import date
 from time import monotonic
 from typing import Any, cast
 
-from langchain_core.messages import ToolMessage, SystemMessage, AIMessage, HumanMessage, AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import persistent_storage
 
-from ex_app.lib.signature import verify_signature
-from ex_app.lib.signature import add_signature
+from ex_app.lib.all_tools.skills import list_skills_metadata
 from ex_app.lib.graph import AgentState, get_graph
-from ex_app.lib.nc_model import model
-from ex_app.lib.tools import get_tools
-from ex_app.lib.memorysaver import MemorySaver
 from ex_app.lib.jsonplus import JsonPlusSerializer
-
+from ex_app.lib.memorysaver import MemorySaver
+from ex_app.lib.nc_model import model
+from ex_app.lib.signature import add_signature, verify_signature
+from ex_app.lib.tools import get_tools
 
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
@@ -152,6 +151,28 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		if task['input'].get('memories', None) is not None and task['input'].get('memories', None) is not []:
 			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
+		if tool_enabled("load_memory"):
+			system_prompt_text += "In addition to the above memories, there are also long-term memories stored on-demand from other conversations. List and load those memories if they are not present here and the user or the conversation points to something that should be rememebered.\n"
+
+		if tool_enabled("load_skill"):
+			skills_metadata = await list_skills_metadata(nc)
+			if skills_metadata:
+				skill_lines = "\n".join(
+					f"- {s['name']}: {s['description']}" for s in skills_metadata
+				)
+				system_prompt_text += (
+					"You have access to the following skills. Each skill is a reusable, self-contained"
+					" procedure or guide stored by the user. If a skill is relevant to the user's request,"
+					" call the `load_skill` tool with its name to retrieve the full instructions before"
+					" acting on them. Do not mention skills to the user unless asked.\n\n"
+					"Available skills:\n" + skill_lines + "\n\n"
+				)
+			if tool_enabled("store_skill"):
+				system_prompt_text += (
+					"Only create a new skill with `store_skill` when the user explicitly asks you to,"
+					" or when they describe a clearly reusable procedure that should be remembered.\n"
+				)
+
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
 			system_prompt_text.replace("{CURRENT_DATE}", current_date)
