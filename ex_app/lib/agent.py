@@ -149,10 +149,10 @@ At the end of each message to the user, if you have carried out a task or answer
 		if tool_enabled("web_fetch"):
 			system_prompt_text += "Use the web_fetch tool to fetch web content. You can fetch the complete page content of a duckduckgo search result using web_fetch as well.\n"
 
-		if task['input'].get('memories', None) is not None and task['input'].get('memories', None) is not []:
+		if task['input'].get('memories'):
 			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
 		if tool_enabled("load_memory"):
-			system_prompt_text += "In addition to the above memories, there are also long-term memories stored on-demand from other conversations. List and load those memories if they are not present here and the user or the conversation points to something that should be rememebered.\n"
+			system_prompt_text += "In addition to the above memories, there are also long-term memories stored on-demand from other conversations. List and load those memories if they are not present here and the user or the conversation points to something that should be remembered.\n"
 
 		if tool_enabled("load_skill"):
 			skills_metadata = await list_skills_metadata(nc)
