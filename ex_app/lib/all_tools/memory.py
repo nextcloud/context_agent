@@ -70,12 +70,12 @@ class SourcesList(BaseModel):
 		return result
 
 
-async def __is_context_chat_available(nc: AsyncNextcloudApp, memories_folder_path: str):
+async def __is_context_chat_available(nc: AsyncNextcloudApp):
 	tasktypes = (await nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes'))['types'].keys()
 	return CONTEXT_CHAT_SEARCH_TASK_TYPE in tasktypes
 
 
-def __validate_memory_path(path: str, memories_folder_path: str, *, allow_folder_path: bool = False) -> tuple[str, str]:
+def __validate_memory_path(path: str, memories_folder_path: str, *, only_allow_folder_path: bool = False) -> tuple[str, str]:
 	"""returns tuple[full_path, memories_scoped_path]"""
 	if not path:
 		raise AgentFacingError('Memory path cannot be empty')
@@ -90,11 +90,15 @@ def __validate_memory_path(path: str, memories_folder_path: str, *, allow_folder
 		if '/..' in candidate or '../' in candidate or '..\\' in candidate:
 			raise RuntimeError('Agent tried to access directories beyond the memories folder')
 
-	if not allow_folder_path and (not decoded.endswith('.md') and not decoded.endswith('.markdown')):
+	if not only_allow_folder_path and (not decoded.endswith('.md') and not decoded.endswith('.markdown')):
 		raise AgentFacingError('Memory file should be a markdown file')
 
+	if only_allow_folder_path and (decoded.endswith('.md') or decoded.endswith('.markdown')):
+		raise AgentFacingError('Memory path should point to a folder, not a memory file.')
+
 	path_parts = [p for p in decoded.strip('/').split('/') if p]
-	if len(path_parts) > MAX_MEMORY_FOLDER_DEPTH + 1:  # +1 for the filename itself
+	max_parts = MAX_MEMORY_FOLDER_DEPTH if only_allow_folder_path else MAX_MEMORY_FOLDER_DEPTH + 1  # +1 for the filename itself
+	if len(path_parts) > max_parts:
 		raise AgentFacingError(f'Memory path exceeds maximum depth of {MAX_MEMORY_FOLDER_DEPTH}')
 
 	# resolve the full absolute path and verify it stays within the memory folder
@@ -143,7 +147,7 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 	)
 	if propfind.status_code == 404:
 		base_parts = [p for p in base_memories_path.split('/') if p]
-		all_parts = base_parts + scoped_folder_parts
+		all_parts = base_parts + [quote(p, safe='') for p in scoped_folder_parts]
 		for i in range(len(base_parts) + 1, len(all_parts) + 1):
 			folder_path = '/'.join(all_parts[:i])
 			r = await adapter.request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{folder_path}")
@@ -314,7 +318,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: Status of the deletion operation.
 		"""
 		try:
-			full_path, _ = __validate_memory_path(path, memories_folder_path, allow_folder_path=True)
+			full_path, _ = __validate_memory_path(path, memories_folder_path, only_allow_folder_path=True)
 		except AgentFacingError as e:
 			return {'error': str(e)}
 		except Exception as e:
@@ -344,6 +348,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		files_handle = AsyncFilesAPI(nc._session)
 		memories_folder_fsnode = await files_handle.by_path(memories_folder_path)
 
+		if memories_folder_fsnode is None:
+			await log(nc, logging.WARNING, f'Could not find the memories folder: {memories_folder_path}')
+			raise RuntimeError('Could not find the memories folder, try creating a memory first.')
+
 		task_input = {
 			'prompt': query,
 			'scopeType': 'source',
@@ -367,14 +375,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 			:return: {'path': string, 'content: string}
 			"""
 			fsnode = await files_handle.by_id(file_id)
-			filepath = '/' + fsnode.user_path.removeprefix(prefix).rstrip('/')
-
 			if fsnode is None:
 				await log(nc, logging.WARNING, f'Could not fetch file by id: {file_id}')
-				return {'path': filepath, 'content': ''}
+				return {'path': '', 'content': ''}
 
 			return {
-				'path': filepath,
+				'path': '/' + fsnode.user_path.removeprefix(prefix).rstrip('/'),
 				'content': (await files_handle.download(fsnode)).decode(errors='replace'),
 			}
 
@@ -387,7 +393,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			store_memory,
 			delete_memory,
 			delete_memory_folder,
-			*([search_memories] if await __is_context_chat_available(nc, memories_folder_path) else []),
+			*([search_memories] if await __is_context_chat_available(nc) else []),
 		] if assistant_folder_path else []),
 	]
 

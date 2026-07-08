@@ -19,6 +19,10 @@ class Task(BaseModel):
 class Response(BaseModel):
 	task: Task
 
+
+ACCEPTED_OUTPUT_KEYS = ["file", "output", "images", "slide_deck", "sources"]
+
+
 async def run_task(nc: AsyncNextcloudApp, type, task_input):
 	i = 0
 	while i < 20:
@@ -75,7 +79,7 @@ async def run_task(nc: AsyncNextcloudApp, type, task_input):
 	if task.status != "STATUS_SUCCESSFUL":
 		raise Exception("Nextcloud TaskProcessing Task failed")
 
-	if not isinstance(task.output, dict) or all(x not in ["file", "output", "images", "slide_deck", "sources"] for x in task.output):
-		raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
+	if not isinstance(task.output, dict) or all(x not in ACCEPTED_OUTPUT_KEYS for x in task.output):
+		raise Exception(f'Expected one of {ACCEPTED_OUTPUT_KEYS} in Nextcloud TaskProcessing task result')
 
 	return task
