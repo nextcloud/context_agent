@@ -7,8 +7,9 @@ from urllib.parse import quote
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api._exceptions import NextcloudExceptionNotFound
+from packaging.version import Version
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, timed_memoize
+from ex_app.lib.all_tools.lib.decorator import dangerous_tool, safe_tool, timed_memoize
 from ex_app.lib.logger import log
 
 # Skills follow the agentskills.io spec: each skill is a folder under
@@ -16,6 +17,7 @@ from ex_app.lib.logger import log
 # containing YAML frontmatter (name, description) plus a markdown body.
 # The Assistant app exposes OCS endpoints to list/load/store skills.
 
+MINIMUM_ASSISTANT_VERSION = '3.5.0'
 LIST_STORE_SKILLS_URL = '/ocs/v2.php/apps/assistant/api/v1/skills'
 LOAD_SKILL_URL = '/ocs/v2.php/apps/assistant/api/v1/skills/{skillName}'
 MAX_SKILL_NAME_LENGTH = 64
@@ -44,6 +46,15 @@ def __validate_skill_name(skill_name: str) -> str:
 			f'({len(skill_name)} chars)'
 		)
 	return skill_name
+
+
+async def __assistant_supports_skills(nc: AsyncNextcloudApp) -> bool:
+	try:
+		caps = await nc.capabilities
+		version = caps['assistant']['version']
+		return Version(version) >= Version(MINIMUM_ASSISTANT_VERSION)
+	except Exception:
+		return False
 
 
 @timed_memoize(SKILLS_CACHE_TTL)
@@ -102,6 +113,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return res['content']
 
 	@tool
+	@dangerous_tool
 	async def store_skill(skill_name: str, description: str, content: str):
 		"""
 		Create or overwrite a skill. A skill is a reusable, self-contained markdown
@@ -175,7 +187,4 @@ def get_category_name():
 
 
 async def is_available(nc: AsyncNextcloudApp):
-	# Available as long as the assistant app exposes the skills endpoint.
-	# We don't probe here to avoid an extra request on every agent invocation;
-	# the tools themselves gracefully report errors if the endpoint is missing.
-	return True
+	return await __assistant_supports_skills(nc)
