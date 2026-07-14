@@ -16,6 +16,18 @@ TYPE_CIRCLE = 16
 TYPE_APP = 10000
 
 
+def _validate_circle_id(circle_id: str) -> str:
+	if '/' in circle_id or '\\' in circle_id:
+		raise ValueError(f'Invalid circle id: {circle_id!r}')
+	return circle_id
+
+
+def _validate_member_id(member_id: str) -> str:
+	if '/' in member_id or '\\' in member_id:
+		raise ValueError(f'Invalid member id: {member_id!r}')
+	return member_id
+
+
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@safe_tool
@@ -34,6 +46,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param circle_id: the id of the circle (obtainable via list_circles)
 		:return: complete circle information including members
 		"""
+		_validate_circle_id(circle_id)
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}'))
 
 	@tool
@@ -44,6 +57,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param circle_id: the id of the circle (obtainable via list_circles)
 		:return: list of members with their id, display name, type, and level
 		"""
+		_validate_circle_id(circle_id)
 		circle_members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
 		return json.dumps(circle_members)
 
@@ -76,6 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param member_type: type of member as integer constant - 1=user, 2=group, 4=mail, 8=contact, 16=circle (default: 1 for user)
 		:return: the added member information
 		"""
+		_validate_circle_id(circle_id)
 		payload = {
 			"members": [{
 				'id': member_id,
@@ -93,6 +108,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param member_id: the id of the member to remove (obtainable via list_circle_members)
 		:return:
 		"""
+		_validate_circle_id(circle_id)
+		_validate_member_id(member_id)
 		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/{member_id}'))
 
 	@tool
@@ -105,6 +122,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param description: new description
 		:return:
 		"""
+		_validate_circle_id(circle_id)
 		if name is not None:
 			await nc.ocs('PUT', f'/ocs/v2.php/apps/circles/circles/{circle_id}/name', json={'value': name})
 		if description is not None:
@@ -119,6 +137,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param circle_id: the id of the circle to delete (obtainable via list_circles)
 		:return:
 		"""
+		_validate_circle_id(circle_id)
 		await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
 
 	@tool
@@ -131,6 +150,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param permissions: permissions bitmask - 1=read, 2=update, 4=create, 8=delete, 16=share. Default is 19
 		:return: the created share
 		"""
+		_validate_circle_id(circle_id)
 		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json={
 			'path': path,
 			'shareType': 7,  # 7 = circle

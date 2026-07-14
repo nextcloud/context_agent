@@ -2,14 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import xml.etree.ElementTree as ET
 from urllib.parse import unquote
-
+import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
-import niquests
+from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
+from ex_app.lib.all_tools.lib.decorator import dangerous_tool, safe_tool
 from ex_app.lib.all_tools.lib.files import get_file_id_from_file_url
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+
+def _validate_path(path: str) -> str:
+	"""Reject path traversal attempts in a user-supplied file path."""
+	if not isinstance(path, str):
+		raise ValueError(f'Invalid path: {path!r}')
+	for segment in path.split('/'):
+		if segment in ('.', '..'):
+			raise ValueError(f'Invalid path (traversal not allowed): {path!r}')
+	return path
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -23,6 +32,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
+		_validate_path(file_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{file_path}", headers={
@@ -53,11 +63,64 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		return response.text
 
+	def __format_fs_node(fsnode: FsNode) -> dict:
+		# todo: permissions info
+		return {
+			'path': fsnode.user_path,
+			'file_id': fsnode.info.fileid,
+			'etag': fsnode.etag.replace('"', '').replace("'", ''),
+			'bytes': fsnode.info.size,
+			'creation_date': fsnode.info.creation_date.isoformat(),
+			'last_modified': fsnode.info.last_modified.isoformat(),
+			'mimetype': fsnode.info.mimetype,
+			'is_shared': fsnode.is_shared,
+			'is_favourite': fsnode.info.favorite,
+			'is_version': fsnode.info.is_version,
+			'trash_info': {
+				'in_trash': fsnode.info.in_trash,
+				**({
+					'trashbin_filename': fsnode.info.trashbin_filename,
+					'original_location': fsnode.info.trashbin_original_location,
+					'deletion_time': fsnode.info.trashbin_deletion_time,
+				} if fsnode.info.in_trash else {}),
+			},
+			'lock_info': {
+				'is_locked': fsnode.lock_info.is_locked,
+				**({
+					'owner': fsnode.lock_info.owner,
+					'owner_display_name': fsnode.lock_info.owner_display_name,
+					'type': fsnode.lock_info.type.name,
+					'creation_time': fsnode.lock_info.lock_creation_time,
+					'ttl': fsnode.lock_info.lock_ttl,
+					'locked_by_app': fsnode.lock_info.owner_editor,
+				} if fsnode.lock_info.is_locked else {}),
+			},
+		}
+
+
+	@tool
+	@safe_tool
+	async def get_file_tree(path: str = '/', include_metadata = False, depth: int = 1):
+		"""
+		Get the file tree of the user (lists the folders and files the user has in Nextcloud Files)
+		:param path: the path to enumerate. It should be relative to the root directory like /Media and NOT /userid/files/Media
+		:param include_metadata: include the etag, file/folder id, last modified times, etc. with the file/folder paths
+		:param depth: how many directory levels should be included in output. Default = 1 (only specified directory). Max depth = 5.
+		:return:
+		"""
+
+		files_handle = AsyncFilesAPI(nc._session)
+		fsnode_list = await files_handle.listdir(path, min(5, depth))
+		if include_metadata:
+			return [__format_fs_node(fsnode) for fsnode in fsnode_list]
+
+		return [fsnode.user_path for fsnode in fsnode_list]
+
 	@tool
 	@safe_tool
 	async def get_folder_tree(depth: int):
 		"""
-		Get the folder tree of the user (lists the files the user has in Nextcloud Files)
+		Get the folder tree of the user (lists only the folders the user has in Nextcloud Files)
 		:param depth: the depth of the returned folder tree
 		:return:
 		"""
@@ -73,6 +136,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
+		_validate_path(path)
 		response = await nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json={
 					'path': path,
 					'shareType': 3,
@@ -89,6 +153,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param content: the text content to write to the file
 		:return: success confirmation
 		"""
+		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
@@ -105,6 +170,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param path: the path of the folder to create (e.g., "/Documents/NewFolder")
 		:return: success confirmation
 		"""
+		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
@@ -122,6 +188,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param destination_path: the new path for the file/folder
 		:return: success confirmation
 		"""
+		_validate_path(source_path)
+		_validate_path(destination_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('MOVE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
@@ -139,6 +207,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param destination_path: the destination path
 		:return: success confirmation
 		"""
+		_validate_path(source_path)
+		_validate_path(destination_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('COPY', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
@@ -271,6 +341,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param path: the path of the file/folder to delete
 		:return: success confirmation
 		"""
+		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
 		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
@@ -282,6 +353,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	return [
 		get_file_content,
 		get_file_content_by_file_link,
+		get_file_tree,
 		get_folder_tree,
 		get_file_id_by_path,
 		get_file_path_by_id,

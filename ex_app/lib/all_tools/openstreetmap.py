@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import urllib.parse
+
 import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -45,12 +47,23 @@ async def get_tools(nc: AsyncNextcloudApp):
 				profile_num = "1"
 			case "routed-foot":
 				profile_num = "2"
-			case _: 
+			case _:
 				profile = "routed-foot"
-				profile_num = "2" 
-		url = f'https://routing.openstreetmap.de/{profile}/route/v1/driving/{origin_lon},{origin_lat};{destination_lon},{destination_lat}?overview=false&steps=true'
-		map_url = f' https://routing.openstreetmap.de/?loc={origin_lat}%2C{origin_lon}&loc={destination_lat}%2C{destination_lon}&srv={profile_num}'
-		res = await niquests.async_api.get(url)
+				profile_num = "2"
+		# URL-encode each coordinate so untrusted values can't break out of the
+		# path segment (commas/semicolons are intentionally kept as separators
+		# expected by the OSRM route endpoint).
+		o_lat = urllib.parse.quote(origin_lat, safe='')
+		o_lon = urllib.parse.quote(origin_lon, safe='')
+		d_lat = urllib.parse.quote(destination_lat, safe='')
+		d_lon = urllib.parse.quote(destination_lon, safe='')
+		url = f'https://routing.openstreetmap.de/{profile}/route/v1/driving/{o_lon},{o_lat};{d_lon},{d_lat}'
+		map_url = 'https://routing.openstreetmap.de/?' + urllib.parse.urlencode([
+			('loc', f'{origin_lat},{origin_lon}'),
+			('loc', f'{destination_lat},{destination_lon}'),
+			('srv', profile_num),
+		])
+		res = await niquests.async_api.get(url, params={'overview': 'false', 'steps': 'true'})
 		json = res.json()
 		return {'route_json_description': json, 'map_url': map_url}
 
