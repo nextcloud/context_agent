@@ -24,6 +24,50 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from ex_app.lib.logger import log
 
 
+TEXT_CHAT_WITH_TOOLS = "core:text2text:chatwithtools"
+MULTIMODAL_CHAT_WITH_TOOLS = "core:text2text:multimodal-chatwithtools"
+MULTIMODAL_INTERACTION = "core:contextagent:multimodal-interaction"
+
+
+def extract_text_content(content: Any) -> str:
+	"""Extract plain text from a string or multimodal content-part list."""
+	if isinstance(content, str):
+		return content
+	if isinstance(content, list):
+		parts = []
+		for part in content:
+			if isinstance(part, dict) and part.get("type") == "text":
+				parts.append(part.get("text", ""))
+			elif isinstance(part, str):
+				parts.append(part)
+		return "".join(parts)
+	return ""
+
+
+def extract_file_ids(content: Any) -> list[int]:
+	"""Extract file IDs from a multimodal content-part list."""
+	if not isinstance(content, list):
+		return []
+	file_ids = []
+	for part in content:
+		if isinstance(part, dict) and part.get("type") == "file" and "file_id" in part:
+			file_ids.append(int(part["file_id"]))
+	return file_ids
+
+
+def build_multimodal_content(text: str, file_ids: list[int] | None = None, task_id: int | None = None) -> list[dict[str, Any]] | str:
+	"""Build multimodal content parts, or plain text when there are no files."""
+	if not file_ids:
+		return text
+	content: list[dict[str, Any]] = [
+		({"type": "file", "file_id": file_id} if task_id is None else {"type": "file", "file_id": file_id, "ocp_task_id": task_id})
+		for file_id in file_ids
+	]
+	if text:
+		content.append({"type": "text", "text": text})
+	return content
+
+
 class Task(BaseModel):
 	id: int
 	status: str
@@ -45,6 +89,7 @@ class ChatWithNextcloud(BaseChatModel):
 	TOOL_OUTPUT_MAX_LENGTH: int = 2000
 	POLL_WAIT_TIME: int = 5
 	STREAMING_POLL_WAIT_TIME: int = 1
+	multimodal: bool = False
 
 	def _generate(self, messages: list[BaseMessage], stop: Optional[list[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any):
 		raise Exception("Use _agenerate instead")
@@ -77,6 +122,8 @@ class ChatWithNextcloud(BaseChatModel):
 		task_input['input'] = ''
 		task_input['tool_message'] = []
 		task_input['tools'] = json.dumps(self.tools)
+		if self.multimodal:
+			task_input['input_attachments'] = []
 
 		history = []
 		for i, message in enumerate(messages):
@@ -87,9 +134,13 @@ class ChatWithNextcloud(BaseChatModel):
 				history.append(json.dumps(msg))
 			elif message.type == 'human':
 				if len(messages)-1 != i:
+					# Earlier turns keep file parts in history content.
 					history.append(json.dumps({"role": "human", "content": message.content}))
 				else:
-					task_input['input'] = message.content
+					# Current turn: text → input, files → input_attachments.
+					task_input['input'] = extract_text_content(message.content)
+					if self.multimodal:
+						task_input['input_attachments'] = extract_file_ids(message.content)
 			elif message.type == 'tool':
 				content = message.content
 				age = len(messages) - 1 - i
@@ -116,6 +167,8 @@ class ChatWithNextcloud(BaseChatModel):
 
 		await log(nc, LogLvl.DEBUG, task_input)
 
+		task_type = MULTIMODAL_CHAT_WITH_TOOLS if self.multimodal else TEXT_CHAT_WITH_TOOLS
+
 		i = 0
 		while i < 20:
 			try:
@@ -123,7 +176,7 @@ class ChatWithNextcloud(BaseChatModel):
 					"POST",
 					"/ocs/v1.php/taskprocessing/schedule",
 					json={
-						"type": "core:text2text:chatwithtools",
+						"type": task_type,
 						"appId": "context_agent",
 						"input": task_input,
 						"preferStreaming": prefer_streaming,
@@ -180,7 +233,6 @@ class ChatWithNextcloud(BaseChatModel):
 			return None
 		output = task.output.get('output')
 		return output if isinstance(output, str) else None
-
 	def _raw_task_tool_calls(self, task: Task) -> list[dict[str, typing.Any]]:
 		if not isinstance(task.output, dict):
 			return []
@@ -237,11 +289,15 @@ class ChatWithNextcloud(BaseChatModel):
 		if not isinstance(task.output, dict) or "output" not in task.output:
 			raise Exception('"output" key not found in Nextcloud TaskProcessing task result')
 
+		output_text = task.output['output']
+		output_attachments = task.output.get('output_attachments', [])
+		content = build_multimodal_content(output_text, output_attachments, task.id)
+
 		tool_calls, invalid_tool_calls = self._task_tool_calls(task)
 		if len(tool_calls) > 0 or len(invalid_tool_calls) > 0:
-			message = AIMessage(task.output['output'], tool_calls=tool_calls, invalid_tool_calls=invalid_tool_calls)
+			message = AIMessage(content, tool_calls=tool_calls, invalid_tool_calls=invalid_tool_calls)
 		else:
-			message = AIMessage(task.output['output'])
+			message = AIMessage(content)
 
 		return message
 
@@ -345,7 +401,21 @@ class ChatWithNextcloud(BaseChatModel):
 				yield ChatGenerationChunk(message=AIMessageChunk(content=final_delta))
 
 		tool_calls, invalid_tool_calls = self._task_tool_calls(task)
-		if len(tool_calls) > 0 or len(invalid_tool_calls) > 0:
+		output_attachments = []
+		if isinstance(task.output, dict):
+			output_attachments = task.output.get('output_attachments') or []
+
+		if output_attachments:
+			# Append file parts after streamed text so LangChain merges them
+			# into the final AIMessage content (attachments are not streamed).
+			yielded_chunk = True
+			content = [{"type": "file", "file_id": int(file_id), "ocp_task_id": task.id} for file_id in output_attachments]
+			yield ChatGenerationChunk(message=AIMessageChunk(
+				content=content,
+				tool_calls=tool_calls,
+				invalid_tool_calls=invalid_tool_calls,
+			))
+		elif len(tool_calls) > 0 or len(invalid_tool_calls) > 0:
 			yielded_chunk = True
 			yield ChatGenerationChunk(message=AIMessageChunk(content='', tool_calls=tool_calls, invalid_tool_calls=invalid_tool_calls))
 
