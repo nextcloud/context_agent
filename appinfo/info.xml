@@ -45,7 +45,7 @@ Positive:
 		<docker-install>
 			<registry>ghcr.io</registry>
 			<image>nextcloud/context_agent</image>
-			<image-tag>2.6.0</image-tag>
+			<image-tag>2.7.0</image-tag>
 		</docker-install>
         <routes>
 			<route>
