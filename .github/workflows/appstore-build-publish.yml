@@ -144,7 +144,7 @@ jobs:
         continue-on-error: true
         id: server-checkout
         run: |
-          NCVERSION='${{ fromJSON(steps.appinfo.outputs.result).nextcloud.min-version }}'
+          NCVERSION=31
           wget --quiet https://download.nextcloud.com/server/releases/latest-$NCVERSION.zip
           unzip latest-$NCVERSION.zip
 
