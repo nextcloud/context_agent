@@ -28,7 +28,7 @@ jobs:
       matrix:
         php-versions: [ '8.2' ]
         databases: [ 'sqlite' ]
-        server-versions: [ 'master', 'stable33', 'stable32', 'stable31' ]
+        server-versions: [ 'stable34', 'stable33', 'stable32', 'stable31' ]
 
     name: Integration test on ☁️${{ matrix.server-versions }} 🐘${{ matrix.php-versions }}
 
@@ -62,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout server
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: nextcloud/server
           submodules: 'true'
@@ -76,7 +76,7 @@ jobs:
           extensions: mbstring, iconv, fileinfo, intl, sqlite, pdo_mysql, pdo_sqlite, pgsql, pdo_pgsql, gd, zip
 
       - name: Checkout llm2 app
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: llm2
           repository: nextcloud/llm2
@@ -91,7 +91,7 @@ jobs:
           expression: "/info/version/text()"
 
       - name: Checkout app
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: ${{ env.APP_NAME }}
           persist-credentials: false
@@ -152,6 +152,9 @@ jobs:
           pipx install poetry
           mkdir -p ../llm2-persistent_storage
           poetry install
+          # pyproject.toml pins xllamacpp to the cu128 wheel, which needs libcuda.so.1 at import
+          # time. The CI runner has no NVIDIA driver, so we swap in the PyPI CPU build for tests.
+          poetry run pip install --force-reinstall --no-deps xllamacpp
 
       - name: Cache llm2 models
         uses: actions/cache/restore@v5
@@ -169,7 +172,7 @@ jobs:
           APP_PORT: 9080
           APP_VERSION: ${{ fromJson(steps.llm2_appinfo.outputs.result).version }}
         run: |
-          APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent-storage/" poetry run python3 main.py > ../logs 2>&1 &
+          APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent_storage/" poetry run python3 main.py > ../logs 2>&1 &
 
       - name: Register backend
         run: |
