@@ -229,7 +229,7 @@ jobs:
           MCP_URL="http://localhost:8080/index.php/apps/app_api/proxy/context_agent/mcp/"
           CREDS=$(OC_PASS=alice ./occ user:add-app-password --password-from-env alice | tail -n 1)
 
-          sleep 300
+          sleep 60
 
           ATTEMPT=0
           until [ "$ATTEMPT" -ge 20 ]; do
@@ -257,7 +257,7 @@ jobs:
           [ "$STATUS" = "200" ]
           echo "$BODY"
           echo "$BODY" | grep -q 'list_calendars'
-  
+
       - name: Cache llm2 models
         uses: actions/cache/save@v5
         env:
@@ -265,6 +265,11 @@ jobs:
         with:
           path: llm2-persistent_storage/
           key: ${{ steps.cache-llm2-models-restore.outputs.cache-primary-key }}
+
+      - name: Create a sample file in alice's directory
+        run: |
+          echo "hello nextcloud" > data/alice/files/my_test_file.txt
+          ./occ files:scan alice
 
       - name: Run task
         env:
@@ -287,7 +292,8 @@ jobs:
           [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ]
           echo $TASK | jq '.ocs.data.task.output.output'
           echo $TASK | jq '.ocs.data.task.output.sources'
-          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q 'get_folder_tree'
+          echo $TASK | jq '.ocs.data.task.output.sources' | grep -qE 'get_folder_tree|get_file_tree'
+          echo $TASK | jq '.ocs.data.task.output.output' | grep -q 'my_test_file'
 
       - name: Run streaming task
         if: ${{ matrix.server-versions == 'master' }}
@@ -296,7 +302,7 @@ jobs:
         run: |
           TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" \
             "http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json" \
-            --data-raw '{"input": {"input": "Count to 500", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": "", "preferStreaming": true}')
+            --data-raw '{"input": {"input": "Count to 50", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": "", "preferStreaming": true}')
           echo "$TASK"
           TASK_ID=$(echo "$TASK" | jq '.ocs.data.task.id')
 
