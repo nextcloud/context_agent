@@ -38,5 +38,11 @@ def timed_memoize(timeout):
 			timestamp[user_id] = current_time
 			return result
 
+		async def cache_invalidate(nc):
+			user_id = await nc.user
+			cached_result.pop(user_id, None)
+			timestamp.pop(user_id, None)
+
+		wrapper.cache_invalidate = cache_invalidate
 		return wrapper
 	return decorator
