@@ -152,6 +152,10 @@ jobs:
           pipx install poetry
           mkdir -p ../llm2-persistent_storage
           poetry install
+          # pyproject.toml pins xllamacpp to the cu128 wheel, which needs libcuda.so.1 at import
+          # time. The CI runner has no NVIDIA driver, so we swap in the PyPI CPU build for tests.
+          # see https://github.com/nextcloud/llm2/blob/d1c5604d75d008359937fcb16f1d82e1f421a87c/.github/workflows/integration_test.yml#L133-L135
+          poetry run pip install --force-reinstall --no-deps xllamacpp
 
       - name: Cache llm2 models
         uses: actions/cache/restore@v5
