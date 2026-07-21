@@ -169,6 +169,20 @@ jobs:
           APP_PORT: 9080
           APP_VERSION: ${{ fromJson(steps.llm2_appinfo.outputs.result).version }}
         run: |
+          # q8_0 KV cache
+          cat > "$(pwd)/../../llm2-persistent_storage/gemma-4-E4B_q4_0-it.json" << 'EOF'
+          {
+              "prompt": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n{system_prompt}<|eot_id|><|start_header_id |>user<|end_header_id|>\n{user_prompt}<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n",
+              "loader_config": {
+                  "n_ctx": 24000,
+                  "max_tokens": 8192,
+                  "stop": ["<|eot_id|>"],
+                  "temperature": 0.7,
+                  "cache_type_k": 8,
+                  "cache_type_v": 8
+              }
+          }
+          EOF
           APP_PERSISTENT_STORAGE="$(pwd)/../../llm2-persistent_storage/" poetry run python3 main.py > ../logs 2>&1 &
 
       - name: Register backend
@@ -215,6 +229,13 @@ jobs:
                 ]
               }'
             )" --force-scopes --wait-finish
+
+      - name: Set Gemma as preferred provider for chatwithtools
+        run: |
+          PREF=$(./occ config:app:get core ai.taskprocessing_provider_preferences 2>/dev/null || echo '{}')
+          [ -z "$PREF" ] && PREF='{}'
+          PREF=$(echo "$PREF" | jq -c '. + {"core:text2text:chatwithtools":"llm2:gemma-4-E4B_q4_0-it:core:text2text:chatwithtools"}')
+          ./occ config:app:set core ai.taskprocessing_provider_preferences --value "$PREF" --type string
 
       - name: Verify MCP tool discovery includes async calendar tools
         env:
