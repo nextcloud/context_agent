@@ -17,7 +17,13 @@ from nc_py_api.ex_app import persistent_storage
 from ex_app.lib.signature import verify_signature
 from ex_app.lib.signature import add_signature
 from ex_app.lib.graph import AgentState, get_graph
-from ex_app.lib.nc_model import model
+from ex_app.lib.nc_model import (
+	model,
+	MULTIMODAL_INTERACTION,
+	extract_text_content,
+	extract_file_ids,
+	build_multimodal_content,
+)
 from ex_app.lib.tools import get_tools
 from ex_app.lib.memorysaver import MemorySaver
 from ex_app.lib.jsonplus import JsonPlusSerializer
@@ -102,9 +108,11 @@ async def react(
 		nc: AsyncNextcloudApp,
 		stream_output: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ):
-	safe_tools, dangerous_tools = await get_tools(nc)
-
+	multimodal = task.get('type') == MULTIMODAL_INTERACTION
 	model.bind_nextcloud(nc)
+	model.multimodal = multimodal
+
+	safe_tools, dangerous_tools = await get_tools(nc)
 
 	tools = dangerous_tools + safe_tools
 
@@ -188,7 +196,13 @@ At the end of each message to the user, if you have carried out a task or answer
 		else:
 			new_input = None
 	else:
-		new_input = {"messages": [("user", task['input']['input'])]}
+		input_attachments = task['input'].get('input_attachments') or []
+		user_text = task['input']['input']
+		if multimodal and input_attachments:
+			user_content = build_multimodal_content(user_text, [int(file_id) for file_id in input_attachments])
+			new_input = {"messages": [HumanMessage(content=user_content)]}
+		else:
+			new_input = {"messages": [("user", user_text)]}
 
 	snapshot_messages = state_snapshot.values.get('messages', [])
 	last_message: AIMessage = AIMessage("")
@@ -252,9 +266,12 @@ At the end of each message to the user, if you have carried out a task or answer
 	if state_snapshot.next == ('dangerous_tools', ):
 		actions = json.dumps(last_message.tool_calls)
 
-	return {
-		'output': last_message.content,
+	result = {
+		'output': extract_text_content(last_message.content),
 		'actions': actions,
 		'conversation_token': export_conversation(checkpointer),
 		'sources': source_list,
 	}
+	if multimodal:
+		result['output_attachments'] = extract_file_ids(last_message.content)
+	return result
