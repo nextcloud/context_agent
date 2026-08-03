@@ -212,24 +212,80 @@ def _validate_expansion_limits(calendar: Calendar, bounds: SearchBounds) -> None
         if rrule is None:
             estimated_occurrences += 1
         else:
-            estimated_occurrences += _estimate_rrule_occurrences(rrule, bounds, expansion_margin)
+            estimated_occurrences += _estimate_rrule_occurrences(component, rrule, bounds, expansion_margin)
         estimated_occurrences += _rdate_count(component.get("RDATE"))
         if estimated_occurrences > MAX_EXPANDED_OCCURRENCES_PER_RESOURCE:
             raise ValueError("Calendar resource recurrence expansion exceeded the processing limit")
 
 
-def _estimate_rrule_occurrences(rrule: Any, bounds: SearchBounds, expansion_margin: timedelta) -> int:
+def _estimate_rrule_occurrences(
+    component: Any,
+    rrule: Any,
+    bounds: SearchBounds,
+    expansion_margin: timedelta,
+) -> int:
+    """Estimate recurrence instances processed from DTSTART through the query stop.
+
+    The recurrence library iterates from DTSTART rather than fast-forwarding to
+    the query start. A finite series therefore stops at the earlier of UNTIL and
+    the expanded query end, while still accounting for an expired active span.
+    """
     frequency = str(_first_recurrence_value(rrule.get("FREQ")) or "").upper()
     unit_seconds = RECURRENCE_UNIT_SECONDS.get(frequency)
     if unit_seconds is None:
         raise ValueError(f"Unsupported recurrence frequency: {frequency or 'unknown'}")
     interval = int(_first_recurrence_value(rrule.get("INTERVAL")) or 1)
-    expanded_seconds = (bounds.end - bounds.start + expansion_margin).total_seconds()
-    base_occurrences = int(expanded_seconds // (unit_seconds * interval)) + 2
-    estimated = base_occurrences * _recurrence_date_multiplier(rrule, frequency)
-    estimated *= _recurrence_time_multiplier(rrule, frequency)
+    if interval < 1:
+        raise ValueError("Recurrence interval must be positive")
     count = _first_recurrence_value(rrule.get("COUNT"))
-    return min(estimated, int(count)) if count is not None else estimated
+    count_limit = int(count) if count is not None else None
+    if count_limit is not None and count_limit < 1:
+        raise ValueError("Recurrence count must be positive")
+
+    start = _decoded_datetime(component, "DTSTART")
+    if start is None:
+        raise ValueError("Recurring event is missing DTSTART")
+    start_datetime = _temporal_to_datetime(start, bounds)
+    until_datetime = _normalize_recurrence_until(start, rrule.get("UNTIL"), bounds)
+    if until_datetime is not None and until_datetime < start_datetime:
+        raise ValueError("Recurrence UNTIL is before DTSTART")
+    processing_end = bounds.end + expansion_margin
+    if until_datetime is not None:
+        processing_end = min(processing_end, until_datetime)
+
+    processed_seconds = max(0, (processing_end - start_datetime).total_seconds())
+    estimated = int(processed_seconds // (unit_seconds * interval)) + 2
+    estimated *= _recurrence_date_multiplier(rrule, frequency)
+    estimated *= _recurrence_time_multiplier(rrule, frequency)
+    return min(estimated, count_limit) if count_limit is not None else estimated
+
+
+def _normalize_recurrence_until(
+    start: date | datetime,
+    until_value: Any,
+    bounds: SearchBounds,
+) -> datetime | None:
+    if until_value is None:
+        return None
+    if isinstance(until_value, list):
+        if len(until_value) != 1:
+            raise ValueError("Recurrence UNTIL must contain exactly one value")
+        until = until_value[0]
+    else:
+        until = until_value
+    if not isinstance(until, date):
+        raise ValueError("Recurrence UNTIL must be a date or datetime")
+
+    start_is_datetime = isinstance(start, datetime)
+    until_is_datetime = isinstance(until, datetime)
+    if start_is_datetime != until_is_datetime:
+        raise ValueError("Recurrence UNTIL type must match DTSTART")
+    if start_is_datetime and until_is_datetime:
+        start_is_aware = start.tzinfo is not None
+        until_is_aware = until.tzinfo is not None
+        if start_is_aware != until_is_aware:
+            raise ValueError("Recurrence UNTIL timezone form must match DTSTART")
+    return _temporal_to_datetime(until, bounds)
 
 
 def _recurrence_date_multiplier(rrule: Any, frequency: str) -> int:
