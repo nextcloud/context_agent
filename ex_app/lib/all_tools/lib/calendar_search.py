@@ -520,7 +520,8 @@ def _timezone_name(component: Any, start: date | datetime) -> str | None:
         return "floating"
     if start.utcoffset() == timedelta(0):
         return "UTC"
-    return str(start.tzinfo)
+    timezone_key = getattr(start.tzinfo, "key", None)
+    return timezone_key if isinstance(timezone_key, str) and timezone_key else None
 
 
 def utc_caldav_timestamp(value: datetime) -> str:
