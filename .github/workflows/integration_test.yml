@@ -62,21 +62,21 @@ jobs:
 
     steps:
       - name: Checkout server
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: nextcloud/server
           submodules: 'true'
           ref: ${{ matrix.server-versions }}
 
       - name: Set up php ${{ matrix.php-versions }}
-        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f # v2.37.0
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
           php-version: ${{ matrix.php-versions }}
           tools: phpunit
           extensions: mbstring, iconv, fileinfo, intl, sqlite, pdo_mysql, pdo_sqlite, pgsql, pdo_pgsql, gd, zip
 
       - name: Checkout llm2 app
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: llm2
           repository: nextcloud/llm2
@@ -91,7 +91,7 @@ jobs:
           expression: "/info/version/text()"
 
       - name: Checkout app
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ env.APP_NAME }}
           persist-credentials: false
@@ -125,7 +125,7 @@ jobs:
           ./occ user:add --password-from-env alice
 
       - name: Checkout app_api
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: apps/app_api
           repository: nextcloud/app_api
@@ -140,7 +140,7 @@ jobs:
           ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
 
       - name: Setup python 3.11
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 #v7.0.0
         with:
           python-version: '3.11'
 
@@ -152,9 +152,13 @@ jobs:
           pipx install poetry
           mkdir -p ../llm2-persistent_storage
           poetry install
+          # pyproject.toml pins xllamacpp to the cu128 wheel, which needs libcuda.so.1 at import
+          # time. The CI runner has no NVIDIA driver, so we swap in the PyPI CPU build for tests.
+          # see https://github.com/nextcloud/llm2/blob/d1c5604d75d008359937fcb16f1d82e1f421a87c/.github/workflows/integration_test.yml#L133-L135
+          poetry run pip install --force-reinstall --no-deps xllamacpp
 
       - name: Cache llm2 models
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         id: cache-llm2-models-restore
         env:
           cache-name: cache-llm2-models
@@ -225,7 +229,7 @@ jobs:
           MCP_URL="http://localhost:8080/index.php/apps/app_api/proxy/context_agent/mcp/"
           CREDS=$(OC_PASS=alice ./occ user:add-app-password --password-from-env alice | tail -n 1)
 
-          sleep 300
+          sleep 60
 
           ATTEMPT=0
           until [ "$ATTEMPT" -ge 20 ]; do
@@ -253,14 +257,19 @@ jobs:
           [ "$STATUS" = "200" ]
           echo "$BODY"
           echo "$BODY" | grep -q 'list_calendars'
-  
+
       - name: Cache llm2 models
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         env:
           cache-name: cache-llm2-models
         with:
           path: llm2-persistent_storage/
           key: ${{ steps.cache-llm2-models-restore.outputs.cache-primary-key }}
+
+      - name: Create a sample file in alice's directory
+        run: |
+          echo "hello nextcloud" > data/alice/files/my_test_file.txt
+          ./occ files:scan alice
 
       - name: Run task
         env:
@@ -283,7 +292,8 @@ jobs:
           [ "$TASK_STATUS" == '"STATUS_SUCCESSFUL"' ]
           echo $TASK | jq '.ocs.data.task.output.output'
           echo $TASK | jq '.ocs.data.task.output.sources'
-          echo $TASK | jq '.ocs.data.task.output.sources' | grep -q 'get_folder_tree'
+          echo $TASK | jq '.ocs.data.task.output.sources' | grep -qE 'get_folder_tree|get_file_tree'
+          echo $TASK | jq '.ocs.data.task.output.output' | grep -q 'my_test_file'
 
       - name: Run streaming task
         if: ${{ matrix.server-versions == 'master' }}
@@ -292,7 +302,7 @@ jobs:
         run: |
           TASK=$(curl -X POST -u "$CREDS" -H "oCS-APIRequest: true" -H "Content-type: application/json" \
             "http://localhost:8080/ocs/v2.php/taskprocessing/schedule?format=json" \
-            --data-raw '{"input": {"input": "Count to 500", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": "", "preferStreaming": true}')
+            --data-raw '{"input": {"input": "Count to 50", "confirmation":1, "conversation_token": ""},"type":"core:contextagent:interaction", "appId": "test", "customId": "", "preferStreaming": true}')
           echo "$TASK"
           TASK_ID=$(echo "$TASK" | jq '.ocs.data.task.id')
 

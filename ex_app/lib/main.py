@@ -24,8 +24,12 @@ from nc_py_api.ex_app import (
 from ex_app.lib.agent import react
 from ex_app.lib.logger import log
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
-from ex_app.lib.provider import provider
+from ex_app.lib.provider import provider, multimodal_provider
 from ex_app.lib.tools import get_categories
+
+PROVIDERS = [provider, multimodal_provider]
+PROVIDER_IDS = [p.id for p in PROVIDERS]
+TASK_TYPES = [p.task_type for p in PROVIDERS]
 
 from contextvars import ContextVar
 from gettext import translation
@@ -113,7 +117,8 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
     # NOTE: `user` is unavailable on this step, so all NC API calls that require it will fail as unauthorized.
     await log(nc, LogLvl.INFO, f"enabled={enabled}")
     if enabled:
-        await nc.providers.task_processing.register(provider)
+        for p in PROVIDERS:
+            await nc.providers.task_processing.register(p)
         app_enabled.set()
         await log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
 
@@ -125,7 +130,8 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
         await nc.appconfig_ex.set_value('tool_status', json.dumps(pref_settings))
 
     else:
-        await nc.providers.task_processing.unregister(provider.id)
+        for p in PROVIDERS:
+            await nc.providers.task_processing.unregister(p.id)
         app_enabled.clear()
         await log(nc, LogLvl.WARNING, f"App disabled: {nc.app_cfg.app_name}")
     # In case of an error, a non-empty short string should be returned, which will be shown to the NC administrator.
@@ -142,7 +148,7 @@ async def background_thread_task():
                 continue
 
             try:
-                response = await nc.providers.task_processing.next_task([provider.id], [provider.task_type])
+                response = await nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES)
                 if not response or not 'task' in response:
                     async with NUM_RUNNING_TASKS_LOCK:
                         no_tasks_running = NUM_RUNNING_TASKS == 0
@@ -162,7 +168,14 @@ async def background_thread_task():
             task = response["task"]
             await log(nc, LogLvl.INFO, 'New Task incoming')
             await log(nc, LogLvl.DEBUG, str(task))
-            await log(nc, LogLvl.INFO, str({'input': task['input']['input'], 'confirmation': task['input']['confirmation'], 'conversation_token': '<skipped>', 'memories': task['input'].get('memories', None)}))
+            await log(nc, LogLvl.INFO, str({
+                'type': task.get('type'),
+                'input': task['input']['input'],
+                'confirmation': task['input']['confirmation'],
+                'conversation_token': '<skipped>',
+                'memories': task['input'].get('memories', None),
+                'input_attachments': task['input'].get('input_attachments', None),
+            }))
             tg.create_task(handle_task(task, nc))
 
 NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
