@@ -67,13 +67,22 @@ async def get_tools(nc: AsyncNextcloudApp):
         :param limit: Maximum events returned, from 1 to 100.
         :return: Matching event fields plus explicit completeness, truncation and failure metadata.
         """
+        try:
+            bounds, requested_names, term_groups, result_limit = validate_search(
+                range_start,
+                range_end,
+                calendar_names,
+                text_term_groups,
+                limit,
+            )
+        except ValueError as exception:
+            return _input_validation_result(exception)
         return await _search_calendar_events(
             nc,
-            range_start=range_start,
-            range_end=range_end,
-            calendar_names=calendar_names,
-            text_term_groups=text_term_groups,
-            limit=limit,
+            bounds=bounds,
+            requested_names=requested_names,
+            term_groups=term_groups,
+            result_limit=result_limit,
         )
 
     return [search_calendar_events]
@@ -82,19 +91,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 async def _search_calendar_events(
     nc: AsyncNextcloudApp,
     *,
-    range_start: str,
-    range_end: str,
-    calendar_names: list[str] | None,
-    text_term_groups: list[list[str]] | None,
-    limit: int,
+    bounds: SearchBounds,
+    requested_names: list[str] | None,
+    term_groups: list[list[str]],
+    result_limit: int,
 ) -> dict:
-    bounds, requested_names, term_groups, result_limit = validate_search(
-        range_start,
-        range_end,
-        calendar_names,
-        text_term_groups,
-        limit,
-    )
     failures = []
     try:
         calendars, failed_discovery_responses = await _list_event_calendars(nc)
@@ -393,4 +394,22 @@ def _failed_result(bounds, failure: dict) -> dict:
         "events": [],
         "failures": [failure],
         "completeness_warning": "The search was incomplete. Do not infer that an event is absent.",
+    }
+
+
+def _input_validation_result(exception: ValueError) -> dict:
+    return {
+        "complete": False,
+        "truncated": False,
+        "calendars_searched": [],
+        "matches_found": 0,
+        "returned": 0,
+        "events": [],
+        "failures": [
+            {
+                "stage": "input_validation",
+                "error": str(exception),
+            }
+        ],
+        "completeness_warning": "The search did not run because its input was invalid.",
     }
