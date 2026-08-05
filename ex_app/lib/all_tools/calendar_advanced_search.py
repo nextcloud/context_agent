@@ -31,6 +31,8 @@ from ex_app.lib.all_tools.lib.calendar_search import (
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 MAX_CONCURRENT_CALENDAR_QUERIES = 4
+# Nextcloud exposes cached WebCal subscriptions as calendars only when this request header is present.
+WEBCAL_CACHING_HEADERS = {"X-NC-CalDAV-Webcal-Caching": "On"}
 
 
 class CalendarRequestError(RuntimeError):
@@ -287,7 +289,7 @@ async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCol
     principal_response = await nc._session.adapter_dav.request(
         "PROPFIND",
         "/",
-        headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
+        headers=_dav_headers("0"),
         data=current_user_principal_propfind_body(),
     )
     _require_success(principal_response, {207}, "current_user_principal")
@@ -296,7 +298,7 @@ async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCol
     home_response = await nc._session.adapter_dav.request(
         "PROPFIND",
         principal_path,
-        headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
+        headers=_dav_headers("0"),
         data=principal_calendar_home_propfind_body(),
     )
     _require_success(home_response, {207}, "calendar_home")
@@ -305,7 +307,7 @@ async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCol
     calendars_response = await nc._session.adapter_dav.request(
         "PROPFIND",
         home_path,
-        headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
+        headers=_dav_headers("1"),
         data=calendar_home_propfind_body(),
     )
     _require_success(calendars_response, {207}, "calendar_collections")
@@ -317,11 +319,19 @@ async def _calendar_report(nc: AsyncNextcloudApp, calendar: CalendarCollection, 
     response = await nc._session.adapter_dav.request(
         "REPORT",
         request_path,
-        headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
+        headers=_dav_headers("1"),
         data=body,
     )
     _require_success(response, {207}, "calendar_query")
     return response.text
+
+
+def _dav_headers(depth: str) -> dict[str, str]:
+    return {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Depth": depth,
+        **WEBCAL_CACHING_HEADERS,
+    }
 
 
 def _same_origin_dav_path(nc: AsyncNextcloudApp, href: str) -> str:
