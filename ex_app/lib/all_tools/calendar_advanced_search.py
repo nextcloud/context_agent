@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit
 
 from langchain_core.tools import tool
@@ -181,41 +182,50 @@ async def _search_selected_calendars(
     for calendar in calendars:
         try:
             xml_text = await _calendar_report(nc, calendar, calendar_query_body(bounds))
-            resources, failed_resources, calendar_truncated = parse_calendar_data(xml_text)
+            calendar_events, calendar_failures, calendar_truncated = await asyncio.to_thread(
+                _process_calendar_response,
+                xml_text,
+                calendar,
+                bounds,
+                term_groups,
+            )
         except Exception as exception:
             failure = _failure_entry("calendar_query", exception)
             failure["calendar"] = calendar.name
             failures.append(failure)
             continue
-        if failed_resources:
-            failures.append(
-                {
-                    "calendar": calendar.name,
-                    "stage": "resource_read",
-                    "error": "Some calendar resources could not be read",
-                    "count": failed_resources,
-                }
-            )
-        if calendar_truncated:
-            resource_truncated = True
-            failures.append(
-                {
-                    "calendar": calendar.name,
-                    "stage": "resource_limit",
-                    "error": "Calendar resource processing limit reached",
-                }
-            )
-        events.extend(_parse_calendar_resources(resources, calendar, bounds, term_groups, failures))
+        events.extend(calendar_events)
+        failures.extend(calendar_failures)
+        resource_truncated = resource_truncated or calendar_truncated
     return events, failures, resource_truncated
 
 
-def _parse_calendar_resources(
-    resources: list[str],
+def _process_calendar_response(
+    xml_text: str,
     calendar: CalendarCollection,
     bounds: SearchBounds,
     term_groups: list[list[str]],
-    failures: list[dict],
-) -> list[dict]:
+) -> tuple[list[dict], list[dict], bool]:
+    resources, failed_resources, resource_truncated = parse_calendar_data(xml_text)
+    failures = []
+    if failed_resources:
+        failures.append(
+            {
+                "calendar": calendar.name,
+                "stage": "resource_read",
+                "error": "Some calendar resources could not be read",
+                "count": failed_resources,
+            }
+        )
+    if resource_truncated:
+        failures.append(
+            {
+                "calendar": calendar.name,
+                "stage": "resource_limit",
+                "error": "Calendar resource processing limit reached",
+            }
+        )
+
     events = []
     parse_failures = 0
     for resource in resources:
@@ -235,7 +245,7 @@ def _parse_calendar_resources(
                 "count": parse_failures,
             }
         )
-    return events
+    return events, failures, resource_truncated
 
 
 def get_category_name():
