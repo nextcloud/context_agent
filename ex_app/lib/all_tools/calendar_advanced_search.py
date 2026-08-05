@@ -30,6 +30,8 @@ from ex_app.lib.all_tools.lib.calendar_search import (
 )
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
+MAX_CONCURRENT_CALENDAR_QUERIES = 4
+
 
 class CalendarRequestError(RuntimeError):
     def __init__(self, status_code: int, request_stage: str):
@@ -179,10 +181,40 @@ async def _search_selected_calendars(
     events = []
     failures = []
     resource_truncated = False
-    for calendar in calendars:
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_CALENDAR_QUERIES)
+    query_body = calendar_query_body(bounds)
+    calendar_results = await asyncio.gather(
+        *(
+            _search_calendar(
+                nc,
+                calendar,
+                bounds,
+                term_groups,
+                query_body,
+                semaphore,
+            )
+            for calendar in calendars
+        )
+    )
+    for calendar_events, calendar_failures, calendar_truncated in calendar_results:
+        events.extend(calendar_events)
+        failures.extend(calendar_failures)
+        resource_truncated = resource_truncated or calendar_truncated
+    return events, failures, resource_truncated
+
+
+async def _search_calendar(
+    nc: AsyncNextcloudApp,
+    calendar: CalendarCollection,
+    bounds: SearchBounds,
+    term_groups: list[list[str]],
+    query_body: str,
+    semaphore: asyncio.Semaphore,
+) -> tuple[list[dict], list[dict], bool]:
+    async with semaphore:
         try:
-            xml_text = await _calendar_report(nc, calendar, calendar_query_body(bounds))
-            calendar_events, calendar_failures, calendar_truncated = await asyncio.to_thread(
+            xml_text = await _calendar_report(nc, calendar, query_body)
+            return await asyncio.to_thread(
                 _process_calendar_response,
                 xml_text,
                 calendar,
@@ -192,12 +224,7 @@ async def _search_selected_calendars(
         except Exception as exception:
             failure = _failure_entry("calendar_query", exception)
             failure["calendar"] = calendar.name
-            failures.append(failure)
-            continue
-        events.extend(calendar_events)
-        failures.extend(calendar_failures)
-        resource_truncated = resource_truncated or calendar_truncated
-    return events, failures, resource_truncated
+            return [], [failure], False
 
 
 def _process_calendar_response(
