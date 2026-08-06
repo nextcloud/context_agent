@@ -330,6 +330,7 @@ jobs:
           curl -u "$CREDS" -H "oCS-APIRequest: true" "http://localhost:8080/ocs/v2.php/taskprocessing/task/$TASK_ID?format=json"
           [ "$TASK_STATUS" = '"STATUS_SUCCESSFUL"' ]
           [ "$STREAMING_OBSERVED" -eq 1 ]
+          echo "$TASK"
 
       - name: Show nextcloud logs
         if: always()
