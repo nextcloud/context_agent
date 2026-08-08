@@ -76,6 +76,7 @@ async def get_tools(nc: AsyncNextcloudApp):
                 limit,
             )
         except ValueError as exception:
+            # Model-generated tool arguments are reported as a structured result, not a tool exception.
             return _input_validation_result(exception)
         return await _search_calendar_events(
             nc,
@@ -96,6 +97,7 @@ async def _search_calendar_events(
     term_groups: list[list[str]],
     result_limit: int,
 ) -> dict:
+    """Discover, select, query and aggregate calendars while preserving partial failures."""
     failures = []
     try:
         calendars, failed_discovery_responses = await _list_event_calendars(nc)
@@ -142,6 +144,7 @@ async def _search_calendar_events(
         event.pop("_uid", None)
         event.pop("_calendar_href", None)
     result_truncated = len(sorted_events) > result_limit
+    # Discovery, selection, query or processing limits make absence unreliable.
     truncated = resource_truncated or result_truncated
     complete = not failures and not truncated
     result = {
@@ -184,6 +187,7 @@ async def _search_selected_calendars(
     events = []
     failures = []
     resource_truncated = False
+    # Bound the full request and processing lifetime to cap concurrent DAV work and parsed response data.
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CALENDAR_QUERIES)
     query_body = calendar_query_body(bounds)
     calendar_results = await asyncio.gather(
@@ -217,6 +221,7 @@ async def _search_calendar(
     async with semaphore:
         try:
             xml_text = await _calendar_report(nc, calendar, query_body)
+            # XML parsing and recurrence expansion are synchronous and may be expensive.
             return await asyncio.to_thread(
                 _process_calendar_response,
                 xml_text,
@@ -236,6 +241,7 @@ def _process_calendar_response(
     bounds: SearchBounds,
     term_groups: list[list[str]],
 ) -> tuple[list[dict], list[dict], bool]:
+    """Process one calendar response without letting a bad resource discard its other events."""
     resources, failed_resources, resource_truncated = parse_calendar_data(xml_text)
     failures = []
     if failed_resources:
@@ -265,6 +271,7 @@ def _process_calendar_response(
                 event["_calendar_href"] = calendar.href
             events.extend(resource_events)
         except Exception:
+            # One malformed or unsupported resource must not make the calendar's successful matches disappear.
             parse_failures += 1
     if parse_failures:
         failures.append(
@@ -287,6 +294,7 @@ async def is_available(nc: AsyncNextcloudApp):
 
 
 async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCollection], int]:
+    """Follow CalDAV principal discovery to the current user's event calendars."""
     principal_response = await nc._session.adapter_dav.request(
         "PROPFIND",
         "/",
@@ -336,6 +344,7 @@ def _dav_headers(depth: str) -> dict[str, str]:
 
 
 def _same_origin_dav_path(nc: AsyncNextcloudApp, href: str) -> str:
+    # WebCal subscriptions are read from Nextcloud's cached DAV collection, never from their external URL.
     target = urlsplit(href)
     endpoint = urlsplit(nc._session.cfg.endpoint)
     if target.scheme and (target.scheme, target.netloc) != (endpoint.scheme, endpoint.netloc):

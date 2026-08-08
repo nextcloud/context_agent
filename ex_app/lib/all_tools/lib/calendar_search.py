@@ -59,6 +59,7 @@ def validate_search(
     text_term_groups: list[list[str]] | None,
     limit: int,
 ) -> tuple[SearchBounds, list[str] | None, list[list[str]], int]:
+    """Validate and bound model-supplied arguments before any CalDAV request is made."""
     start = _parse_bound(range_start, "range_start")
     end = _parse_bound(range_end, "range_end")
     if start >= end:
@@ -111,6 +112,7 @@ def _validate_text_term_group(group: list[str]) -> list[str]:
 
 
 def parse_calendar_collections(xml_text: str) -> tuple[list[CalendarCollection], int]:
+    """Keep event-capable calendar collections, ignoring those explicitly limited to non-VEVENT components."""
     _check_xml_size(xml_text)
     root = _parse_xml(xml_text)
     calendars = []
@@ -154,6 +156,7 @@ def parse_calendar_home(xml_text: str) -> str:
 
 
 def parse_calendar_data(xml_text: str) -> tuple[list[str], int, bool]:
+    """Extract bounded iCalendar resources and retain whether the server response was only partly processed."""
     _check_xml_size(xml_text)
     root = _parse_xml(xml_text)
     resources = []
@@ -190,6 +193,7 @@ def expand_and_filter_events(
     bounds: SearchBounds,
     text_term_groups: list[list[str]],
 ) -> list[dict[str, Any]]:
+    """Expand one resource's recurrences, then apply local text filtering to its occurrences."""
     calendar = Calendar.from_ical(icalendar_text)
     _validate_expansion_limits(calendar, bounds)
     recurrence_by_uid = _recurrence_metadata(calendar)
@@ -203,6 +207,7 @@ def expand_and_filter_events(
 
 
 def _validate_expansion_limits(calendar: Calendar, bounds: SearchBounds) -> None:
+    """Limit recurrence work before expansion, rather than only limiting returned search matches."""
     estimated_occurrences = 0
     for component in calendar.walk("VEVENT"):
         rrule = component.get("RRULE")
