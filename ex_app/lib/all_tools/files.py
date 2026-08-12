@@ -3,13 +3,12 @@
 import xml.etree.ElementTree as ET
 from urllib.parse import unquote
 
-import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
 from ex_app.lib.all_tools.lib.decorator import dangerous_tool, safe_tool
-from ex_app.lib.all_tools.lib.files import get_file_id_from_file_url
+from ex_app.lib.all_tools.lib.files import format_fs_node, get_file_content_from_int_link, get_file_id_from_file_url
 
 
 def _validate_path(path: str) -> str:
@@ -53,53 +52,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: text content of the file
 		"""
 
-		file_id = get_file_id_from_file_url(file_url)
-		# Generate a direct download link using the fileId
-		info = await nc.ocs('POST', '/ocs/v2.php/apps/dav/api/v1/direct', json={'fileId': file_id}, response_type='json')
-		download_url = info.get('ocs', {}).get('data', {}).get('url', None)
-
-		if not download_url:
-			raise Exception('Could not generate download URL from file id')
-
-		# Download the file from the direct download URL
-		response = await niquests.async_api.get(download_url)
-
-		return response.text
-
-	def __format_fs_node(fsnode: FsNode) -> dict:
-		# todo: permissions info
-		return {
-			'path': fsnode.user_path,
-			'file_id': fsnode.info.fileid,
-			'etag': fsnode.etag.replace('"', '').replace("'", ''),
-			'bytes': fsnode.info.size,
-			'creation_date': fsnode.info.creation_date.isoformat(),
-			'last_modified': fsnode.info.last_modified.isoformat(),
-			'mimetype': fsnode.info.mimetype,
-			'is_shared': fsnode.is_shared,
-			'is_favourite': fsnode.info.favorite,
-			'is_version': fsnode.info.is_version,
-			'trash_info': {
-				'in_trash': fsnode.info.in_trash,
-				**({
-					'trashbin_filename': fsnode.info.trashbin_filename,
-					'original_location': fsnode.info.trashbin_original_location,
-					'deletion_time': fsnode.info.trashbin_deletion_time,
-				} if fsnode.info.in_trash else {}),
-			},
-			'lock_info': {
-				'is_locked': fsnode.lock_info.is_locked,
-				**({
-					'owner': fsnode.lock_info.owner,
-					'owner_display_name': fsnode.lock_info.owner_display_name,
-					'type': fsnode.lock_info.type.name,
-					'creation_time': fsnode.lock_info.lock_creation_time,
-					'ttl': fsnode.lock_info.lock_ttl,
-					'locked_by_app': fsnode.lock_info.owner_editor,
-				} if fsnode.lock_info.is_locked else {}),
-			},
-		}
-
+		return await get_file_content_from_int_link(nc, file_url)
 
 	@tool
 	@safe_tool
@@ -115,7 +68,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		files_handle = AsyncFilesAPI(nc._session)
 		fsnode_list = await files_handle.listdir(path, min(5, depth))
 		if include_metadata:
-			return [__format_fs_node(fsnode) for fsnode in fsnode_list]
+			return [format_fs_node(fsnode) for fsnode in fsnode_list]
 
 		return [fsnode.user_path for fsnode in fsnode_list]
 
