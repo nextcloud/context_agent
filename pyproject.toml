@@ -4,7 +4,7 @@
 name = "context_agent"
 description = ""
 authors = ["Marcel Klehr <mklehr@gmx.net>"]
-license = "AGPL-3.0"
+license = "AGPL-3.0-or-later"
 readme = "README.md"
 package-mode = false
 
