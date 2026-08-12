@@ -13,12 +13,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def web_fetch(url: str) -> str:
 		"""
-		Get the contents of a web page via HTTP
-		:param url: The HTTP URL to the web page (e.g. https://nextcloud.com/team/ )
-		:return: the web page content
+		Fetch the contents of an external web page via HTTP.
+		This is NOT for Nextcloud-internal file links (like https://<host>/f/12345), use get_file_content_by_file_link for those.
+		Use this for any URL on the public internet or intranet (e.g., https://www.eff.org/).
+		:param url: the HTTP(S) URL of the web page to fetch
+		:return: the raw web page content (HTML, JSON, etc.)
 		"""
-		res = await niquests.get(url)
-		return res.text()
+		res = await niquests.async_api.get(url)
+		return res.text or "(empty content)"
 
 	return [
 		web_fetch,

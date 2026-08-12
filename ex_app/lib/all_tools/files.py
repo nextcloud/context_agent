@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import xml.etree.ElementTree as ET
 from urllib.parse import unquote
+
 import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -45,8 +46,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@safe_tool
 	async def get_file_content_by_file_link(file_url: str):
 		"""
-		Get the content of a file given an internal Nextcloud link (e.g., https://host/index.php/f/12345)
-		:param file_url: the nextcloud-internal file URL
+		Get the content of a Nextcloud-internal file using its internal file link.
+		This is NOT for fetching arbitrary web URLs, use web_fetch for those.
+		Only use this tool when the URL points to a file stored in Nextcloud (e.g., https://cloud.example.com/index.php/f/12345 or https://cloud.example.com/f/12345).
+		:param file_url: a Nextcloud-internal file URL (must match the pattern https://<host>/f/<fileId> or https://<host>/index.php/f/<fileId>)
 		:return: text content of the file
 		"""
 
