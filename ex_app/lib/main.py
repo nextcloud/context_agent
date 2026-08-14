@@ -38,7 +38,10 @@ from fastmcp import FastMCP
 mcp = FastMCP(name="nextcloud")
 mcp.add_middleware(UserAuthMiddleware())
 mcp.add_middleware(ToolListMiddleware(mcp))
-http_mcp_app = mcp.http_app("/", transport="http", stateless_http=True)
+# Session-capable by default: SDK >= 1.28 clients keep the session after initialize
+# and fail with "Session terminated" when the transport is stateless. See #227.
+_stateless_http = os.getenv("MCP_STATELESS_HTTP", "0").lower() in ("1", "true", "yes")
+http_mcp_app = mcp.http_app("/", transport="http", stateless_http=_stateless_http)
 
 fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
