@@ -121,6 +121,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Replaces the entire page body. To append, first read with get_page_content and concatenate.
 		If another user has the page open in the real-time editor, their session may overwrite this
 		write on save - consider rename_page or trash_page for destructive intent instead.
+		Make sure that there is a note at the bottom of the page content, that this content was edited with Artificial Intelligence.
 		:param collective_id: the id of the collective (obtainable with list_collectives)
 		:param page_id: the id of the page (obtainable with list_collective_pages)
 		:param content: the new markdown body for the page (replaces existing content)
