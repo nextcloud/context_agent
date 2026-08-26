@@ -1,11 +1,45 @@
 # SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+import re
 from urllib.parse import quote
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+
+# Unlike the other write tools, which append their AI note to a value they create,
+# update_page_content replaces a whole page the agent usually read back first - so the
+# note has to be stripped before it is re-appended, or it stacks once per edit.
+_AI_DISCLAIMER = '> ℹ️ **This page was edited with the help of Nextcloud AI Assistant.**'
+
+# Matches only our own note, on a line of its own, together with the newlines around it.
+# Anchored to line starts so a blockquote elsewhere on the page is never touched, and
+# tolerant of the emoji or its variation selector being dropped and of the emphasis
+# markers being backslash-escaped, since the page may come back through a markdown
+# serializer between two edits.
+_DISCLAIMER_RE = re.compile(
+	r'(?P<before>\n*)'
+	r'^[ \t]*>[ \t]*(?:\u2139\ufe0f?[ \t]*)?\\?\*\\?\*'
+	r'This page was edited with the help of Nextcloud AI Assistant\.?'
+	r'\\?\*\\?\*[ \t]*\r?$'
+	r'(?P<after>\n*)',
+	re.MULTILINE,
+)
+
+
+def _close_gap(match) -> str:
+	# Removing the note leaves the blank lines from both of its sides stacked together.
+	# Rejoin with one blank line when it sat between two blocks, and with nothing when it
+	# sat at the very start or end. Only this seam is touched: blank runs elsewhere on the
+	# page are left alone, since they are significant inside fenced code blocks.
+	if match.group('before') and match.group('after'):
+		return '\n\n'
+	return ''
+
+
+def _strip_ai_disclaimer(markdown: str) -> str:
+	return _DISCLAIMER_RE.sub(_close_gap, markdown)
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -67,6 +101,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Get the Markdown content of a Collectives page.
 		Fetches the underlying .md file via WebDAV. Returns an empty string for pages that have
 		never been written to (newly created pages materialize their file on first write).
+		Pages last written by update_page_content end with its AI-authored note; that note is
+		part of the returned content and is replaced, not duplicated, on the next write.
 		:param collective_id: the id of the collective (obtainable with list_collectives)
 		:param page_id: the id of the page (obtainable with list_collective_pages)
 		:return: the markdown content of the page, or empty string if the file has not been written yet
@@ -121,7 +157,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Replaces the entire page body. To append, first read with get_page_content and concatenate.
 		If another user has the page open in the real-time editor, their session may overwrite this
 		write on save - consider rename_page or trash_page for destructive intent instead.
-		Make sure that there is a note at the bottom of the page content, that this content was edited with Artificial Intelligence.
+		A note saying the page was edited with the help of the AI Assistant is appended
+		automatically - do not write one yourself, and leave any existing one in the content
+		you pass; it is replaced rather than duplicated.
 		:param collective_id: the id of the collective (obtainable with list_collectives)
 		:param page_id: the id of the page (obtainable with list_collective_pages)
 		:param content: the new markdown body for the page (replaces existing content)
@@ -131,9 +169,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		page = page_resp['page'] if isinstance(page_resp, dict) and 'page' in page_resp else page_resp
 		user_id = await _user_id()
 		url = await _page_webdav_url(user_id, page)
+		body = _strip_ai_disclaimer(content).rstrip()
+		stamped = f"{body}\n\n{_AI_DISCLAIMER}\n" if body else f"{_AI_DISCLAIMER}\n"
 		await nc._session._create_adapter(True).request('PUT', url, headers={
 			'Content-Type': 'text/markdown',
-		}, data=content)
+		}, data=stamped)
 		return json.dumps({'status': 'success', 'page_id': page_id})
 
 	@tool
