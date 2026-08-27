@@ -116,6 +116,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		})
 		if response.status_code == 404:
 			return ''
+		response.raise_for_status()
 		return response.text
 
 	@tool
@@ -171,9 +172,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		url = await _page_webdav_url(user_id, page)
 		body = _strip_ai_disclaimer(content).rstrip()
 		stamped = f"{body}\n\n{_AI_DISCLAIMER}\n" if body else f"{_AI_DISCLAIMER}\n"
-		await nc._session._create_adapter(True).request('PUT', url, headers={
+		response = await nc._session._create_adapter(True).request('PUT', url, headers={
 			'Content-Type': 'text/markdown',
 		}, data=stamped)
+		response.raise_for_status()
 		return json.dumps({'status': 'success', 'page_id': page_id})
 
 	@tool
@@ -281,6 +283,6 @@ def get_category_name():
 async def is_available(nc: AsyncNextcloudApp):
 	try:
 		await nc.ocs('GET', '/ocs/v2.php/apps/collectives/api/v1.0/collectives')
-	except:
+	except Exception:
 		return False
 	return True
