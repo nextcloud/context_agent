@@ -1479,14 +1479,14 @@ files = [
 
 [[package]]
 name = "icalendar"
-version = "7.2.2"
+version = "7.3.0"
 description = "RFC 5545 compatible parser and generator of iCalendar files"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "icalendar-7.2.2-py3-none-any.whl", hash = "sha256:90dd280cb4f67d1ef07b5178c2c33db4fc0a05627e50a3758b6b2aa9b117bc07"},
-    {file = "icalendar-7.2.2.tar.gz", hash = "sha256:6cf904a928881e20c89b682e75bca2eb97e8c5ca629782ed44a519abf4cac1cc"},
+    {file = "icalendar-7.3.0-py3-none-any.whl", hash = "sha256:8355acfe17be81b368f0b1e3740817cea9b56ea889931f8f1a87c62f2d28db0b"},
+    {file = "icalendar-7.3.0.tar.gz", hash = "sha256:7bd001c8e648205e1bde5c6a5b77096598e8d0893dcf57755c6c597635620132"},
 ]
 
 [package.dependencies]
@@ -2657,30 +2657,31 @@ files = [
 
 [[package]]
 name = "nc-py-api"
-version = "0.24.2"
+version = "0.30.3"
 description = "Nextcloud Python Framework"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "nc_py_api-0.24.2-py3-none-any.whl", hash = "sha256:671ffe28df1c0205b782e6bbbfc143c96a447a66f85332c906334e5022230362"},
-    {file = "nc_py_api-0.24.2.tar.gz", hash = "sha256:05a1f214577fc50e38ec2f8fb28c55d09246f93b81ac9bba4385185043d13bae"},
+    {file = "nc_py_api-0.30.3-py3-none-any.whl", hash = "sha256:26720b848c358c59616e255c7e8725d3a0d2c7c8d02a037c7460394378ad066f"},
+    {file = "nc_py_api-0.30.3.tar.gz", hash = "sha256:add08d4967ed86280d28a2b156965cf243c032555a8e623f59084399b3b5762e"},
 ]
 
 [package.dependencies]
-caldav = {version = ">=2.2.6", optional = true, markers = "extra == \"calendar\""}
-fastapi = ">=0.109.2"
+caldav = {version = ">=3.1,<4", optional = true, markers = "extra == \"calendar\""}
+fastapi = ">=0.133"
 filelock = ">=3.20.3,<4"
-niquests = ">=3,<4"
+niquests = ">=3.4.2,<4"
 pydantic = ">=2.1.1"
 python-dotenv = ">=1"
+starlette = ">=1.0.1"
 xmltodict = ">=0.13"
 
 [package.extras]
 app = ["uvicorn[standard] (>=0.23.2)"]
 bench = ["matplotlib", "numpy", "py-cpuinfo", "uvicorn[standard] (>=0.23.2)"]
-calendar = ["caldav (>=2.2.6)"]
-dev = ["caldav (>=2.2.6)", "coverage", "huggingface-hub", "matplotlib", "numpy", "pillow", "pre-commit", "py-cpuinfo", "pylint", "pytest", "pytest-asyncio", "uvicorn[standard] (>=0.23.2)"]
+calendar = ["caldav (>=3.1,<4)"]
+dev = ["caldav (>=3.1,<4)", "coverage", "huggingface-hub", "matplotlib", "numpy", "pillow", "pre-commit", "py-cpuinfo", "pylint", "pytest", "pytest-asyncio", "uvicorn[standard] (>=0.23.2)"]
 dev-min = ["coverage", "huggingface-hub", "pillow", "pre-commit", "pylint", "pytest", "pytest-asyncio"]
 
 [[package]]
@@ -5326,4 +5327,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "502d5c71ea7ae502bf0948d4c718049e9bb3171c48f2016b73e1f6afd815b0e8"
+content-hash = "9f66707c3c4cac1701b81ed706fffaaeae4fea90739c0f69efd9c7194117dc53"
