@@ -408,6 +408,7 @@ def _failed_result(bounds, failure: dict) -> dict:
 
 def _input_validation_result(exception: ValueError) -> dict:
     return {
+        "range": None,
         "complete": False,
         "truncated": False,
         "calendars_searched": [],

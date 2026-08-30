@@ -419,7 +419,7 @@ def _event_from_component(
 def event_sort_key(event: dict[str, Any], floating_timezone: tzinfo = UTC) -> tuple[datetime, str, str]:
     start = event["start"]
     if event["all_day"]:
-        instant = datetime.combine(date.fromisoformat(start), time.min, UTC)
+        instant = datetime.combine(date.fromisoformat(start), time.min, floating_timezone).astimezone(UTC)
     else:
         instant = datetime.fromisoformat(start)
         if instant.tzinfo is None:
@@ -566,8 +566,6 @@ def _event_end(component: Any, start: date | datetime) -> date | datetime:
 
 
 def _format_temporal(value: date | datetime) -> str:
-    if isinstance(value, datetime):
-        return value.isoformat()
     return value.isoformat()
 
 
