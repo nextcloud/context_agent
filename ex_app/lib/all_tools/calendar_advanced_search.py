@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -34,6 +34,7 @@ MAX_CONCURRENT_CALENDAR_QUERIES = 4
 MAX_PROCESSED_OCCURRENCES_PER_SEARCH = 250_000
 # Nextcloud exposes cached WebCal subscriptions as calendars only when this request header is present.
 WEBCAL_CACHING_HEADERS = {"X-NC-CalDAV-Webcal-Caching": "On"}
+DEFAULT_ORIGIN_PORTS = {"http": 80, "https": 443}
 
 
 class CalendarRequestError(RuntimeError):
@@ -411,8 +412,11 @@ def _same_origin_dav_path(nc: AsyncNextcloudApp, href: str) -> str:
     # WebCal subscriptions are read from Nextcloud's cached DAV collection, never from their external URL.
     target = urlsplit(href)
     endpoint = urlsplit(nc._session.cfg.endpoint)
-    if target.scheme and (target.scheme, target.netloc) != (endpoint.scheme, endpoint.netloc):
-        raise ValueError("Calendar collection URL does not belong to this Nextcloud server")
+    if target.scheme or target.netloc:
+        target_origin = _normalized_origin(target, fallback_scheme=endpoint.scheme)
+        endpoint_origin = _normalized_origin(endpoint)
+        if target_origin is None or target_origin != endpoint_origin:
+            raise ValueError("Calendar collection URL does not belong to this Nextcloud server")
     dav_path = urlsplit(nc._session.cfg.dav_endpoint).path.rstrip("/")
     if target.path == dav_path:
         relative_path = "/"
@@ -421,6 +425,18 @@ def _same_origin_dav_path(nc: AsyncNextcloudApp, href: str) -> str:
     else:
         raise ValueError("Calendar collection URL is outside the Nextcloud DAV endpoint")
     return relative_path + (f"?{target.query}" if target.query else "")
+
+
+def _normalized_origin(url: SplitResult, fallback_scheme: str | None = None) -> tuple[str, str, int | None] | None:
+    scheme = (url.scheme or fallback_scheme or "").casefold()
+    hostname = url.hostname
+    if not scheme or hostname is None:
+        return None
+    try:
+        explicit_port = url.port
+    except ValueError:
+        return None
+    return scheme, hostname.casefold(), explicit_port if explicit_port is not None else DEFAULT_ORIGIN_PORTS.get(scheme)
 
 
 def _require_success(response, allowed_statuses: set[int], request_stage: str) -> None:
