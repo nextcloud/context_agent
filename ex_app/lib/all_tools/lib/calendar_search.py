@@ -52,6 +52,13 @@ class SearchBounds:
     end: datetime
 
 
+@dataclass(frozen=True)
+class EventExpansion:
+    events: list[dict[str, Any]]
+    processing_cost: int
+    truncated: bool
+
+
 def validate_search(
     range_start: str,
     range_end: str,
@@ -194,8 +201,28 @@ def expand_and_filter_events(
     text_term_groups: list[list[str]],
 ) -> list[dict[str, Any]]:
     """Expand one resource's recurrences, then apply local text filtering to its occurrences."""
+    return expand_and_filter_events_bounded(
+        icalendar_text,
+        calendar_name,
+        bounds,
+        text_term_groups,
+        processing_limit=None,
+    ).events
+
+
+def expand_and_filter_events_bounded(
+    icalendar_text: str,
+    calendar_name: str,
+    bounds: SearchBounds,
+    text_term_groups: list[list[str]],
+    *,
+    processing_limit: int | None,
+) -> EventExpansion:
+    """Expand one resource only when its estimated work fits the remaining search budget."""
     calendar = Calendar.from_ical(icalendar_text)
-    _validate_expansion_limits(calendar, bounds)
+    processing_cost = _validate_expansion_limits(calendar, bounds)
+    if processing_limit is not None and processing_cost > processing_limit:
+        return EventExpansion(events=[], processing_cost=0, truncated=True)
     recurrence_by_uid = _recurrence_metadata(calendar)
     occurrences = recurring_ical_events.of(calendar, components=["VEVENT"]).between(bounds.start, bounds.end)
     results = []
@@ -203,10 +230,10 @@ def expand_and_filter_events(
         event = _event_from_component(component, calendar_name, recurrence_by_uid, text_term_groups)
         if event is not None:
             results.append(event)
-    return results
+    return EventExpansion(events=results, processing_cost=processing_cost, truncated=False)
 
 
-def _validate_expansion_limits(calendar: Calendar, bounds: SearchBounds) -> None:
+def _validate_expansion_limits(calendar: Calendar, bounds: SearchBounds) -> int:
     """Limit recurrence work before expansion, rather than only limiting returned search matches."""
     estimated_occurrences = 0
     for component in calendar.walk("VEVENT"):
@@ -221,6 +248,7 @@ def _validate_expansion_limits(calendar: Calendar, bounds: SearchBounds) -> None
         estimated_occurrences += _rdate_count(component.get("RDATE"))
         if estimated_occurrences > MAX_EXPANDED_OCCURRENCES_PER_RESOURCE:
             raise ValueError("Calendar resource recurrence expansion exceeded the processing limit")
+    return estimated_occurrences
 
 
 def _estimate_rrule_occurrences(

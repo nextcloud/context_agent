@@ -20,7 +20,7 @@ from ex_app.lib.all_tools.lib.calendar_search import (
     current_user_principal_propfind_body,
     event_identity,
     event_sort_key,
-    expand_and_filter_events,
+    expand_and_filter_events_bounded,
     parse_calendar_collections,
     parse_calendar_data,
     parse_calendar_home,
@@ -31,6 +31,7 @@ from ex_app.lib.all_tools.lib.calendar_search import (
 from ex_app.lib.all_tools.lib.decorator import safe_tool
 
 MAX_CONCURRENT_CALENDAR_QUERIES = 4
+MAX_PROCESSED_OCCURRENCES_PER_SEARCH = 250_000
 # Nextcloud exposes cached WebCal subscriptions as calendars only when this request header is present.
 WEBCAL_CACHING_HEADERS = {"X-NC-CalDAV-Webcal-Caching": "On"}
 
@@ -60,6 +61,7 @@ async def get_tools(nc: AsyncNextcloudApp):
         Terms within one group are alternatives (OR), while every group must match (AND).
         Supply likely synonyms or translations as alternatives when the user's wording and calendar language may differ.
         An empty complete result proves no matching events. Never infer absence when complete is false.
+        If a result is incomplete, narrow the date range, calendars or search terms before retrying.
         :param range_start: Inclusive range start, for example 2026-10-01T00:00:00+02:00.
         :param range_end: Exclusive range end, no more than 370 days after range_start.
         :param calendar_names: Optional exact calendar display names. Searches every event calendar when omitted.
@@ -126,11 +128,12 @@ async def _search_calendar_events(
     if calendar_limit_failure:
         failures.append(calendar_limit_failure)
 
-    events, search_failures, resource_truncated = await _search_selected_calendars(
+    events, matches_found, search_failures, resource_truncated = await _search_selected_calendars(
         nc,
         selected_calendars,
         bounds,
         term_groups,
+        result_limit,
     )
     failures.extend(search_failures)
     resource_truncated = resource_truncated or calendar_limit_failure is not None
@@ -143,7 +146,7 @@ async def _search_calendar_events(
     for event in sorted_events:
         event.pop("_uid", None)
         event.pop("_calendar_href", None)
-    result_truncated = len(sorted_events) > result_limit
+    result_truncated = matches_found > result_limit
     # Discovery, selection, query or processing limits make absence unreliable.
     truncated = resource_truncated or result_truncated
     complete = not failures and not truncated
@@ -156,7 +159,7 @@ async def _search_calendar_events(
         "complete": complete,
         "truncated": truncated,
         "calendars_searched": [calendar.name for calendar in selected_calendars],
-        "matches_found": len(sorted_events),
+        "matches_found": matches_found,
         "returned": min(len(sorted_events), result_limit),
         "events": sorted_events[:result_limit],
         "failures": failures,
@@ -183,13 +186,16 @@ async def _search_selected_calendars(
     calendars: list[CalendarCollection],
     bounds: SearchBounds,
     term_groups: list[list[str]],
-) -> tuple[list[dict], list[dict], bool]:
+    result_limit: int,
+) -> tuple[list[dict], int, list[dict], bool]:
     events = []
+    matches_found = 0
     failures = []
     resource_truncated = False
     # Bound the full request and processing lifetime to cap concurrent DAV work and parsed response data.
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CALENDAR_QUERIES)
     query_body = calendar_query_body(bounds)
+    occurrence_limit = MAX_PROCESSED_OCCURRENCES_PER_SEARCH // max(1, len(calendars))
     calendar_results = await asyncio.gather(
         *(
             _search_calendar(
@@ -199,15 +205,18 @@ async def _search_selected_calendars(
                 term_groups,
                 query_body,
                 semaphore,
+                result_limit,
+                occurrence_limit,
             )
             for calendar in calendars
         )
     )
-    for calendar_events, calendar_failures, calendar_truncated in calendar_results:
+    for calendar_events, calendar_matches, calendar_failures, calendar_truncated in calendar_results:
         events.extend(calendar_events)
+        matches_found += calendar_matches
         failures.extend(calendar_failures)
         resource_truncated = resource_truncated or calendar_truncated
-    return events, failures, resource_truncated
+    return events, matches_found, failures, resource_truncated
 
 
 async def _search_calendar(
@@ -217,7 +226,9 @@ async def _search_calendar(
     term_groups: list[list[str]],
     query_body: str,
     semaphore: asyncio.Semaphore,
-) -> tuple[list[dict], list[dict], bool]:
+    result_limit: int,
+    occurrence_limit: int,
+) -> tuple[list[dict], int, list[dict], bool]:
     async with semaphore:
         try:
             xml_text = await _calendar_report(nc, calendar, query_body)
@@ -228,11 +239,13 @@ async def _search_calendar(
                 calendar,
                 bounds,
                 term_groups,
+                result_limit,
+                occurrence_limit,
             )
         except Exception as exception:
             failure = _failure_entry("calendar_query", exception)
             failure["calendar"] = calendar.name
-            return [], [failure], False
+            return [], 0, [failure], False
 
 
 def _process_calendar_response(
@@ -240,7 +253,9 @@ def _process_calendar_response(
     calendar: CalendarCollection,
     bounds: SearchBounds,
     term_groups: list[list[str]],
-) -> tuple[list[dict], list[dict], bool]:
+    result_limit: int,
+    occurrence_limit: int,
+) -> tuple[list[dict], int, list[dict], bool]:
     """Process one calendar response without letting a bad resource discard its other events."""
     resources, failed_resources, resource_truncated = parse_calendar_data(xml_text)
     failures = []
@@ -262,14 +277,29 @@ def _process_calendar_response(
             }
         )
 
-    events = []
+    retained_events: dict[tuple, dict] = {}
+    matched_identities: set[tuple] = set()
+    remaining_occurrences = occurrence_limit
+    occurrence_truncated = False
     parse_failures = 0
     for resource in resources:
         try:
-            resource_events = expand_and_filter_events(resource, calendar.name, bounds, term_groups)
-            for event in resource_events:
+            expansion = expand_and_filter_events_bounded(
+                resource,
+                calendar.name,
+                bounds,
+                term_groups,
+                processing_limit=remaining_occurrences,
+            )
+            if expansion.truncated:
+                occurrence_truncated = True
+                continue
+            remaining_occurrences -= expansion.processing_cost
+            for event in expansion.events:
                 event["_calendar_href"] = calendar.href
-            events.extend(resource_events)
+                identity = event_identity(event)
+                matched_identities.add(identity)
+                _retain_earliest_event(retained_events, identity, event, result_limit, bounds)
         except Exception:
             # One malformed or unsupported resource must not make the calendar's successful matches disappear.
             parse_failures += 1
@@ -282,7 +312,41 @@ def _process_calendar_response(
                 "count": parse_failures,
             }
         )
-    return events, failures, resource_truncated
+    if occurrence_truncated:
+        failures.append(
+            {
+                "calendar": calendar.name,
+                "stage": "occurrence_limit",
+                "error": "Calendar occurrence processing limit reached",
+                "limit": occurrence_limit,
+            }
+        )
+    events = sorted(retained_events.values(), key=lambda event: event_sort_key(event, bounds.start.tzinfo))
+    return events, len(matched_identities), failures, resource_truncated or occurrence_truncated
+
+
+def _retain_earliest_event(
+    retained_events: dict,
+    identity: tuple,
+    event: dict,
+    result_limit: int,
+    bounds: SearchBounds,
+) -> None:
+    if identity in retained_events:
+        retained_events[identity] = event
+        return
+    if len(retained_events) < result_limit:
+        retained_events[identity] = event
+        return
+    latest_identity = max(
+        retained_events,
+        key=lambda retained_identity: event_sort_key(retained_events[retained_identity], bounds.start.tzinfo),
+    )
+    event_key = event_sort_key(event, bounds.start.tzinfo)
+    latest_key = event_sort_key(retained_events[latest_identity], bounds.start.tzinfo)
+    if event_key < latest_key:
+        retained_events.pop(latest_identity)
+        retained_events[identity] = event
 
 
 def get_category_name():
