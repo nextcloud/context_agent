@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import persistent_storage
 
+from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
 from ex_app.lib.graph import AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
@@ -156,6 +157,10 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 		if tool_enabled("web_fetch"):
 			system_prompt_text += "Use the web_fetch tool to fetch web content. You can fetch the complete page content of a duckduckgo search result using web_fetch as well.\n"
+		if tool_enabled("parse_nextcloud_url"):
+			# app_cfg.endpoint can be an instance-internal address, so it is only a last resort
+			base_url = await get_absolute_base_url(nc) or nc.app_cfg.endpoint.rstrip('/')
+			system_prompt_text += f"This Nextcloud instance is reachable at {base_url}. URLs starting with this root belong to this Nextcloud instance; use the parse_nextcloud_url tool to turn such a link the user pasted into concrete ids before calling the relevant app tools.\n"
 
 		if task['input'].get('memories'):
 			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
