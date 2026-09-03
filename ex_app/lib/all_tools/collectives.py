@@ -49,7 +49,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		#   /remote.php/dav/files/{user}/{collectivePath}/{filePath}/{fileName}
 		# filePath is empty for top-level pages.
 		parts = [page['collectivePath'], page.get('filePath') or '', page['fileName']]
-		encoded = [quote(p) for p in parts if p]
+		segments = '/'.join(p for p in parts if p).split('/')
+		encoded = [quote(s, safe='') for s in segments if s]
 		return f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{'/'.join(encoded)}"
 
 	# --- Collectives ---
@@ -109,7 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		user_id = await nc.user
 		url = await _page_webdav_url(user_id, page)
 		response = await nc._session._create_adapter(True).request('GET', url, headers={
-			'Content-Type': 'application/json',
+			'Accept': 'text/markdown',
 		})
 		if response.status_code == 404:
 			return ''
