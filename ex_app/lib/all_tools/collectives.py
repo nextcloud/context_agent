@@ -44,9 +44,6 @@ def _strip_ai_disclaimer(markdown: str) -> str:
 
 async def get_tools(nc: AsyncNextcloudApp):
 
-	async def _user_id() -> str:
-		return (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))['id']
-
 	async def _page_webdav_url(user_id: str, page: dict) -> str:
 		# A page's markdown file lives at:
 		#   /remote.php/dav/files/{user}/{collectivePath}/{filePath}/{fileName}
@@ -109,7 +106,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		page_resp = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/{page_id}')
 		page = page_resp['page'] if isinstance(page_resp, dict) and 'page' in page_resp else page_resp
-		user_id = await _user_id()
+		user_id = await nc.user
 		url = await _page_webdav_url(user_id, page)
 		response = await nc._session._create_adapter(True).request('GET', url, headers={
 			'Content-Type': 'application/json',
@@ -168,7 +165,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		page_resp = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/{page_id}')
 		page = page_resp['page'] if isinstance(page_resp, dict) and 'page' in page_resp else page_resp
-		user_id = await _user_id()
+		user_id = await nc.user
 		url = await _page_webdav_url(user_id, page)
 		body = _strip_ai_disclaimer(content).rstrip()
 		stamped = f"{body}\n\n{_AI_DISCLAIMER}\n" if body else f"{_AI_DISCLAIMER}\n"
