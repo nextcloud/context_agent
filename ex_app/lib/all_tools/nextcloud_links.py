@@ -117,6 +117,49 @@ def _decode_calendar_object(object_id: str) -> dict:
 	return {'dav_path': path, 'calendar_uri': segments[-2], 'event_uid': segments[-1][:-len('.ics')]}
 
 
+_CAL_ROUTE_MODES = frozenset(('popover', 'full', 'sidebar'))
+
+
+def _find_calendar_object(raw_scope: str, route: str):
+	"""
+	Locate the ``{object}[/{recurrenceId}]`` pair that follows a Calendar app route.
+
+	``route`` is a regex for the route marker (``/view/``, ``/edit/``). The segment right
+	after it may be a view/editor mode (``popover``, ``full``, ``sidebar``, ...) instead of
+	the object, and that mode list is not closed - the app keeps adding routes. So try
+	every offset and keep the first segment that actually decodes to a CalDAV object path.
+	Only when none does fall back to skipping a *known* mode, so the raw value is still
+	reported rather than dropped.
+
+	Returns ``(object_id, recurrence_id, decoded)`` or ``None`` when the route is absent.
+	``decoded`` is empty when the object could not be decoded, which is what tells the
+	caller not to claim the object is base64 of a DAV path.
+
+	``raw_scope`` must still be percent-encoded: the base64 object may contain ``/`` as
+	``%2F``, so segments are split off before unquoting.
+	"""
+	m = re.search(route + r'([^?#]+)', raw_scope)
+	if not m:
+		return None
+	segments = [unquote(s) for s in m.group(1).split('/') if s]
+	if not segments:
+		return None
+	for index, segment in enumerate(segments):
+		decoded = _decode_calendar_object(segment)
+		if decoded:
+			return segment, segments[index + 1] if index + 1 < len(segments) else None, decoded
+	if segments[0] in _CAL_ROUTE_MODES:
+		segments = segments[1:]
+	if not segments:
+		return None
+	return segments[0], segments[1] if len(segments) > 1 else None, {}
+
+
+# Nextcloud root entrypoints that are never a webroot directory. A path going through one
+# of them is not an app route, so unanchored app-route patterns must not claim it.
+_NON_APP_ENTRYPOINTS = frozenset(
+	('remote.php', 'public.php', 'cron.php', 'status.php', 'ocs', 'ocs-provider', 'ocm-provider'))
+
 _DEFAULT_PORTS = {'http': 80, 'https': 443}
 _SCHEME_PREFIX = re.compile(r'^[a-zA-Z][a-zA-Z0-9+.\-]*://')
 
@@ -287,10 +330,11 @@ def _parse_nextcloud_url(url: str) -> dict:
 
 	# --- Talk (spreed) ------------------------------------------------------
 	# /call/{token}  optionally  #message_{id}
-	# Only claim this when the URL is not scoped to some *other* app: `/call/` is not
-	# anchored (the webroot may be a subdirectory), so an unguarded match would read a
-	# collectives page titled "call" as a Talk room.
-	if app in (None, 'spreed'):
+	# Only claim this when the URL is neither scoped to some *other* app nor routed through
+	# a non-app entrypoint: `/call/` is not anchored (the webroot may be a subdirectory), so
+	# an unguarded match would read a collectives page titled "call", or a WebDAV path such
+	# as /remote.php/dav/files/alice/call/notes/, as a Talk room.
+	if app in (None, 'spreed') and _NON_APP_ENTRYPOINTS.isdisjoint(path.split('/')):
 		m = re.search(r'/call/([A-Za-z0-9]+)(?:/|$)', path)
 		if m:
 			msg = re.search(r'message_(\d+)', fragment)
@@ -376,30 +420,34 @@ def _parse_nextcloud_url(url: str) -> dict:
 		share = re.match(r'^/(p|public|embed)/([^/?#]+)', scope)
 		if share:
 			ids = {'token': share.group(2)}
-			# optional event object: .../view/{popover|full}/{object}/{recurrenceId}
-			ev = re.search(r'/view/(?:popover|full)/([^/?#]+)(?:/([^/?#]+))?', raw_scope)
+			# optional event object: .../{view|edit}/{mode}/{object}/{recurrenceId} - a
+			# shared link may open the event in the editor as well as in a view.
+			ev = _find_calendar_object(raw_scope, r'/(?:view|edit)/')
+			decoded = {}
 			if ev:
-				object_id = unquote(ev.group(1))
-				ids['object_id'] = object_id
-				ids['recurrence_id'] = ev.group(2)
-				ids.update(_decode_calendar_object(object_id))
+				ids['object_id'], ids['recurrence_id'], decoded = ev
+				ids.update(decoded)
 			extra = {'embed': True} if share.group(1) == 'embed' else {}
 			return done('calendar', 'public_share', ids,
-						note=_CAL_OBJECT_NOTE if ev else None, **extra)
+						note=_CAL_OBJECT_NOTE if decoded else None, **extra)
 		# event editor: .../{view}/{firstDay}/edit/{popover|full|sidebar}/{object}/{recurrenceId}
 		# or the short redirect link: /edit/{object}[/{recurrenceId}]
-		obj = re.search(r'/edit/(?:popover|full|sidebar)/([^/?#]+)(?:/([^/?#]+))?', raw_scope) \
-			or re.search(r'/edit/([^/?#]+)(?:/([^/?#]+))?', raw_scope)
+		obj = _find_calendar_object(raw_scope, r'/edit/')
 		if obj:
-			object_id = unquote(obj.group(1))
-			ids = {'object_id': object_id, 'recurrence_id': obj.group(2)}
-			ids.update(_decode_calendar_object(object_id))
-			return done('calendar', 'event', ids, note=_CAL_OBJECT_NOTE)
+			object_id, recurrence_id, decoded = obj
+			ids = {'object_id': object_id, 'recurrence_id': recurrence_id}
+			ids.update(decoded)
+			# Without a decoded DAV path the object_id is whatever segment followed /edit/,
+			# so do not tell the agent it is base64 of one.
+			return done('calendar', 'event', ids, note=_CAL_OBJECT_NOTE if decoded else None)
 		# plain calendar view: /{view}/{firstDay}  (firstDay is 'now' or an ISO date)
 		date = re.search(r'/(\d{4}-\d{2}-\d{2})', app_rest)
 		view = re.match(r'^/([a-zA-Z]+)', app_rest)
-		return done('calendar', 'view', {'view': view.group(1) if view else None,
-										'date': date.group(1) if date else None})
+		ids = {'view': view.group(1) if view else None,
+				'date': date.group(1) if date else None}
+		# A bare /apps/calendar addresses no entity: report entity_type None, as the other
+		# apps do, rather than a 'view' with no ids.
+		return done('calendar', 'view' if any(v is not None for v in ids.values()) else None, ids)
 
 	if app == 'bookmarks':
 		folder_match = re.search(r'/folders?/(\d+)', scope)
