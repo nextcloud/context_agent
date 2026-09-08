@@ -3,15 +3,22 @@
 import base64
 import binascii
 import re
+import time
 from urllib.parse import parse_qs, unquote, urlparse
 
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
+from nc_py_api.ex_app import LogLvl
 
 from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.logger import log
 
 # The user-facing absolute base URL is stable for the app's lifetime; resolve it once.
 _absolute_base_url: str | None = None
+# When the lookup fails (e.g. `overwrite.cli.url` is unset) retrying on every conversation
+# turn only burns a round-trip that cannot succeed, so back off for a while.
+_absolute_base_url_retry_after: float = 0.0
+_FAILED_LOOKUP_TTL = 3600
 
 
 async def get_absolute_base_url(nc: AsyncNextcloudApp) -> str | None:
@@ -21,10 +28,11 @@ async def get_absolute_base_url(nc: AsyncNextcloudApp) -> str | None:
 	``nc.app_cfg.endpoint`` may be an internal address (reverse-proxy / docker host), so
 	ask app_api for the public URL. A successful lookup is cached module-wide to avoid an
 	HTTP request on every conversation turn. Returns ``None`` when the public URL cannot be
-	determined - nothing is cached in that case, so a later call can still pick it up.
+	determined; a failed lookup is only retried after ``_FAILED_LOOKUP_TTL`` seconds, so a
+	later reconfiguration of the instance is still picked up.
 	"""
-	global _absolute_base_url
-	if _absolute_base_url is None:
+	global _absolute_base_url, _absolute_base_url_retry_after
+	if _absolute_base_url is None and time.monotonic() >= _absolute_base_url_retry_after:
 		try:
 			absolute_url = (await nc.ocs(
 				'GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', params={'url': '/'}
@@ -34,9 +42,12 @@ async def get_absolute_base_url(nc: AsyncNextcloudApp) -> str | None:
 			if absolute_url.startswith(('http://', 'https://')):
 				_absolute_base_url = absolute_url
 			else:
-				print(f"app_api returned no usable absolute Nextcloud URL: {absolute_url!r}")
+				_absolute_base_url_retry_after = time.monotonic() + _FAILED_LOOKUP_TTL
+				await log(nc, LogLvl.WARNING,
+						f"app_api returned no usable absolute Nextcloud URL: {absolute_url!r}")
 		except Exception as e:
-			print(f"Could not resolve the absolute Nextcloud URL: {e}")
+			_absolute_base_url_retry_after = time.monotonic() + _FAILED_LOOKUP_TTL
+			await log(nc, LogLvl.WARNING, f"Could not resolve the absolute Nextcloud URL: {e}")
 	return _absolute_base_url
 
 
@@ -61,10 +72,17 @@ def _clean_path(path: str) -> str:
 
 
 def _int(value):
+	"""
+	Coerce an id to ``int``, or to ``None`` when it is not numeric.
+
+	Ids are handed to tools that are typed ``int`` (``get_file_path_by_id(file_id: int)``,
+	...), so a junk query param such as ``?fileid=abc`` must not be passed on as an id -
+	``done()`` drops ``None`` values.
+	"""
 	try:
 		return int(value)
 	except (TypeError, ValueError):
-		return value
+		return None
 
 
 def _decode_calendar_object(object_id: str) -> dict:
@@ -72,9 +90,13 @@ def _decode_calendar_object(object_id: str) -> dict:
 	Decode a Calendar app ``object`` param into its CalDAV path parts.
 
 	The param is ``base64("/remote.php/dav/calendars/<user>/<calendar-uri>/<uid>.ics")``.
-	Returns a dict with ``dav_path``, ``calendar_uri`` and ``event_uid`` (best effort),
-	or ``{}`` when it does not decode to a plausible path. The raw ``object_id`` is kept
-	by the caller so nothing is lost when decoding fails.
+	Returns a dict with ``dav_path``, ``calendar_uri`` and ``event_uid``, or ``{}`` when it
+	does not decode to a plausible CalDAV object path. The raw ``object_id`` is kept by the
+	caller so nothing is lost when decoding fails.
+
+	Validation is deliberately strict: arbitrary base64 happily decodes to text containing a
+	``/``, and inventing a ``calendar_uri`` / ``event_uid`` out of that would hand the agent
+	ids that look authoritative but denote nothing.
 	"""
 	if not object_id:
 		return {}
@@ -83,24 +105,122 @@ def _decode_calendar_object(object_id: str) -> dict:
 		path = base64.b64decode(padded, validate=True).decode('utf-8')
 	except (binascii.Error, UnicodeDecodeError, ValueError):
 		return {}
-	# A real object path is absolute and points at a .ics file; bail out otherwise.
-	if '/' not in path or not path.isprintable():
+	# A real object path is absolute, sits below a calendar collection and points at a .ics
+	# file: /remote.php/dav/calendars/<user>/<calendar-uri>/<uid>.ics for an own calendar,
+	# /remote.php/dav/public-calendars/<token>/<uid>.ics for a public share - so match on
+	# the shape rather than on a fixed depth.
+	segments = path.split('/')
+	if (not path.startswith('/') or not path.endswith('.ics') or not path.isprintable()
+			or len(segments) < 3 or not all(segments[1:])
+			or not any(segment.endswith('calendars') for segment in segments)):
 		return {}
-	calendar_path, _, filename = path.rpartition('/')
-	calendar_uri = calendar_path.rsplit('/', 1)[-1] or None
-	decoded = {'dav_path': path}
-	if calendar_uri:
-		decoded['calendar_uri'] = calendar_uri
-	if filename:
-		decoded['event_uid'] = filename[:-4] if filename.endswith('.ics') else filename
-	return decoded
+	return {'dav_path': path, 'calendar_uri': segments[-2], 'event_uid': segments[-1][:-len('.ics')]}
+
+
+_DEFAULT_PORTS = {'http': 80, 'https': 443}
+_SCHEME_PREFIX = re.compile(r'^[a-zA-Z][a-zA-Z0-9+.\-]*://')
+
+
+def _names_host_without_scheme(value: str) -> bool:
+	"""
+	Whether ``value`` omits the scheme but still names a host (``cloud.example.com/f/1``).
+
+	urlparse puts such a value entirely in ``path``, and reads a ``host:port`` prefix as a
+	*scheme*, so both have to be recognised before parsing. A colon followed by something
+	other than a port number is a real scheme (``javascript:``, ``mailto:``), not a host.
+	"""
+	if value.startswith('/') or _SCHEME_PREFIX.match(value):
+		return False
+	host, _, port = value.split('/', 1)[0].partition(':')
+	if port and not port.isdigit():
+		return False
+	return '.' in host
+
+
+def _split_url(value: str):
+	"""Parse ``value``, treating a scheme-less ``host/...`` as network-relative."""
+	return urlparse(f'//{value}' if _names_host_without_scheme(value) else value)
+
+
+def _origin(value: str) -> tuple[str, int | None] | None:
+	"""
+	The (host, port) a URL points at, or ``None`` when it names no host at all.
+
+	``port`` is the explicit port, or the scheme's default port, or ``None`` when neither
+	is known (a scheme-less URL) - so ``https://host`` and ``https://host:443`` compare
+	equal while an unknown port stays unknown instead of being guessed.
+	"""
+	parsed = _split_url(value.strip())
+	try:
+		host, port = parsed.hostname, parsed.port
+	except ValueError:  # malformed port
+		return None
+	if not host:
+		return None
+	return host.lower(), port if port is not None else _DEFAULT_PORTS.get(parsed.scheme.lower())
 
 
 def _same_host(url: str, base_url: str) -> bool:
-	"""Whether ``url`` is relative or points at the same host as ``base_url``."""
-	def host(value):
-		return urlparse(value.strip()).netloc.rsplit('@', 1)[-1].lower()
-	return not host(url) or host(url) == host(base_url)
+	"""
+	Whether ``url`` is relative or points at the same origin as ``base_url``.
+
+	Ports only have to agree when both are actually known - a same-host URL pasted without
+	its scheme should not be reported as foreign.
+	"""
+	origin, base_origin = _origin(url), _origin(base_url)
+	if origin is None or base_origin is None:
+		return True
+	if origin[0] != base_origin[0]:
+		return False
+	return None in (origin[1], base_origin[1]) or origin[1] == base_origin[1]
+
+
+# A URL longer than this is not a real Nextcloud deep link; it is the practical ceiling
+# most browsers and proxies enforce anyway.
+_MAX_URL_LENGTH = 2048
+
+
+def _validated_url(url) -> str:
+	"""
+	Return ``url`` stripped of surrounding whitespace, or raise ``ValueError``.
+
+	Rejects input that cannot be a Nextcloud deep link, so that junk fails loudly with an
+	actionable message instead of being parsed into confident-looking ids: ``ftp://host/f/1``
+	would otherwise report file 1, and two URLs pasted into one string would silently be
+	read as the second one. Errors raised here reach the model via the tool-node fallback.
+
+	Accepted forms are an absolute ``http(s)://host/...`` URL, a host-relative
+	``host/...`` one, and a root-relative ``/...`` path.
+	"""
+	if not isinstance(url, str) or not url.strip():
+		raise ValueError('A non-empty URL string is required')
+	url = url.strip()
+	if len(url) > _MAX_URL_LENGTH:
+		raise ValueError(f'URL is too long ({len(url)} characters, maximum {_MAX_URL_LENGTH})')
+	if re.search(r'[\s\x00-\x1f\x7f]', url):
+		raise ValueError(
+			'URL must not contain whitespace or control characters - pass exactly one URL, '
+			'without any surrounding prose'
+		)
+
+	parsed = _split_url(url)
+	scheme, netloc = parsed.scheme.lower(), parsed.netloc
+	try:
+		if netloc:
+			parsed.port  # noqa: B018 - raises on a malformed or out-of-range port
+	except ValueError as e:
+		raise ValueError(f'URL is malformed: {e}') from e
+
+	if scheme and scheme not in ('http', 'https'):
+		raise ValueError(f'Unsupported URL scheme {scheme!r}: only http(s) Nextcloud URLs can be parsed')
+	if scheme and not netloc:
+		raise ValueError('URL names a scheme but no host')
+	if not netloc and not url.startswith('/'):
+		raise ValueError(
+			f'{url!r} is not a URL - expected an absolute http(s) URL, a host-relative URL, '
+			'or a path starting with "/"'
+		)
+	return url
 
 
 def _first(query: dict, *keys):
@@ -119,16 +239,12 @@ def _parse_nextcloud_url(url: str) -> dict:
 	``ids`` mapping. ``entity_type`` is ``None`` (and app may be ``unknown``) when
 	the URL does not match any known Nextcloud app route.
 	"""
-	if not isinstance(url, str) or not url.strip():
-		raise ValueError('A non-empty URL string is required')
+	url = _validated_url(url)
 
-	parsed = urlparse(url.strip())
+	parsed = urlparse(url)
 	path = _clean_path(unquote(parsed.path or ''))
 	fragment = unquote(parsed.fragment or '')
 	query = parse_qs(parsed.query or '')
-	# Hash-router apps (deck, tables, cookbook, ...) carry the real route in the
-	# fragment, e.g. /apps/tables#/table/3 . Search path and fragment together.
-	hay = f'{path}#{fragment}'
 
 	result = {'app': 'unknown', 'entity_type': None, 'ids': {}, 'url': url}
 
@@ -151,7 +267,7 @@ def _parse_nextcloud_url(url: str) -> dict:
 	if m:
 		return done('files', 'file', {'file_id': _int(m.group(1))})
 	# openfile is a boolean flag (openfile=true), not an id
-	file_id = _first(query, 'fileid', 'fileId')
+	file_id = _int(_first(query, 'fileid', 'fileId'))
 
 	# public share of a file/folder: /s/{token}  (optionally /s/{token}/download etc.)
 	# Other apps have their own /s/{hash} routes below /apps/, don't claim those.
@@ -159,21 +275,27 @@ def _parse_nextcloud_url(url: str) -> dict:
 	if m and '/apps/' not in path:
 		return done('files', 'public_share', {'token': m.group(1)})
 
-	# --- Talk (spreed) ------------------------------------------------------
-	# /call/{token}  optionally  #message_{id}
-	m = re.search(r'/(?:apps/spreed/)?call/([A-Za-z0-9]+)', path)
-	if m:
-		msg = re.search(r'message_(\d+)', fragment)
-		return done('talk', 'conversation', {'token': m.group(1)},
-					message_id=_int(msg.group(1)) if msg else None)
-
-	# --- App-scoped routes: /apps/{app}/... --------------------------------
+	# --- Which app does the URL address? /apps/{app}/... -------------------
 	# Not anchored: Nextcloud may be installed in a webroot subdirectory
 	# (https://host/nextcloud/apps/deck/...).
 	app_match = re.search(r'/apps/([^/?#]+)(/.*)?$', path)
 	app = app_match.group(1) if app_match else None
 	app_rest = (app_match.group(2) if app_match else '') or ''
+	# Hash-router apps (deck, tables, cookbook, ...) carry the real route in the
+	# fragment, e.g. /apps/tables#/table/3 . Search the app path and fragment together.
 	scope = f'{app_rest}#{fragment}'  # everything after the app name
+
+	# --- Talk (spreed) ------------------------------------------------------
+	# /call/{token}  optionally  #message_{id}
+	# Only claim this when the URL is not scoped to some *other* app: `/call/` is not
+	# anchored (the webroot may be a subdirectory), so an unguarded match would read a
+	# collectives page titled "call" as a Talk room.
+	if app in (None, 'spreed'):
+		m = re.search(r'/call/([A-Za-z0-9]+)(?:/|$)', path)
+		if m:
+			msg = re.search(r'message_(\d+)', fragment)
+			return done('talk', 'conversation', {'token': m.group(1)},
+						message_id=_int(msg.group(1)) if msg else None)
 
 	if app == 'collectives':
 		# Routes (relative to /apps/collectives), see collectives/src/router.js:
@@ -209,7 +331,7 @@ def _parse_nextcloud_url(url: str) -> dict:
 			page_id = _int(m.group(2)) if m else None
 		# a collectives page is a file: its id (from ?fileId= or the "{slug}-{id}" page
 		# segment) is the file_id usable with the Files tools.
-		ids['file_id'] = _int(file_id) if file_id else page_id
+		ids['file_id'] = file_id if file_id is not None else page_id
 
 		entity_type = 'page' if page_segs else 'collective' if segments else ('public_share' if token else None)
 		return done('collectives', entity_type, ids)
@@ -281,10 +403,10 @@ def _parse_nextcloud_url(url: str) -> dict:
 
 	if app == 'bookmarks':
 		folder_match = re.search(r'/folders?/(\d+)', scope)
-		folder = _first(query, 'folder') or (folder_match.group(1) if folder_match else None)
+		folder_id = _int(_first(query, 'folder') or (folder_match.group(1) if folder_match else None))
 		token = re.search(r'/public/([^/?#]+)', scope)
-		return done('bookmarks', 'public_share' if token else 'folder' if folder else 'app',
-					{'folder_id': _int(folder) if folder else None,
+		return done('bookmarks', 'public_share' if token else 'folder' if folder_id is not None else None,
+					{'folder_id': folder_id,
 						'token': token.group(1) if token else None})
 
 	if app == 'cookbook':
@@ -306,21 +428,23 @@ def _parse_nextcloud_url(url: str) -> dict:
 						**({'embed': True} if m.group(1) == 'embed' else {}))
 		m = re.match(r'^/([^/?#]+)(?:/(edit|results|submit))?', app_rest)
 		if m:
-			return done('forms', m.group(2) or 'form', {'hash': m.group(1)})
+			return done('forms', 'form', {'hash': m.group(1)}, view=m.group(2))
 		return done('forms', None)
 
 	if app == 'tables':
 		view = re.search(r'view/(\d+)', scope)
 		table = re.search(r'table/(\d+)', scope)
-		if table:
-			return done('tables', 'table', {'table_id': _int(table.group(1))})
-		if view:
-			return done('tables', 'view', {'view_id': _int(view.group(1))})
+		if table or view:
+			# a view may be addressed inside its table (#/table/3/view/8) - keep both ids
+			# and name the leaf as the entity.
+			return done('tables', 'view' if view else 'table',
+						{'table_id': _int(table.group(1)) if table else None,
+							'view_id': _int(view.group(1)) if view else None})
 		return done('tables', None)
 
 	# --- Fallbacks ----------------------------------------------------------
-	if file_id:
-		return done('files', 'file', {'file_id': _int(file_id)})
+	if file_id is not None:
+		return done('files', 'file', {'file_id': file_id})
 	if app:
 		return done(app, None)
 	return result
@@ -340,9 +464,15 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		Supports the Files, Talk (spreed), Collectives, Deck, Mail, Calendar,
 		Bookmarks, Cookbook, Forms and Tables apps.
-		:param url: a Nextcloud URL (with or without the /index.php prefix)
+		:param url: exactly one Nextcloud URL (with or without the /index.php prefix), with
+			no surrounding text. Must be an absolute http(s) URL, a host-relative URL, or a
+			path starting with "/"; anything else is rejected with an error explaining why.
 		:return: a dict with keys `app`, `entity_type`, `ids`, and a `hint` on which
-			tools to use. `entity_type` is null when the URL is not a recognized route.
+			tools to use. `entity_type` names the entity itself; when the link addresses
+			a particular screen of it (e.g. a form's `results`) that is reported
+			separately as `view`. `entity_type` is null when the app is recognized but
+			the URL points at no specific entity, or when the URL matches no known route
+			at all. `ids` only ever contains identifiers actually present in the URL.
 		"""
 		result = _parse_nextcloud_url(url)
 		# Only known-foreign hosts are flagged: without a confirmed public URL we cannot
