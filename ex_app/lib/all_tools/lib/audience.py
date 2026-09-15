@@ -12,6 +12,8 @@ A lookup that cannot answer raises instead of returning a small radius, because
 into the widest radius -- so an unanswerable question makes the agent ask the
 user rather than act quietly.
 """
+import xml.etree.ElementTree as ET
+
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius
 
 # How far a share reaches, by Nextcloud share type. Types missing here fall back
@@ -63,12 +65,69 @@ def path_and_parents(path: str) -> set:
 	return {'/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)}
 
 
+# How far the storage a file sits on reaches, by DAV mount type. A share is not
+# the only way somebody else gets to see a file, and the ones that are not shares
+# leave no trace in the sharing API at all.
+MOUNT_TYPE_RADIUS = {
+	# A Team folder (group folder) is mounted for every group and team it is
+	# assigned to, without a single share existing anywhere.
+	'group': ImpulseRadius.GROUP,
+	# A received share: somebody else owns the storage and sees what lands in it.
+	# Only a floor -- the share lookup raises it when it can match the path to a
+	# share and read its type.
+	'shared': ImpulseRadius.INDIVIDUALS,
+	# 'external' is deliberately absent: external storage is just as often a
+	# personal mount nobody else can reach as it is a shared one, and guessing
+	# either way would be worse than letting the share lookup answer.
+}
+
+MOUNT_TYPE_PROPFIND = (
+	'<?xml version="1.0" encoding="UTF-8"?>'
+	'<d:propfind xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">'
+	'<d:prop><nc:mount-type/></d:prop>'
+	'</d:propfind>'
+)
+
+
+async def mount_type_radius(nc, path) -> ImpulseRadius:
+	"""How far the storage this path sits on reaches, read off its DAV mount.
+
+	Nextcloud reports a mount type for every node, and a mount covers its whole
+	subtree, so one lookup on the path answers for it and every folder above it.
+
+	A path that does not exist yet has no mount of its own but inherits the one it
+	will land in, so the closest ancestor that does exist is asked instead. That
+	keeps a file written into a Team folder from looking private just because it
+	is not there yet.
+	"""
+	user_id = await nc.user
+	adapter = nc._session._create_adapter(True)
+	# Deepest first, then the user's root, which always resolves.
+	candidates = sorted(path_and_parents(path), key=len, reverse=True) + ['']
+	for candidate in candidates:
+		response = await adapter.request(
+			'PROPFIND',
+			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{candidate.lstrip('/')}",
+			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
+			data=MOUNT_TYPE_PROPFIND,
+		)
+		if response.status_code == 404:
+			continue
+		if response.status_code != 207:
+			raise ValueError(f'Could not read the mount of {candidate!r}: HTTP {response.status_code}')
+		element = ET.fromstring(response.text).find('.//{http://nextcloud.org/ns}mount-type')
+		mount_type = (element.text or '').strip().lower() if element is not None else ''
+		return MOUNT_TYPE_RADIUS.get(mount_type, ImpulseRadius.SELF)
+	return ImpulseRadius.SELF
+
+
 async def file_path_radius(nc, *paths) -> ImpulseRadius:
 	"""Who can reach these files or folders, through a share on them or on a parent.
 
-	Covers both directions: folders the user shared out, and folders that were
-	shared with the user, where the owner and the other recipients see whatever is
-	written into them.
+	Covers three ways in: folders the user shared out, folders that were shared
+	with the user, where the owner and the other recipients see whatever is
+	written into them, and Team folders, which a whole group has mounted without
+	any share existing to find.
 	"""
 	covered = set()
 	for path in paths:
@@ -78,6 +137,9 @@ async def file_path_radius(nc, *paths) -> ImpulseRadius:
 		raise ValueError('No path to determine the audience of')
 
 	radius = ImpulseRadius.SELF
+	for path in paths:
+		if path:
+			radius = max(radius, await mount_type_radius(nc, path))
 	for params in ({}, {'shared_with_me': 'true'}):
 		shares = await nc.ocs('GET', '/ocs/v2.php/apps/files_sharing/api/v1/shares', params=params)
 		for share in shares or []:
