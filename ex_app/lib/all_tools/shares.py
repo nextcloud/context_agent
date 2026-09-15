@@ -79,7 +79,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		})
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(existing_share_radius)
 	@destructive
 	async def delete_share(share_id: int):
 		"""

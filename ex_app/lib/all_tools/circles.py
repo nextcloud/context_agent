@@ -38,6 +38,21 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return ImpulseRadius.EXTERNAL
 		return ImpulseRadius.INDIVIDUALS
 
+	async def removed_member_radius(circle_id, member_id):
+		"""What a member loses when they are taken out of a team.
+
+		Nobody gains anything, but the access being withdrawn is exactly as wide as
+		adding that member was: a single account loses a team, a group or a nested
+		team loses it for everybody in it.
+		"""
+		_validate_circle_id(circle_id)
+		_validate_member_id(member_id)
+		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		for member in members or []:
+			if member_id in (member.get('id'), member.get('singleId')):
+				return new_member_radius(member.get('userType'))
+		raise ValueError(f'No member {member_id!r} in team {circle_id!r}')
+
 	async def circle_radius(circle_id):
 		"""Who a team already reaches, read off the members it already has.
 
@@ -131,7 +146,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/multi', json=payload))
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(removed_member_radius)
 	@destructive
 	async def remove_member_from_circle(circle_id: str, member_id: str):
 		"""

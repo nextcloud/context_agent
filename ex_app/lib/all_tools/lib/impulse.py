@@ -18,11 +18,16 @@ Nextcloud API, so ``send_message_to_conversation`` can look the conversation up
 and answer ``INDIVIDUALS`` for a one-to-one chat but ``EXTERNAL`` for a public
 room.
 
-For actions that *withdraw* rather than grant access (deleting a share, removing
-a team member) nobody gains anything, so they are ``SELF``. For actions that
-modify an item which already has an audience (editing a team wiki page, posting
-in a conversation) the radius is that existing audience -- the audience is who
-the action reaches.
+For actions that modify an item which already has an audience (editing a team
+wiki page, posting in a conversation) the radius is that existing audience -- the
+audience is who the action reaches.
+
+Actions that *withdraw* access (deleting a share, removing a team member) disclose
+nothing, but they are :func:`destructive`, and the radius of a destructive call is
+read as how far the thing being lost reached. So a withdrawal reports the reach of
+the access it takes away: revoking a group share is ``GROUP``, because a group is
+what loses something. ``SELF`` is for a call that takes away nothing anybody else
+had -- deleting a private note, not evicting a team from a folder.
 
 Radius answers who a call reaches, which says nothing about whether it takes
 something away. That is the second dimension: a tool marked :func:`destructive`
