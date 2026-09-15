@@ -10,13 +10,27 @@ from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 # Resolving a card to its board costs one request per board the user can see, so
 # the map is kept per user and out here, rather than in the get_tools closure that
-# timed_memoize drops every minute along with the tools themselves.
+# timed_memoize drops every minute along with the tools themselves. Only the radius
+# each board works out to is kept, never the board itself: the boards are large,
+# and the radius is all anybody asks for.
 CARD_BOARD_TTL = 60
 # A miss is worth one crawl -- a card the agent just created is not in the map
 # yet. Right after a crawl it is not: an id that is simply not there would
 # otherwise walk every board again on every call that mentions it.
 CARD_BOARD_MISS_INTERVAL = 10
-_card_boards: dict[str, dict] = {}
+_card_radii: dict[str, dict] = {}
+
+
+def _forget_stale_card_radii(now: float) -> None:
+	"""Drop the maps that the next call would refetch anyway.
+
+	Nothing here is ever handed back to a user who stopped asking, so without this
+	the process keeps a map per user that has ever used a Deck tool for as long as
+	it runs. Sweeping on the way in costs a pass over a dict that is as long as the
+	list of users active in the last minute.
+	"""
+	for user_id in [u for u, cache in _card_radii.items() if now - cache['fetched_at'] > CARD_BOARD_TTL]:
+		del _card_radii[user_id]
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -48,33 +62,40 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""Assigning reaches the assignee on top of whoever the board already reaches."""
 		return max(ImpulseRadius.INDIVIDUALS, await board_radius(board_id))
 
-	async def refresh_card_boards(cache):
-		"""Map every card the user can reach to the board it lives on.
+	async def refresh_card_radii(cache):
+		"""Map every card the user can reach to the radius of the board it lives on.
 
 		One request for the board list, then one per board -- the stacks of a board
-		carry its cards, so the cards themselves cost nothing extra.
+		carry its cards, so the cards themselves cost nothing extra. Each board is
+		reduced to its radius as it goes past, so what stays behind is one small
+		integer per card rather than the board it came from.
 		"""
-		boards = {}
+		radii = {}
 		for board in await deck_get('/boards'):
+			radius = await board_acl_radius(board)
 			for stack in await deck_get(f"/boards/{board['id']}/stacks"):
 				for card in stack.get('cards') or []:
-					boards[card['id']] = board
-		cache['boards'] = boards
+					radii[card['id']] = radius
+		cache['cards'] = radii
 		cache['fetched_at'] = time.monotonic()
-		return boards
+		return radii
 
 	async def card_radius(card_id):
 		"""A comment on a card reaches whoever the card's board reaches."""
 		card_id = int(card_id)
-		cache = _card_boards.setdefault(await nc.user, {'boards': {}, 'fetched_at': 0.0})
-		age = time.monotonic() - cache['fetched_at']
+		now = time.monotonic()
+		_forget_stale_card_radii(now)
+		# A map that has just been swept, or was never there, reads as infinitely old
+		# and so gets fetched rather than being trusted while it is still empty.
+		cache = _card_radii.setdefault(await nc.user, {'cards': {}, 'fetched_at': float('-inf')})
+		age = now - cache['fetched_at']
 		# At most one crawl per call, whether the map went stale or the card is new.
-		if age > CARD_BOARD_TTL or (card_id not in cache['boards'] and age > CARD_BOARD_MISS_INTERVAL):
-			await refresh_card_boards(cache)
-		board = cache['boards'].get(card_id)
-		if board is None:
+		if age > CARD_BOARD_TTL or (card_id not in cache['cards'] and age > CARD_BOARD_MISS_INTERVAL):
+			await refresh_card_radii(cache)
+		radius = cache['cards'].get(card_id)
+		if radius is None:
 			raise ValueError(f'No board holds a card with id {card_id!r}')
-		return await board_acl_radius(board)
+		return radius
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
