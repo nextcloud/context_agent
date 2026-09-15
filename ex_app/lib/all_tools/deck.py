@@ -281,7 +281,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(card_radius)
 	@destructive
 	async def delete_card_comment(card_id: int, comment_id: int):
 		"""

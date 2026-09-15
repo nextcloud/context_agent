@@ -116,7 +116,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(conversation_radius)
 	@destructive
 	async def remove_reaction(conversation_name: str, message_id: int, reaction: str):
 		"""
