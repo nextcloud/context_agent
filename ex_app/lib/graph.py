@@ -13,7 +13,6 @@ from typing_extensions import TypedDict, Annotated
 
 from ex_app.lib.all_tools.lib.impulse import (
 	DEFAULT_DESTRUCTIVE_THRESHOLD,
-	DEFAULT_IMPULSE_RADIUS,
 	DEFAULT_IMPULSE_THRESHOLD,
 	ImpulseRadius,
 	classify_destructive,
@@ -80,14 +79,20 @@ async def get_graph(
 	# This means that this node is the first one called
 	workflow.set_entry_point("agent")
 
-	async def classify_one(tool_call) -> tuple[ImpulseRadius, bool, bool]:
-		"""Classify a single pending call. Both hooks hit the network, so run them
-		against each other rather than one after the other."""
+	async def classify_one(tool_call) -> tuple[ImpulseRadius, bool, bool] | None:
+		"""Classify a single pending call, or None if there is nothing to classify.
+
+		Both hooks hit the network, so run them against each other rather than one
+		after the other.
+		"""
 		tool = tools_by_name.get(tool_call["name"])
 		if tool is None:
-			# The model hallucinated a tool; the tool node will error out on it,
-			# but until then treat it as the widest reach.
-			return DEFAULT_IMPULSE_RADIUS, False, False
+			# The model named a tool that does not exist. Neither node can run it --
+			# both hold the same list -- so the call reaches nobody, and the node's
+			# error handler hands the model its mistake to correct on the next turn.
+			# Asking the user to confirm it would be asking about something that
+			# cannot happen, so it is left out of the reckoning entirely.
+			return None
 		call_args = tool_call.get("args") or {}
 		call_radius, call_destroys = await asyncio.gather(
 			classify_tool_call(tool, call_args),
@@ -109,7 +114,11 @@ async def get_graph(
 		radius = ImpulseRadius.SELF
 		destroys = False
 		always = False
-		for tool_call, (call_radius, call_destroys, call_always) in zip(tool_calls, classified):
+		for tool_call, classification in zip(tool_calls, classified):
+			if classification is None:
+				print(f"Tool call: {tool_call['name']} -> no such tool, leaving it to the tool node to report")
+				continue
+			call_radius, call_destroys, call_always = classification
 			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}"
 			      f"{', destroys something' if call_destroys else ''}"
 			      f"{', always confirmed' if call_always else ''}")
