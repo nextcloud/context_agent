@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import traceback
 from typing import Sequence
 
@@ -79,23 +80,36 @@ async def get_graph(
 	# This means that this node is the first one called
 	workflow.set_entry_point("agent")
 
+	async def classify_one(tool_call) -> tuple[ImpulseRadius, bool, bool]:
+		"""Classify a single pending call. Both hooks hit the network, so run them
+		against each other rather than one after the other."""
+		tool = tools_by_name.get(tool_call["name"])
+		if tool is None:
+			# The model hallucinated a tool; the tool node will error out on it,
+			# but until then treat it as the widest reach.
+			return DEFAULT_IMPULSE_RADIUS, False, False
+		call_args = tool_call.get("args") or {}
+		call_radius, call_destroys = await asyncio.gather(
+			classify_tool_call(tool, call_args),
+			classify_destructive(tool, call_args),
+		)
+		return call_radius, call_destroys, is_always_confirmed(tool)
+
 	async def classify_pending_calls(state: AgentState) -> tuple[ImpulseRadius, bool, bool]:
 		"""The widest radius the pending tool calls reach, whether any destroys
-		something, and whether any is confirmed regardless of its radius."""
+		something, and whether any is confirmed regardless of its radius.
+
+		The calls are classified against each other -- a batch of them would
+		otherwise pay for every lookup in series before any tool runs -- and folded
+		together afterwards, so what gets logged stays in the model's order.
+		"""
+		tool_calls = state["messages"][-1].tool_calls
+		classified = await asyncio.gather(*(classify_one(tc) for tc in tool_calls))
+
 		radius = ImpulseRadius.SELF
 		destroys = False
 		always = False
-		for tool_call in state["messages"][-1].tool_calls:
-			tool = tools_by_name.get(tool_call["name"])
-			if tool is None:
-				# The model hallucinated a tool; the tool node will error out on it,
-				# but until then treat it as the widest reach.
-				call_radius, call_destroys, call_always = DEFAULT_IMPULSE_RADIUS, False, False
-			else:
-				call_args = tool_call.get("args") or {}
-				call_radius = await classify_tool_call(tool, call_args)
-				call_destroys = await classify_destructive(tool, call_args)
-				call_always = is_always_confirmed(tool)
+		for tool_call, (call_radius, call_destroys, call_always) in zip(tool_calls, classified):
 			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}"
 			      f"{', destroys something' if call_destroys else ''}"
 			      f"{', always confirmed' if call_always else ''}")
