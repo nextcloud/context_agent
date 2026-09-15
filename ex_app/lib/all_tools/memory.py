@@ -14,7 +14,7 @@ from nc_py_api._exceptions import NextcloudExceptionNotFound
 from nc_py_api.files.files_async import AsyncFilesAPI
 from pydantic import BaseModel, ValidationError, computed_field, field_validator
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.logger import log
 
@@ -187,7 +187,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_memory_tree(depth: int = 2):
 		"""
 		Recursively list the memories stored in a file tree structure. Max depth is 2.
@@ -219,7 +219,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return '\n'.join(paths)
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def load_memory(path: str):
 		"""
 		Load one particular memory from the memory store identified by full path.
@@ -244,7 +244,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response.text
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def store_memory(path: str, content: str):
 		"""
 		Stores a complete memory file overwriting it if it already exists.
@@ -282,7 +282,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "path": path}
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def delete_memory(path: str):
 		"""
 		Deletes a particular memory file identified by a full file/memory path.
@@ -311,6 +311,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "path": path}
 
 	@tool
+	@impulse(ImpulseRadius.SELF)
 	async def delete_memory_folder(path: str):
 		"""
 		Deletes the whole folder of memories by a full path.
@@ -333,7 +334,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "path": path}
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def search_memories(query: str, k: int = 5) -> list[dict[str, str]]:
 		"""
 		Do a semantic search over the contents of all the stored memories.

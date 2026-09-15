@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 # Nextcloud Circles member type constants
 TYPE_USER = 1
@@ -29,8 +29,17 @@ def _validate_member_id(member_id: str) -> str:
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	def new_member_radius(member_type=TYPE_USER):
+		"""Adding a group or another team to a team pulls in everyone in it, not just one person."""
+		if member_type in (TYPE_GROUP, TYPE_CIRCLE):
+			return ImpulseRadius.GROUP
+		if member_type == TYPE_MAIL:
+			return ImpulseRadius.EXTERNAL
+		return ImpulseRadius.INDIVIDUALS
+
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_circles():
 		"""
 		List all circles (teams) the user is a member of
@@ -39,7 +48,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', '/ocs/v2.php/apps/circles/circles'))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_circle_details(circle_id: str):
 		"""
 		Get detailed information about a specific circle (team)
@@ -50,7 +59,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}'))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_circle_members(circle_id: str):
 		"""
 		List all members of a specific circle (team)
@@ -62,7 +71,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(circle_members)
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def create_circle(name: str, description: Optional[str] = None, is_personal: bool = False):
 		"""
 		Create a new circle (team)
@@ -81,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/circles/circles', json=payload))
 
 	@tool
-	@dangerous_tool
+	@impulse(new_member_radius)
 	async def add_member_to_circle(circle_id: str, member_id: str, member_type: int = TYPE_USER):
 		"""
 		Add a member to a circle (team)
@@ -100,7 +109,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/multi', json=payload))
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def remove_member_from_circle(circle_id: str, member_id: str):
 		"""
 		Remove a member from a circle (team)
@@ -113,7 +122,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/{member_id}'))
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def update_circle(circle_id: str, name: Optional[str] = None, description: Optional[str] = None):
 		"""
 		Update circle (team) information
@@ -130,7 +139,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def delete_circle(circle_id: str):
 		"""
 		Delete a circle (team)
@@ -141,7 +150,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.GROUP)
 	async def share_with_circle(path: str, circle_id: str, permissions: int = 19):
 		"""
 		Share a file or folder with a circle (team)

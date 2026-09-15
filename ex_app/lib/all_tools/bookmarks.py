@@ -5,12 +5,45 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.audience import share_type_radius
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	BOOKMARKS_API = f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks"
+	BOOKMARKS_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
+
+	async def bookmarks_get(path):
+		response = await nc._session._create_adapter(False).request('GET', f"{BOOKMARKS_API}{path}", headers=BOOKMARKS_HEADERS)
+		payload = response.json()
+		if payload.get('status') != 'success':
+			raise ValueError(f'Bookmarks API said {payload.get("status")!r} for {path}')
+		return payload
+
+	async def folder_radius(folder_id=None, parent_folder_id=None):
+		"""Who a bookmark folder is shared with. The root folder cannot be shared."""
+		folder_id = folder_id if folder_id is not None else parent_folder_id
+		if folder_id is None or int(folder_id) < 0:
+			return ImpulseRadius.SELF
+		radius = ImpulseRadius.SELF
+		for share in (await bookmarks_get(f'/folder/{int(folder_id)}/shares')).get('data') or []:
+			# Bookmarks stores the Nextcloud share type: user, group or team.
+			radius = max(radius, share_type_radius(share.get('type')))
+		return radius
+
+	async def bookmark_radius(bookmark_id, folders=None):
+		"""A bookmark reaches whoever its folders are shared with, before and after a move."""
+		item = (await bookmarks_get(f'/bookmark/{int(bookmark_id)}')).get('item') or {}
+		current = item.get('folders')
+		if current is None:
+			raise ValueError(f'Could not read the folders of bookmark {bookmark_id!r}')
+		radius = ImpulseRadius.SELF
+		for folder in list(current) + list(folders or []):
+			radius = max(radius, await folder_radius(folder))
+		return radius
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_bookmarks(page: int = 0, limit: int = 100, folder_id: Optional[int] = None, tags: Optional[list[str]] = None):
 		"""
 		List bookmarks with optional filtering
@@ -36,7 +69,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def search_bookmarks(search_term: str):
 		"""
 		Search for bookmarks by keyword
@@ -50,7 +83,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(folder_radius)
 	async def create_bookmark(url: str, title: Optional[str] = None, description: Optional[str] = None, tags: Optional[list[str]] = None, folder_id: Optional[int] = None):
 		"""
 		Create a new bookmark
@@ -81,7 +114,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(bookmark_radius)
 	async def update_bookmark(bookmark_id: int, url: Optional[str] = None, title: Optional[str] = None, description: Optional[str] = None, tags: Optional[list[str]] = None, folders: Optional[list[int]] = None):
 		"""
 		Update an existing bookmark
@@ -112,7 +145,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(bookmark_radius)
 	async def delete_bookmark(bookmark_id: int):
 		"""
 		Delete a bookmark
@@ -126,7 +159,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_bookmark_folders():
 		"""
 		List all bookmark folders
@@ -139,7 +172,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(folder_radius)
 	async def create_bookmark_folder(title: str, parent_folder_id: Optional[int] = None):
 		"""
 		Create a new bookmark folder
@@ -160,7 +193,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_bookmark_tags():
 		"""
 		List all bookmark tags with usage counts

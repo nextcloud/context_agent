@@ -7,7 +7,8 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
-from ex_app.lib.all_tools.lib.decorator import dangerous_tool, safe_tool
+from ex_app.lib.all_tools.lib.audience import file_path_radius
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 from ex_app.lib.all_tools.lib.files import format_fs_node, get_file_content_from_int_link, get_file_id_from_file_url
 
 
@@ -23,8 +24,16 @@ def _validate_path(path: str) -> str:
 
 async def get_tools(nc: AsyncNextcloudApp):
 
+	async def path_radius(path):
+		"""Who the file or folder at this path is already shared with, directly or through a parent."""
+		return await file_path_radius(nc, path)
+
+	async def transfer_radius(source_path=None, destination_path=None):
+		"""A copy or move reaches whoever can see either end of it."""
+		return await file_path_radius(nc, source_path, destination_path)
+
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_file_content(file_path: str):
 		"""
 		Get the content of a nextcloud-internal file of the current user
@@ -42,7 +51,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response.text
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_file_content_by_file_link(file_url: str):
 		"""
 		Get the content of a Nextcloud-internal file using its internal file link.
@@ -55,7 +64,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await get_file_content_from_int_link(nc, file_url)
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_file_tree(path: str = '/', include_metadata = False, depth: int = 1):
 		"""
 		Get the file tree of the user (lists the folders and files the user has in Nextcloud Files)
@@ -73,7 +82,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return [fsnode.user_path for fsnode in fsnode_list]
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_folder_tree(depth: int):
 		"""
 		Get the folder tree of the user (lists only the folders the user has in Nextcloud Files)
@@ -84,7 +93,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('GET', '/ocs/v2.php/apps/files/api/v1/folder-tree', params={'depth': depth}, response_type='json')
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.EXTERNAL)
 	async def create_public_sharing_link(path: str):
 		"""
 		Creates a public sharing link for a file or folder
@@ -101,7 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response
 
 	@tool
-	@dangerous_tool
+	@impulse(path_radius)
 	async def upload_file(path: str, content: str):
 		"""
 		Upload or create a new file with text content
@@ -119,7 +128,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "path": path}
 
 	@tool
-	@dangerous_tool
+	@impulse(path_radius)
 	async def create_folder(path: str):
 		"""
 		Create a new folder
@@ -136,7 +145,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "path": path}
 
 	@tool
-	@dangerous_tool
+	@impulse(transfer_radius)
 	async def move_file(source_path: str, destination_path: str):
 		"""
 		Move or rename a file or folder
@@ -155,7 +164,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "from": source_path, "to": destination_path}
 
 	@tool
-	@dangerous_tool
+	@impulse(transfer_radius)
 	async def copy_file(source_path: str, destination_path: str):
 		"""
 		Copy a file or folder
@@ -174,7 +183,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return {"status": "success", "from": source_path, "to": destination_path}
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_file_id_by_path(file_path: str) -> int:
 		"""
 		Resolve a file or folder path to its Nextcloud file ID.
@@ -203,7 +212,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return int(fileid_element.text)
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_file_path_by_id(file_id: int) -> str:
 		"""
 		Resolve a Nextcloud file ID to its path (relative to the user's files root).
@@ -247,7 +256,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return href
 
 	@tool
-	@dangerous_tool
+	@impulse(transfer_radius)
 	async def convert_file(source_path: str, target_mime_type: str, destination_path: str | None = None):
 		"""
 		Convert a file from one MIME type to another (e.g., docx to pdf, jpg to png).
@@ -290,7 +299,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		)
 
 	@tool
-	@dangerous_tool
+	@impulse(path_radius)
 	async def delete_file(path: str):
 		"""
 		Delete a file or folder

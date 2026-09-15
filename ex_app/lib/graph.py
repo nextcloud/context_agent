@@ -10,6 +10,22 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict, Annotated
 
+from ex_app.lib.all_tools.lib.impulse import (
+	DEFAULT_IMPULSE_RADIUS,
+	DEFAULT_IMPULSE_THRESHOLD,
+	ImpulseRadius,
+	classify_tool_call,
+	needs_confirmation,
+)
+
+# The two tool nodes hold the same tools; only one of them is interrupted before.
+# Which one a call is routed to is decided per call from its impulse radius.
+# The node names are part of the persisted conversation state, so they are kept
+# as-is to not break conversations that are waiting for a confirmation across an
+# app update.
+AUTO_TOOLS_NODE = "safe_tools"
+CONFIRM_TOOLS_NODE = "dangerous_tools"
+
 
 class AgentState(TypedDict):
 	"""The state of the agent."""
@@ -39,46 +55,57 @@ def create_tool_node_with_fallback(tools: list) -> dict:
 		[RunnableLambda(handle_tool_error)], exception_key="error"
 	)
 
-async def get_graph(call_model, safe_tools, dangerous_tools, checkpointer):
-	dangerous_tool_names = {tool.name: tool for tool in dangerous_tools}
-	safe_tool_names = {tool.name: tool for tool in safe_tools}
+async def get_graph(call_model, tools, checkpointer, impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD):
+	tools_by_name = {tool.name: tool for tool in tools}
 
 	# Define a new graph
 	workflow = StateGraph(AgentState)
 
 	# Define the two nodes we will cycle between
 	workflow.add_node("agent", call_model)
-	workflow.add_node("safe_tools", create_tool_node_with_fallback(safe_tools))
-	workflow.add_node("dangerous_tools", create_tool_node_with_fallback(dangerous_tools))
+	workflow.add_node(AUTO_TOOLS_NODE, create_tool_node_with_fallback(tools))
+	workflow.add_node(CONFIRM_TOOLS_NODE, create_tool_node_with_fallback(tools))
 
 	# Set the entrypoint as `agent`
 	# This means that this node is the first one called
 	workflow.set_entry_point("agent")
 
-	def route_tools(state: AgentState):
+	async def impulse_radius_of(state: AgentState) -> ImpulseRadius:
+		"""The widest radius any of the pending tool calls reaches."""
+		radius = ImpulseRadius.SELF
+		for tool_call in state["messages"][-1].tool_calls:
+			tool = tools_by_name.get(tool_call["name"])
+			if tool is None:
+				# The model hallucinated a tool; the tool node will error out on it,
+				# but until then treat it as the widest reach.
+				call_radius = DEFAULT_IMPULSE_RADIUS
+			else:
+				call_radius = await classify_tool_call(tool, tool_call.get("args") or {})
+			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}")
+			radius = max(radius, call_radius)
+		return radius
+
+	async def route_tools(state: AgentState):
 		next_node = tools_condition(state)
 		# If no tools are invoked, return to the user
 		if next_node == END:
 			return END
-		ai_message = state["messages"][-1]
-		# This assumes single tool calls. To handle parallel tool calling, you'd want to
-		# use an ANY condition
-		first_tool_call = ai_message.tool_calls[0]
-		print('Tool call: ', first_tool_call)
-		if first_tool_call["name"] in dangerous_tool_names:
-			return "dangerous_tools"
-		return "safe_tools"
+		radius = await impulse_radius_of(state)
+		if needs_confirmation(radius, impulse_threshold):
+			print(f"Impulse radius {radius.name} reaches the threshold {impulse_threshold.name}, asking the user")
+			return CONFIRM_TOOLS_NODE
+		return AUTO_TOOLS_NODE
 
 	workflow.add_conditional_edges(
-		"agent", route_tools, ["safe_tools", "dangerous_tools", END]
+		"agent", route_tools, [AUTO_TOOLS_NODE, CONFIRM_TOOLS_NODE, END]
 	)
-	workflow.add_edge("safe_tools", "agent")
-	workflow.add_edge("dangerous_tools", "agent")
+	workflow.add_edge(AUTO_TOOLS_NODE, "agent")
+	workflow.add_edge(CONFIRM_TOOLS_NODE, "agent")
 
 	# Now we can compile and visualize our graph
 	graph = workflow.compile(
 		checkpointer=checkpointer,
-		interrupt_before=["dangerous_tools"],
+		interrupt_before=[CONFIRM_TOOLS_NODE],
 		debug=False
 	)
 

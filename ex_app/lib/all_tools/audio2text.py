@@ -5,13 +5,13 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.files import get_file_id_from_file_url
 from ex_app.lib.all_tools.lib.task_processing import run_task
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def transcribe_file(file_url: str) -> str:
 		"""
 		Transcribe a media file stored inside Nextcloud

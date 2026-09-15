@@ -13,7 +13,8 @@ from nc_py_api import AsyncNextcloudApp, NextcloudApp
 import xml.etree.ElementTree as ET
 import vobject
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.audience import principal_radius
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
 
 
@@ -21,13 +22,55 @@ async def get_tools(nc: AsyncNextcloudApp):
 	ncSync = NextcloudApp()
 	ncSync.set_user(await nc.user)
 
+	CALENDAR_PROPFIND = (
+		'<?xml version="1.0" encoding="UTF-8"?>'
+		'<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
+		'<d:prop><d:displayname/><d:owner/><oc:invite/></d:prop>'
+		'</d:propfind>'
+	)
+
+	async def calendar_radius(calendar_name):
+		"""Who can reach this calendar: is it shared out, or owned by somebody else?
+
+		Calendars are not private by default -- one can be shared with a user, a group
+		or a team, and one shared with the current user is owned by somebody who sees
+		everything put into it. Both are read off the calendar's DAV properties.
+		"""
+		user_id = await nc.user
+		response = await nc._session._create_adapter(True).request(
+			'PROPFIND',
+			f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{user_id}/",
+			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
+			data=CALENDAR_PROPFIND,
+		)
+		for entry in ET.fromstring(response.text).findall('{DAV:}response'):
+			displayname = entry.find('.//{DAV:}displayname')
+			if displayname is None or displayname.text != calendar_name:
+				continue
+			radius = ImpulseRadius.SELF
+			owner = entry.find('.//{DAV:}owner/{DAV:}href')
+			if owner is not None and (owner.text or '').rstrip('/').rsplit('/', 1)[-1] != user_id:
+				# Somebody else owns it, so they see whatever we put in it.
+				radius = max(radius, ImpulseRadius.INDIVIDUALS)
+			# <oc:invite> holds one <oc:user> per sharee, each with the principal it
+			# was shared to; an <oc:organizer> sibling is the owner, not a sharee.
+			for sharee in entry.findall('.//{http://owncloud.org/ns}invite/{http://owncloud.org/ns}user/{DAV:}href'):
+				radius = max(radius, principal_radius(sharee.text))
+			return radius
+		raise ValueError(f'No calendar named {calendar_name!r}')
+
+	async def event_radius(calendar_name, attendees=None):
+		"""An event reaches its attendees, plus whoever else can see the calendar."""
+		attendee_radius = ImpulseRadius.INDIVIDUALS if attendees else ImpulseRadius.SELF
+		return max(attendee_radius, await calendar_radius(calendar_name))
+
 	def list_calendars_sync():
 		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		return ", ".join([cal.name for cal in calendars])
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_calendars():
 		"""
 		List all existing calendars by name
@@ -100,7 +143,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		calendar.add_event(str(c))
 
 	@tool
-	@dangerous_tool
+	@impulse(event_radius)
 	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
 		"""
 		Crete a new event or meeting in a calendar. Omit start_time and end_time parameters to create an all-day event.
@@ -184,7 +227,7 @@ END:VCALENDAR
 			return available_slots
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str]):
 		"""
 		Finds a free time slot where all participants have time
@@ -237,7 +280,7 @@ END:VCALENDAR
 		return True
 
 	@tool
-	@dangerous_tool
+	@impulse(calendar_radius)
 	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: Optional[str]):
 		"""
 		Crete a new task in a calendar.
@@ -291,7 +334,7 @@ END:VCALENDAR
 		return tasks
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_tasks(calendar_name: Optional[str] = None, filter_status: Optional[str] = None):
 		"""
 		List tasks from calendars. Can filter by calendar name and status.
@@ -334,7 +377,7 @@ END:VCALENDAR
 		return False
 
 	@tool
-	@dangerous_tool
+	@impulse(calendar_radius)
 	async def complete_task(calendar_name: str, task_uid: str):
 		"""
 		Mark a task as completed
@@ -389,7 +432,7 @@ END:VCALENDAR
 		return False
 
 	@tool
-	@dangerous_tool
+	@impulse(calendar_radius)
 	async def update_task(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone: Optional[str] = None, priority: Optional[int] = None):
 		"""
 		Update an existing task
@@ -428,7 +471,7 @@ END:VCALENDAR
 		return False
 
 	@tool
-	@dangerous_tool
+	@impulse(calendar_radius)
 	async def delete_task(calendar_name: str, task_uid: str):
 		"""
 		Delete a task

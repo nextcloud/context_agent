@@ -9,6 +9,21 @@ from os.path import dirname
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
+from ex_app.lib.all_tools.lib.impulse import (
+	DEFAULT_IMPULSE_THRESHOLD,
+	IMPULSE_THRESHOLD_SETTING_ID,
+	ImpulseRadius,
+	parse_impulse_radius,
+)
+
+
+async def get_impulse_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
+	"""The configured impulse radius from which on a tool call has to be confirmed."""
+	configured = await nc.appconfig_ex.get_value(
+		IMPULSE_THRESHOLD_SETTING_ID,
+		default=DEFAULT_IMPULSE_THRESHOLD.name.lower(),
+	)
+	return parse_impulse_radius(configured, default=DEFAULT_IMPULSE_THRESHOLD)
 
 
 @timed_memoize(1*60)
@@ -16,8 +31,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	directory = dirname(__file__) + '/all_tools'
 	function_name = "get_tools"
 
-	dangerous_tools = []
-	safe_tools = []
+	tools = []
 
 	py_files = [f for f in os.listdir(directory) if f.endswith(".py") and f != "__init__.py"]
 	is_activated = json.loads(await nc.appconfig_ex.get_value('tool_status'))
@@ -39,21 +53,16 @@ async def get_tools(nc: AsyncNextcloudApp):
 			if callable(get_tools_from_import):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = await get_tools_from_import(nc)
-				for tool in imported_tools:
-					tool_action = getattr(tool, 'coroutine', getattr(tool, 'func', None))
-					if tool_action is None:
-						safe_tools.append(tool)
-						continue
-					if not getattr(tool_action, 'safe', False):
-						dangerous_tools.append(tool) # MCP tools cannot be decorated and should always be dangerous
-					else:
-						safe_tools.append(tool)
+				# Tools carry their impulse radius hook on the wrapped function; tools
+				# without one (MCP tools cannot be decorated) fall back to the widest
+				# radius at classification time, so they always need confirmation.
+				tools.extend(imported_tools)
 			else:
 				print(f"{function_name} in {module_name} is not callable.")
 		else:
 			print(f"{function_name} not found in {module_name}.")
 
-	return safe_tools, dangerous_tools
+	return tools
 
 def get_categories():
 	directory = dirname(__file__) + '/all_tools'

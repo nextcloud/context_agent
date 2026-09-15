@@ -4,12 +4,26 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.audience import share_type_radius
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	async def form_radius(form_id):
+		"""Who can already fill this form in, read off its shares and access settings."""
+		form = await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}')
+		if not isinstance(form, dict) or 'shares' not in form:
+			raise ValueError(f'Could not read the shares of form {form_id!r}')
+		radius = ImpulseRadius.SELF
+		if (form.get('access') or {}).get('permitAllUsers'):
+			# Open to every account on the instance.
+			radius = ImpulseRadius.GROUP
+		for share in form['shares'] or []:
+			radius = max(radius, share_type_radius(share.get('shareType')))
+		return radius
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_forms():
 		"""
 		List all forms created by the current user
@@ -18,7 +32,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('GET', '/ocs/v2.php/apps/forms/api/v3/forms')
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_form_details(form_id: int):
 		"""
 		Get detailed information about a specific form including questions
@@ -28,7 +42,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}')
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def create_form(title: str, description: Optional[str] = None):
 		"""
 		Create a new form. First creates the form, then updates it with the title and description.
@@ -50,7 +64,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}', json={'keyValuePairs': key_value_pairs})
 
 	@tool
-	@dangerous_tool
+	@impulse(form_radius)
 	async def add_question_to_form(form_id: int, question_text: str, question_type: str, is_required: bool = False, options: Optional[list[str]] = None):
 		"""
 		Add a question to an existing form
@@ -83,7 +97,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return question
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_form_responses(form_id: int):
 		"""
 		Get all responses/submissions for a form
@@ -93,7 +107,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/submissions')
 
 	@tool
-	@dangerous_tool
+	@impulse(form_radius)
 	async def delete_form(form_id: int):
 		"""
 		Delete a form
@@ -103,7 +117,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}')
 
 	@tool
-	@dangerous_tool
+	@impulse(form_radius)
 	async def update_form_settings(form_id: int, is_anonymous: Optional[bool] = None, submit_multiple: Optional[bool] = None, show_expiration: Optional[bool] = None, expires: Optional[int] = None):
 		"""
 		Update form settings
