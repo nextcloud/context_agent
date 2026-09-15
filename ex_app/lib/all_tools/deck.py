@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import json
 import time
 from typing import Optional
@@ -28,8 +29,18 @@ def _forget_stale_card_radii(now: float) -> None:
 	the process keeps a map per user that has ever used a Deck tool for as long as
 	it runs. Sweeping on the way in costs a pass over a dict that is as long as the
 	list of users active in the last minute.
+
+	A map somebody is still crawling is left alone: dropping it would leave the
+	crawl filling in a dict nobody reads any more, and send everyone waiting on it
+	off to walk every board over again. A map that has never been filled in reads
+	as infinitely old, so without this the first crawl of all would be swept out
+	from under itself by the next call to arrive.
 	"""
-	for user_id in [u for u, cache in _card_radii.items() if now - cache['fetched_at'] > CARD_BOARD_TTL]:
+	stale = [
+		user_id for user_id, cache in _card_radii.items()
+		if now - cache['fetched_at'] > CARD_BOARD_TTL and cache['crawl'] is None
+	]
+	for user_id in stale:
 		del _card_radii[user_id]
 
 
@@ -62,7 +73,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""Assigning reaches the assignee on top of whoever the board already reaches."""
 		return max(ImpulseRadius.INDIVIDUALS, await board_radius(board_id))
 
-	async def refresh_card_radii(cache):
+	async def crawl_card_radii(cache):
 		"""Map every card the user can reach to the radius of the board it lives on.
 
 		One request for the board list, then one per board -- the stacks of a board
@@ -70,15 +81,37 @@ async def get_tools(nc: AsyncNextcloudApp):
 		reduced to its radius as it goes past, so what stays behind is one small
 		integer per card rather than the board it came from.
 		"""
-		radii = {}
-		for board in await deck_get('/boards'):
-			radius = await board_acl_radius(board)
-			for stack in await deck_get(f"/boards/{board['id']}/stacks"):
-				for card in stack.get('cards') or []:
-					radii[card['id']] = radius
-		cache['cards'] = radii
-		cache['fetched_at'] = time.monotonic()
-		return radii
+		try:
+			radii = {}
+			for board in await deck_get('/boards'):
+				radius = await board_acl_radius(board)
+				for stack in await deck_get(f"/boards/{board['id']}/stacks"):
+					for card in stack.get('cards') or []:
+						radii[card['id']] = radius
+			cache['cards'] = radii
+			cache['fetched_at'] = time.monotonic()
+		finally:
+			# Cleared even when the crawl failed, so the next call tries again rather
+			# than waiting on a task that is never coming back.
+			cache['crawl'] = None
+
+	async def refresh_card_radii(cache):
+		"""Fill the map in, or wait for the crawl that is already doing it.
+
+		The pending tool calls of one turn are classified against each other, so a
+		batch naming several cards the map has not seen yet arrives here all at once.
+		Each of those would otherwise walk every board of its own, for the same
+		answer. The first one to get here starts the crawl and the rest wait on it,
+		shielded so that a caller giving up does not cancel the crawl the others are
+		still waiting for.
+		"""
+		crawl = cache['crawl']
+		if crawl is None:
+			crawl = asyncio.ensure_future(crawl_card_radii(cache))
+			# Set before the task gets to run: ensure_future only schedules it, and
+			# there is no await between here and there for it to start in.
+			cache['crawl'] = crawl
+		await asyncio.shield(crawl)
 
 	async def card_radius(card_id):
 		"""A comment on a card reaches whoever the card's board reaches."""
@@ -87,7 +120,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_forget_stale_card_radii(now)
 		# A map that has just been swept, or was never there, reads as infinitely old
 		# and so gets fetched rather than being trusted while it is still empty.
-		cache = _card_radii.setdefault(await nc.user, {'cards': {}, 'fetched_at': float('-inf')})
+		cache = _card_radii.setdefault(await nc.user, {'cards': {}, 'fetched_at': float('-inf'), 'crawl': None})
 		age = now - cache['fetched_at']
 		# At most one crawl per call, whether the map went stale or the card is new.
 		if age > CARD_BOARD_TTL or (card_id not in cache['cards'] and age > CARD_BOARD_MISS_INTERVAL):
