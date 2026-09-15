@@ -122,17 +122,28 @@ async def mount_type_radius(nc, path) -> ImpulseRadius:
 
 
 async def file_path_radius(nc, *paths) -> ImpulseRadius:
-	"""Who can reach these files or folders, through a share on them or on a parent.
+	"""Who can reach these files or folders, through a share anywhere around them.
 
-	Covers three ways in: folders the user shared out, folders that were shared
+	Covers four ways in: folders the user shared out, folders that were shared
 	with the user, where the owner and the other recipients see whatever is
-	written into them, and Team folders, which a whole group has mounted without
-	any share existing to find.
+	written into them, Team folders, which a whole group has mounted without any
+	share existing to find, and shares sitting *inside* a folder being acted on --
+	a folder that gets deleted or moved takes everything shared out of it along
+	with it, and those recipients lose it without a share on the folder itself
+	ever mentioning them.
 	"""
 	covered = set()
+	targets = set()
 	for path in paths:
-		if path:
-			covered |= path_and_parents(path)
+		if not path:
+			continue
+		parents = path_and_parents(path)
+		if not parents:
+			# The user's root, which names no folder to ask about. Left out so the
+			# question stays unanswered rather than being answered for nothing.
+			continue
+		covered |= parents
+		targets.add(normalize_path(path))
 	if not covered:
 		raise ValueError('No path to determine the audience of')
 
@@ -146,8 +157,11 @@ async def file_path_radius(nc, *paths) -> ImpulseRadius:
 			# 'path' is relative to the tree of whoever is asking, for shares the user
 			# handed out as well as for those they received; 'file_target' is the
 			# recipient's mount point and only matches for the latter.
-			share_path = share.get('path') or share.get('file_target')
-			if normalize_path(share_path) in covered:
+			share_path = normalize_path(share.get('path') or share.get('file_target'))
+			# On the path itself or on a folder above it: the share reaches it. Below
+			# it: the share goes down with it. Every target is a real folder, never
+			# '/', so no prefix here can swallow the whole tree.
+			if share_path in covered or any(share_path.startswith(f'{target}/') for target in targets):
 				radius = max(radius, share_type_radius(share.get('share_type')))
 	return radius
 
