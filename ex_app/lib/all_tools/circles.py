@@ -58,7 +58,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		Changing a team's name or description changes what every member of it sees,
 		so the audience of the change is the membership -- which is nobody at all
-		while the user is still the only one in it.
+		while the user is still the only one in it. Deleting the team is the same
+		membership on the other side of the ledger: everyone in it loses it at once,
+		which is why the reach of a deletion is read off the members too rather than
+		being called SELF because nobody gains anything.
 		"""
 		_validate_circle_id(circle_id)
 		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
@@ -177,7 +180,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(circle_radius)
 	@destructive
 	async def delete_circle(circle_id: str):
 		"""
