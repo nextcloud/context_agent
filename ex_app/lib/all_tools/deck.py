@@ -8,15 +8,21 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
+# Resolving a card to its board costs one request per board the user can see, so
+# the map is kept per user and out here, rather than in the get_tools closure that
+# timed_memoize drops every minute along with the tools themselves.
+CARD_BOARD_TTL = 60
+# A miss is worth one crawl -- a card the agent just created is not in the map
+# yet. Right after a crawl it is not: an id that is simply not there would
+# otherwise walk every board again on every call that mentions it.
+CARD_BOARD_MISS_INTERVAL = 10
+_card_boards: dict[str, dict] = {}
+
 
 async def get_tools(nc: AsyncNextcloudApp):
 
 	DECK_API = f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0"
 	DECK_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
-	# Resolving a card to its board costs one request per board, so the map is kept
-	# for a short while; a card the agent just created is not in it yet, which is
-	# what the refresh on a miss is for.
-	card_board_cache = {'boards': {}, 'fetched_at': 0.0}
 
 	async def deck_get(path):
 		response = await nc._session._create_adapter().request('GET', f"{DECK_API}{path}", headers=DECK_HEADERS)
@@ -42,25 +48,30 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""Assigning reaches the assignee on top of whoever the board already reaches."""
 		return max(ImpulseRadius.INDIVIDUALS, await board_radius(board_id))
 
-	async def refresh_card_boards():
-		"""Map every card the user can reach to the board it lives on."""
+	async def refresh_card_boards(cache):
+		"""Map every card the user can reach to the board it lives on.
+
+		One request for the board list, then one per board -- the stacks of a board
+		carry its cards, so the cards themselves cost nothing extra.
+		"""
 		boards = {}
 		for board in await deck_get('/boards'):
 			for stack in await deck_get(f"/boards/{board['id']}/stacks"):
 				for card in stack.get('cards') or []:
 					boards[card['id']] = board
-		card_board_cache['boards'] = boards
-		card_board_cache['fetched_at'] = time.monotonic()
+		cache['boards'] = boards
+		cache['fetched_at'] = time.monotonic()
 		return boards
 
 	async def card_radius(card_id):
 		"""A comment on a card reaches whoever the card's board reaches."""
-		boards = card_board_cache['boards']
-		if time.monotonic() - card_board_cache['fetched_at'] > 60:
-			boards = await refresh_card_boards()
-		if int(card_id) not in boards:
-			boards = await refresh_card_boards()
-		board = boards.get(int(card_id))
+		card_id = int(card_id)
+		cache = _card_boards.setdefault(await nc.user, {'boards': {}, 'fetched_at': 0.0})
+		age = time.monotonic() - cache['fetched_at']
+		# At most one crawl per call, whether the map went stale or the card is new.
+		if age > CARD_BOARD_TTL or (card_id not in cache['boards'] and age > CARD_BOARD_MISS_INTERVAL):
+			await refresh_card_boards(cache)
+		board = cache['boards'].get(card_id)
 		if board is None:
 			raise ValueError(f'No board holds a card with id {card_id!r}')
 		return await board_acl_radius(board)
