@@ -38,6 +38,28 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return ImpulseRadius.EXTERNAL
 		return ImpulseRadius.INDIVIDUALS
 
+	async def circle_radius(circle_id):
+		"""Who a team already reaches, read off the members it already has.
+
+		Changing a team's name or description changes what every member of it sees,
+		so the audience of the change is the membership -- which is nobody at all
+		while the user is still the only one in it.
+		"""
+		_validate_circle_id(circle_id)
+		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		user_id = await nc.user
+		radius = ImpulseRadius.SELF
+		for member in members or []:
+			member_type = member.get('userType')
+			if member_type in (TYPE_GROUP, TYPE_CIRCLE, TYPE_MAIL):
+				# A group, a nested team or a mail address: reuse the reach that adding
+				# such a member would have had.
+				radius = max(radius, new_member_radius(member_type))
+			elif member.get('userId') != user_id:
+				# Anyone else in the team makes this a team rather than a private note.
+				radius = max(radius, ImpulseRadius.GROUP)
+		return radius
+
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	async def list_circles():
@@ -123,7 +145,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/{member_id}'))
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(circle_radius)
 	async def update_circle(circle_id: str, name: Optional[str] = None, description: Optional[str] = None):
 		"""
 		Update circle (team) information
