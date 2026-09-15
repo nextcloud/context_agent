@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
+from ex_app.lib.errors import UserFacingError
 from ex_app.lib.logger import log
 
 
@@ -73,6 +74,18 @@ class Task(BaseModel):
 	status: str
 	output: dict[str, typing.Any] | None = None
 	preferStreaming: bool | None = None
+	# Serialized by Nextcloud 33+; the admin-facing `errorMessage` is never exposed over OCS
+	userFacingErrorMessage: str | None = None
+
+
+def task_failed_error(task: Task) -> UserFacingError:
+	"""Turn a failed sub-task into an error that passes the provider's user-facing message on."""
+	if task.userFacingErrorMessage:
+		return UserFacingError(
+			f"Nextcloud TaskProcessing Task failed: {task.userFacingErrorMessage}",
+			task.userFacingErrorMessage,
+		)
+	return UserFacingError("Nextcloud TaskProcessing Task failed")
 
 
 class Response(BaseModel):
@@ -334,7 +347,7 @@ class ChatWithNextcloud(BaseChatModel):
 				raise
 
 		if task.status == "STATUS_FAILED":
-			raise Exception("Nextcloud TaskProcessing Task failed")
+			raise task_failed_error(task)
 
 		if task.status in ("STATUS_RUNNING", "STATUS_SCHEDULED"):
 			raise Exception("Nextcloud TaskProcessing Task timed out")
@@ -381,7 +394,7 @@ class ChatWithNextcloud(BaseChatModel):
 				streamed_output = current_output
 
 		if task.status == "STATUS_FAILED":
-			raise Exception("Nextcloud TaskProcessing Task failed")
+			raise task_failed_error(task)
 
 		if task.status in ("STATUS_RUNNING", "STATUS_SCHEDULED"):
 			raise Exception("Nextcloud TaskProcessing Task timed out")

@@ -22,6 +22,7 @@ from nc_py_api.ex_app import (
     SettingsFieldType)
 
 from ex_app.lib.agent import react
+from ex_app.lib.errors import UserFacingError
 from ex_app.lib.logger import log
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider, multimodal_provider
@@ -181,6 +182,16 @@ async def background_thread_task():
 NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
 NUM_RUNNING_TASKS = 0
 
+async def report_error(nc: AsyncNextcloudApp, task_id: int, e: Exception):
+    """Report a failed task, passing on the user-facing error message when we have one."""
+    # The user-facing message is only picked up by Nextcloud 33+, older versions ignore it.
+    await nc.providers.task_processing.report_result(
+        task_id,
+        error_message=str(e),
+        user_facing_error_message=e.user_facing_message if isinstance(e, UserFacingError) else None,
+    )
+
+
 async def handle_task(task, nc: AsyncNextcloudApp):
     global NUM_RUNNING_TASKS
     try:
@@ -213,7 +224,7 @@ async def handle_task(task, nc: AsyncNextcloudApp):
         try:
             tb_str = ''.join(traceback.format_exception(e))
             await log(nc, LogLvl.ERROR, "Error: " + tb_str)
-            await nc.providers.task_processing.report_result(task["id"], error_message=str(e))
+            await report_error(nc, task["id"], e)
         except (NextcloudException, RequestException) as net_err:
             tb_str = ''.join(traceback.format_exception(net_err))
             await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
