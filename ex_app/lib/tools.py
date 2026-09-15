@@ -24,11 +24,17 @@ async def _get_threshold(nc: AsyncNextcloudApp, setting_id: str, default: Impuls
 	return parse_impulse_radius(configured, default=default)
 
 
+# Cached like get_tools below, and for the same reason: every turn reads these, an
+# admin changes them once in a while. Each gets its own memoize closure because
+# timed_memoize keys on the user alone -- sharing one would serve whichever
+# threshold was asked for first.
+@timed_memoize(1*60)
 async def get_impulse_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
 	"""The configured impulse radius from which on a tool call has to be confirmed."""
 	return await _get_threshold(nc, IMPULSE_THRESHOLD_SETTING_ID, DEFAULT_IMPULSE_THRESHOLD)
 
 
+@timed_memoize(1*60)
 async def get_destructive_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
 	"""The configured impulse radius from which on a deletion has to be confirmed."""
 	return await _get_threshold(nc, DESTRUCTIVE_THRESHOLD_SETTING_ID, DEFAULT_DESTRUCTIVE_THRESHOLD)
