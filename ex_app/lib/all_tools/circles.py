@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 # Nextcloud Circles member type constants
 TYPE_USER = 1
@@ -110,6 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def remove_member_from_circle(circle_id: str, member_id: str):
 		"""
 		Remove a member from a circle (team)
@@ -140,6 +141,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def delete_circle(circle_id: str):
 		"""
 		Delete a circle (team)

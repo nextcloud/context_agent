@@ -27,7 +27,7 @@ from ex_app.lib.nc_model import (
 	model,
 )
 from ex_app.lib.signature import add_signature, verify_signature
-from ex_app.lib.tools import get_impulse_threshold, get_tools
+from ex_app.lib.tools import get_destructive_threshold, get_impulse_threshold, get_tools
 
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
@@ -114,6 +114,7 @@ async def react(
 
 	tools = await get_tools(nc)
 	impulse_threshold = await get_impulse_threshold(nc)
+	destructive_threshold = await get_destructive_threshold(nc)
 
 	bound_model = model.bind_tools(
 		tools,
@@ -202,7 +203,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		# if this fails, we fail the whole task
 		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	graph = await get_graph(call_model, tools, checkpointer, impulse_threshold)
+	graph = await get_graph(call_model, tools, checkpointer, impulse_threshold, destructive_threshold)
 
 	state_snapshot = graph.get_state(thread)
 

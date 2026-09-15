@@ -6,7 +6,7 @@ from urllib.parse import quote
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 # Unlike the other write tools, which append their AI note to a value they create,
 # update_page_content replaces a whole page the agent usually read back first - so the
@@ -234,6 +234,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@destructive
 	async def trash_page(collective_id: int, page_id: int):
 		"""
 		Soft-delete a page by moving it to the collective's page trash.
@@ -259,6 +260,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@destructive
 	async def delete_page_permanently(collective_id: int, page_id: int):
 		"""
 		Permanently delete a page that is already in the trash. This cannot be undone.

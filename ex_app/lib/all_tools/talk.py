@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.talk import ConversationType
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -117,6 +117,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def remove_reaction(conversation_name: str, message_id: int, reaction: str):
 		"""
 		Remove an emoji reaction from a message in a Talk conversation.

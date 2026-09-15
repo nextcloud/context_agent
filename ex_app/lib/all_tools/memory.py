@@ -14,7 +14,7 @@ from nc_py_api._exceptions import NextcloudExceptionNotFound
 from nc_py_api.files.files_async import AsyncFilesAPI
 from pydantic import BaseModel, ValidationError, computed_field, field_validator
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.logger import log
 
@@ -283,6 +283,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def delete_memory(path: str):
 		"""
 		Deletes a particular memory file identified by a full file/memory path.
@@ -312,6 +313,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def delete_memory_folder(path: str):
 		"""
 		Deletes the whole folder of memories by a full path.

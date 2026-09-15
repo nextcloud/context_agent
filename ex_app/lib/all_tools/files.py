@@ -8,7 +8,7 @@ from nc_py_api import AsyncNextcloudApp
 from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
 from ex_app.lib.all_tools.lib.audience import file_path_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 from ex_app.lib.all_tools.lib.files import format_fs_node, get_file_content_from_int_link, get_file_id_from_file_url
 
 
@@ -300,6 +300,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(path_radius)
+	@destructive
 	async def delete_file(path: str):
 		"""
 		Delete a file or folder

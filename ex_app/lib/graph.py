@@ -11,10 +11,12 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict, Annotated
 
 from ex_app.lib.all_tools.lib.impulse import (
+	DEFAULT_DESTRUCTIVE_THRESHOLD,
 	DEFAULT_IMPULSE_RADIUS,
 	DEFAULT_IMPULSE_THRESHOLD,
 	ImpulseRadius,
 	classify_tool_call,
+	is_destructive,
 	needs_confirmation,
 )
 
@@ -55,7 +57,13 @@ def create_tool_node_with_fallback(tools: list) -> dict:
 		[RunnableLambda(handle_tool_error)], exception_key="error"
 	)
 
-async def get_graph(call_model, tools, checkpointer, impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD):
+async def get_graph(
+	call_model,
+	tools,
+	checkpointer,
+	impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD,
+	destructive_threshold: ImpulseRadius = DEFAULT_DESTRUCTIVE_THRESHOLD,
+):
 	tools_by_name = {tool.name: tool for tool in tools}
 
 	# Define a new graph
@@ -70,29 +78,34 @@ async def get_graph(call_model, tools, checkpointer, impulse_threshold: ImpulseR
 	# This means that this node is the first one called
 	workflow.set_entry_point("agent")
 
-	async def impulse_radius_of(state: AgentState) -> ImpulseRadius:
-		"""The widest radius any of the pending tool calls reaches."""
+	async def classify_pending_calls(state: AgentState) -> tuple[ImpulseRadius, bool]:
+		"""The widest radius the pending tool calls reach, and whether any deletes."""
 		radius = ImpulseRadius.SELF
+		destroys = False
 		for tool_call in state["messages"][-1].tool_calls:
 			tool = tools_by_name.get(tool_call["name"])
 			if tool is None:
 				# The model hallucinated a tool; the tool node will error out on it,
 				# but until then treat it as the widest reach.
-				call_radius = DEFAULT_IMPULSE_RADIUS
+				call_radius, call_destroys = DEFAULT_IMPULSE_RADIUS, False
 			else:
 				call_radius = await classify_tool_call(tool, tool_call.get("args") or {})
-			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}")
+				call_destroys = is_destructive(tool)
+			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}"
+			      f"{', deletes something' if call_destroys else ''}")
 			radius = max(radius, call_radius)
-		return radius
+			destroys = destroys or call_destroys
+		return radius, destroys
 
 	async def route_tools(state: AgentState):
 		next_node = tools_condition(state)
 		# If no tools are invoked, return to the user
 		if next_node == END:
 			return END
-		radius = await impulse_radius_of(state)
-		if needs_confirmation(radius, impulse_threshold):
-			print(f"Impulse radius {radius.name} reaches the threshold {impulse_threshold.name}, asking the user")
+		radius, destroys = await classify_pending_calls(state)
+		if needs_confirmation(radius, impulse_threshold, destroys, destructive_threshold):
+			threshold = destructive_threshold if destroys and radius < impulse_threshold else impulse_threshold
+			print(f"Impulse radius {radius.name} reaches the threshold {threshold.name}, asking the user")
 			return CONFIRM_TOOLS_NODE
 		return AUTO_TOOLS_NODE
 

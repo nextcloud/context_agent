@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -124,6 +124,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(table_radius)
+	@destructive
 	async def delete_table(table_id: int):
 		"""
 		Delete a table and all its columns and rows
@@ -322,6 +323,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(column_radius)
+	@destructive
 	async def delete_column(column_id: int):
 		"""
 		Delete a column from a table. This also removes all data stored in this column for every row.
@@ -425,6 +427,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(row_radius)
+	@destructive
 	async def delete_row(row_id: int):
 		"""
 		Delete a row from a table

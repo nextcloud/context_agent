@@ -10,20 +10,28 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
 from ex_app.lib.all_tools.lib.impulse import (
+	DEFAULT_DESTRUCTIVE_THRESHOLD,
 	DEFAULT_IMPULSE_THRESHOLD,
+	DESTRUCTIVE_THRESHOLD_SETTING_ID,
 	IMPULSE_THRESHOLD_SETTING_ID,
 	ImpulseRadius,
 	parse_impulse_radius,
 )
 
 
+async def _get_threshold(nc: AsyncNextcloudApp, setting_id: str, default: ImpulseRadius) -> ImpulseRadius:
+	configured = await nc.appconfig_ex.get_value(setting_id, default=default.name.lower())
+	return parse_impulse_radius(configured, default=default)
+
+
 async def get_impulse_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
 	"""The configured impulse radius from which on a tool call has to be confirmed."""
-	configured = await nc.appconfig_ex.get_value(
-		IMPULSE_THRESHOLD_SETTING_ID,
-		default=DEFAULT_IMPULSE_THRESHOLD.name.lower(),
-	)
-	return parse_impulse_radius(configured, default=DEFAULT_IMPULSE_THRESHOLD)
+	return await _get_threshold(nc, IMPULSE_THRESHOLD_SETTING_ID, DEFAULT_IMPULSE_THRESHOLD)
+
+
+async def get_destructive_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
+	"""The configured impulse radius from which on a deletion has to be confirmed."""
+	return await _get_threshold(nc, DESTRUCTIVE_THRESHOLD_SETTING_ID, DEFAULT_DESTRUCTIVE_THRESHOLD)
 
 
 @timed_memoize(1*60)

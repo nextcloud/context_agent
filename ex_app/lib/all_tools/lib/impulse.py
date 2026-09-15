@@ -24,8 +24,14 @@ modify an item which already has an audience (editing a team wiki page, posting
 in a conversation) the radius is that existing audience -- the audience is who
 the action reaches.
 
-The radius is compared against the admin-configured threshold to decide whether
-the user has to confirm the call; see :func:`needs_confirmation`.
+Radius answers who a call reaches, which says nothing about whether it takes
+something away. That is the second dimension: a tool marked :func:`destructive`
+deletes something, and deletions are confirmed on their own threshold, so
+emptying a folder of your own files can still be worth asking about even though
+it discloses nothing.
+
+Both dimensions feed :func:`needs_confirmation`, which compares each against its
+admin-configured threshold.
 """
 import inspect
 from enum import IntEnum
@@ -52,7 +58,14 @@ DEFAULT_IMPULSE_THRESHOLD = ImpulseRadius.INDIVIDUALS
 
 IMPULSE_THRESHOLD_SETTING_ID = 'impulse_radius_threshold'
 
+# Deletions are confirmed from this radius on. SELF means every deletion is
+# confirmed, since no call reaches less far than that.
+DEFAULT_DESTRUCTIVE_THRESHOLD = ImpulseRadius.SELF
+
+DESTRUCTIVE_THRESHOLD_SETTING_ID = 'destructive_radius_threshold'
+
 _ATTR = 'impulse_hook'
+_DESTRUCTIVE_ATTR = 'impulse_destructive'
 
 
 def parse_impulse_radius(value, default=DEFAULT_IMPULSE_RADIUS) -> ImpulseRadius:
@@ -106,6 +119,30 @@ def impulse(radius_or_hook):
 	return decorator
 
 
+def destructive(tool_func):
+	"""Mark a tool as deleting something.
+
+	Applied to the tool function like :func:`impulse`, and independent of it: a
+	deletion can reach anyone at all, from a note only the user can see to a page
+	in a team wiki.
+
+		@tool
+		@impulse(ImpulseRadius.SELF)
+		@destructive
+		async def delete_memory(path: str): ...
+	"""
+	setattr(tool_func, _DESTRUCTIVE_ATTR, True)
+	return tool_func
+
+
+def is_destructive(tool) -> bool:
+	"""Whether this tool deletes something."""
+	tool_action = getattr(tool, 'coroutine', None) or getattr(tool, 'func', None)
+	if tool_action is None:
+		return False
+	return bool(getattr(tool_action, _DESTRUCTIVE_ATTR, False))
+
+
 def get_impulse_hook(tool):
 	"""Return the impulse hook of a LangChain tool, or None if it carries none."""
 	tool_action = getattr(tool, 'coroutine', None) or getattr(tool, 'func', None)
@@ -149,6 +186,18 @@ async def classify_tool_call(tool, tool_args: dict) -> ImpulseRadius:
 		return DEFAULT_IMPULSE_RADIUS
 
 
-def needs_confirmation(radius: ImpulseRadius, threshold: ImpulseRadius) -> bool:
-	"""Whether a call of this reach must be confirmed by the user."""
-	return radius >= threshold
+def needs_confirmation(
+	radius: ImpulseRadius,
+	threshold: ImpulseRadius,
+	destroys: bool = False,
+	destructive_threshold: ImpulseRadius = DEFAULT_DESTRUCTIVE_THRESHOLD,
+) -> bool:
+	"""Whether a call of this reach must be confirmed by the user.
+
+	A call is confirmed when it reaches at least as far as the threshold, and a
+	deletion is confirmed when it reaches at least as far as the deletion
+	threshold -- which is the lower of the two bars in any sane configuration.
+	"""
+	if radius >= threshold:
+		return True
+	return destroys and radius >= destructive_threshold

@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import vobject
 
 from ex_app.lib.all_tools.lib.audience import principal_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
 
 
@@ -472,6 +472,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
+	@destructive
 	async def delete_task(calendar_name: str, task_uid: str):
 		"""
 		Delete a task

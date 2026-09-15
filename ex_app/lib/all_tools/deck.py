@@ -6,7 +6,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -205,6 +205,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(board_radius)
+	@destructive
 	async def delete_card(board_id: int, stack_id: int, card_id: int):
 		"""
 		Delete a card from a board
@@ -270,6 +271,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def delete_card_comment(card_id: int, comment_id: int):
 		"""
 		Delete a comment from a Deck card. Only the comment author can delete their own comments.

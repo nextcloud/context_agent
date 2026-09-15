@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -99,6 +99,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def delete_recipe(recipe_id: int):
 		"""
 		Delete a recipe

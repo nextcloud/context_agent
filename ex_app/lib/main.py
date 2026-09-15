@@ -26,7 +26,9 @@ from ex_app.lib.logger import log
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider, multimodal_provider
 from ex_app.lib.all_tools.lib.impulse import (
+    DEFAULT_DESTRUCTIVE_THRESHOLD,
     DEFAULT_IMPULSE_THRESHOLD,
+    DESTRUCTIVE_THRESHOLD_SETTING_ID,
     IMPULSE_THRESHOLD_SETTING_ID,
     ImpulseRadius,
 )
@@ -114,6 +116,25 @@ SETTINGS = SettingsForm(
                 _("A group - confirm when a group, team or conversation gains access"):
                     ImpulseRadius.GROUP.name.lower(),
                 _("Outside this Nextcloud - confirm only when something leaves the instance, e.g. an email"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=DESTRUCTIVE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm a deletion from this impulse radius on"),
+            description=_(
+                "Deleting something takes it away without giving anyone access to it, so deletions are"
+                " judged on their own bar. Pick how far a deletion has to reach before Context Agent asks."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_DESTRUCTIVE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every deletion"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm deletions of what named people can see"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm deletions of what a group, team or conversation can see"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only deletions of what left the instance"):
                     ImpulseRadius.EXTERNAL.name.lower(),
             },
         ),
