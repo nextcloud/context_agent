@@ -28,7 +28,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 				radius = max(radius, ImpulseRadius.INDIVIDUALS)
 			else:
 				# 'link' and 'remote' both leave the instance, as does anything new.
-				radius = ImpulseRadius.EXTERNAL
+				radius = max(radius, ImpulseRadius.EXTERNAL)
 		return radius
 
 	async def table_radius(table_id):
