@@ -15,8 +15,9 @@ from ex_app.lib.all_tools.lib.impulse import (
 	DEFAULT_IMPULSE_RADIUS,
 	DEFAULT_IMPULSE_THRESHOLD,
 	ImpulseRadius,
+	classify_destructive,
 	classify_tool_call,
-	is_destructive,
+	is_always_confirmed,
 	needs_confirmation,
 )
 
@@ -78,34 +79,43 @@ async def get_graph(
 	# This means that this node is the first one called
 	workflow.set_entry_point("agent")
 
-	async def classify_pending_calls(state: AgentState) -> tuple[ImpulseRadius, bool]:
-		"""The widest radius the pending tool calls reach, and whether any deletes."""
+	async def classify_pending_calls(state: AgentState) -> tuple[ImpulseRadius, bool, bool]:
+		"""The widest radius the pending tool calls reach, whether any destroys
+		something, and whether any is confirmed regardless of its radius."""
 		radius = ImpulseRadius.SELF
 		destroys = False
+		always = False
 		for tool_call in state["messages"][-1].tool_calls:
 			tool = tools_by_name.get(tool_call["name"])
 			if tool is None:
 				# The model hallucinated a tool; the tool node will error out on it,
 				# but until then treat it as the widest reach.
-				call_radius, call_destroys = DEFAULT_IMPULSE_RADIUS, False
+				call_radius, call_destroys, call_always = DEFAULT_IMPULSE_RADIUS, False, False
 			else:
-				call_radius = await classify_tool_call(tool, tool_call.get("args") or {})
-				call_destroys = is_destructive(tool)
+				call_args = tool_call.get("args") or {}
+				call_radius = await classify_tool_call(tool, call_args)
+				call_destroys = await classify_destructive(tool, call_args)
+				call_always = is_always_confirmed(tool)
 			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}"
-			      f"{', deletes something' if call_destroys else ''}")
+			      f"{', destroys something' if call_destroys else ''}"
+			      f"{', always confirmed' if call_always else ''}")
 			radius = max(radius, call_radius)
 			destroys = destroys or call_destroys
-		return radius, destroys
+			always = always or call_always
+		return radius, destroys, always
 
 	async def route_tools(state: AgentState):
 		next_node = tools_condition(state)
 		# If no tools are invoked, return to the user
 		if next_node == END:
 			return END
-		radius, destroys = await classify_pending_calls(state)
-		if needs_confirmation(radius, impulse_threshold, destroys, destructive_threshold):
-			threshold = destructive_threshold if destroys and radius < impulse_threshold else impulse_threshold
-			print(f"Impulse radius {radius.name} reaches the threshold {threshold.name}, asking the user")
+		radius, destroys, always = await classify_pending_calls(state)
+		if needs_confirmation(radius, impulse_threshold, destroys, destructive_threshold, always):
+			if always:
+				print("A pending tool call is always confirmed, asking the user")
+			else:
+				threshold = destructive_threshold if destroys and radius < impulse_threshold else impulse_threshold
+				print(f"Impulse radius {radius.name} reaches the threshold {threshold.name}, asking the user")
 			return CONFIRM_TOOLS_NODE
 		return AUTO_TOOLS_NODE
 

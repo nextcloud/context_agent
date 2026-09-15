@@ -6,13 +6,14 @@ import pytz
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, always_confirm, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@always_confirm
 	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, timezone: str|None = None, starts_at: None|str = None):
 		"""
 		Create a Scheduled Task for the assistant that will be carried out autonomously.
@@ -50,6 +51,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@always_confirm
 	async def update_scheduled_task(id: int, prompt: None|str = None, recurrence_rule: None|str = None, timezone: str|None = None, starts_at: None|str = None):
 		"""
 		Update a assistant Scheduled Task

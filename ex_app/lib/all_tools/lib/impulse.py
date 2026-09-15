@@ -26,12 +26,20 @@ the action reaches.
 
 Radius answers who a call reaches, which says nothing about whether it takes
 something away. That is the second dimension: a tool marked :func:`destructive`
-deletes something, and deletions are confirmed on their own threshold, so
-emptying a folder of your own files can still be worth asking about even though
-it discloses nothing.
+deletes or overwrites something, and those are confirmed on their own threshold,
+so emptying a folder of your own files can still be worth asking about even
+though it discloses nothing. Like the radius, it can depend on the arguments --
+:func:`destructive_if` takes a hook, because copying onto a free path destroys
+nothing while copying onto a taken one replaces a file.
 
-Both dimensions feed :func:`needs_confirmation`, which compares each against its
-admin-configured threshold.
+Neither dimension says anything about what a call lets the agent do *later*. A
+handful of tools hand the agent a lever it can pull unattended afterwards -- a
+scheduled task runs on its own, with its own prompt, reaching wherever its tools
+reach. Their reach is not knowable at classification time, so they carry
+:func:`always_confirm` and are asked about no matter how the thresholds are set.
+
+All three feed :func:`needs_confirmation`, which compares the first two against
+their admin-configured thresholds and honours the third unconditionally.
 """
 import inspect
 from enum import IntEnum
@@ -66,6 +74,7 @@ DESTRUCTIVE_THRESHOLD_SETTING_ID = 'destructive_radius_threshold'
 
 _ATTR = 'impulse_hook'
 _DESTRUCTIVE_ATTR = 'impulse_destructive'
+_ALWAYS_CONFIRM_ATTR = 'impulse_always_confirm'
 
 
 def parse_impulse_radius(value, default=DEFAULT_IMPULSE_RADIUS) -> ImpulseRadius:
@@ -120,7 +129,7 @@ def impulse(radius_or_hook):
 
 
 def destructive(tool_func):
-	"""Mark a tool as deleting something.
+	"""Mark a tool as destroying content the user had.
 
 	Applied to the tool function like :func:`impulse`, and independent of it: a
 	deletion can reach anyone at all, from a note only the user can see to a page
@@ -130,17 +139,83 @@ def destructive(tool_func):
 		@impulse(ImpulseRadius.SELF)
 		@destructive
 		async def delete_memory(path: str): ...
+
+	Deleting is the obvious case, but overwriting is the same loss by another
+	name: writing a file that already exists leaves the user just as short of what
+	was there before. Use :func:`destructive_if` when only some arguments do that.
 	"""
 	setattr(tool_func, _DESTRUCTIVE_ATTR, True)
 	return tool_func
 
 
-def is_destructive(tool) -> bool:
-	"""Whether this tool deletes something."""
+def destructive_if(hook):
+	"""Mark a tool as destroying something only for certain arguments.
+
+	Some tools overwrite or create depending on what is already there: copying
+	onto a free path costs nothing, copying onto a taken one replaces a file. The
+	hook takes (a subset of) the tool's parameters, exactly like an impulse hook,
+	and answers whether *this* call destroys something::
+
+		async def _overwrites(destination_path=None):
+			return await file_exists(nc, destination_path)
+
+		@tool
+		@impulse(transfer_radius)
+		@destructive_if(_overwrites)
+		async def copy_file(...): ...
+
+	A hook that raises is read as destroying something, so a question that cannot
+	be answered still reaches the user.
+	"""
+	def decorator(tool_func):
+		setattr(tool_func, _DESTRUCTIVE_ATTR, hook)
+		return tool_func
+
+	return decorator
+
+
+async def classify_destructive(tool, tool_args: dict) -> bool:
+	"""Whether this call deletes or overwrites something."""
 	tool_action = getattr(tool, 'coroutine', None) or getattr(tool, 'func', None)
 	if tool_action is None:
 		return False
-	return bool(getattr(tool_action, _DESTRUCTIVE_ATTR, False))
+	marker = getattr(tool_action, _DESTRUCTIVE_ATTR, False)
+	if not callable(marker):
+		return bool(marker)
+	try:
+		result = marker(**_select_hook_kwargs(marker, tool_args or {}))
+		if inspect.isawaitable(result):
+			result = await result
+		return bool(result)
+	except Exception as e:  # noqa: BLE001 - a hook must never break a tool call
+		print(f"Destructiveness hook for '{getattr(tool, 'name', tool)}' failed ({e!r}), assuming it destroys something")
+		return True
+
+
+def always_confirm(tool_func):
+	"""Mark a tool as needing confirmation whatever the thresholds are set to.
+
+	For the few tools whose reach is not the reach of this call: scheduling a task
+	discloses nothing now, but hands the agent a prompt it will run unattended
+	later, with whatever radius the tools it then picks happen to have. There is
+	no radius that describes that honestly, so these opt out of the comparison
+	instead of being given an inflated one.
+
+		@tool
+		@impulse(ImpulseRadius.SELF)
+		@always_confirm
+		async def create_scheduled_task(...): ...
+	"""
+	setattr(tool_func, _ALWAYS_CONFIRM_ATTR, True)
+	return tool_func
+
+
+def is_always_confirmed(tool) -> bool:
+	"""Whether this tool is confirmed regardless of its radius."""
+	tool_action = getattr(tool, 'coroutine', None) or getattr(tool, 'func', None)
+	if tool_action is None:
+		return False
+	return bool(getattr(tool_action, _ALWAYS_CONFIRM_ATTR, False))
 
 
 def get_impulse_hook(tool):
@@ -156,6 +231,7 @@ def _select_hook_kwargs(hook, tool_args: dict) -> dict:
 
 	Tool arguments come from a model, so they can be incomplete or carry keys the
 	hook never asked about. Filtering here keeps hooks free of defensive noise.
+	Shared by impulse radius hooks and :func:`destructive_if` hooks.
 	"""
 	try:
 		parameters = inspect.signature(hook).parameters
@@ -191,13 +267,17 @@ def needs_confirmation(
 	threshold: ImpulseRadius,
 	destroys: bool = False,
 	destructive_threshold: ImpulseRadius = DEFAULT_DESTRUCTIVE_THRESHOLD,
+	always: bool = False,
 ) -> bool:
 	"""Whether a call of this reach must be confirmed by the user.
 
 	A call is confirmed when it reaches at least as far as the threshold, and a
 	deletion is confirmed when it reaches at least as far as the deletion
-	threshold -- which is the lower of the two bars in any sane configuration.
+	threshold -- which is the lower of the two bars in any sane configuration. A
+	call marked :func:`always_confirm` is confirmed without consulting either.
 	"""
+	if always:
+		return True
 	if radius >= threshold:
 		return True
 	return destroys and radius >= destructive_threshold

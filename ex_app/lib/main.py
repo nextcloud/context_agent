@@ -121,20 +121,21 @@ SETTINGS = SettingsForm(
         ),
         SettingsField(
             id=DESTRUCTIVE_THRESHOLD_SETTING_ID,
-            title=_("Ask the user to confirm a deletion from this impulse radius on"),
+            title=_("Ask the user to confirm losing content from this impulse radius on"),
             description=_(
-                "Deleting something takes it away without giving anyone access to it, so deletions are"
-                " judged on their own bar. Pick how far a deletion has to reach before Context Agent asks."
+                "Deleting something takes it away without giving anyone access to it, and overwriting it"
+                " loses it just the same, so both are judged on their own bar. Pick how far the content"
+                " being lost has to reach before Context Agent asks."
             ),
             type=SettingsFieldType.RADIO,
             default=DEFAULT_DESTRUCTIVE_THRESHOLD.name.lower(),
             options={
-                _("Only me - confirm every deletion"): ImpulseRadius.SELF.name.lower(),
-                _("Individual people - confirm deletions of what named people can see"):
+                _("Only me - confirm every deletion or overwrite"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm losing what named people can see"):
                     ImpulseRadius.INDIVIDUALS.name.lower(),
-                _("A group - confirm deletions of what a group, team or conversation can see"):
+                _("A group - confirm losing what a group, team or conversation can see"):
                     ImpulseRadius.GROUP.name.lower(),
-                _("Outside this Nextcloud - confirm only deletions of what left the instance"):
+                _("Outside this Nextcloud - confirm only losing what left the instance"):
                     ImpulseRadius.EXTERNAL.name.lower(),
             },
         ),
