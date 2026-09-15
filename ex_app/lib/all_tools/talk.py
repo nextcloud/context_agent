@@ -221,7 +221,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@impulse(ImpulseRadius.SELF)
+	@impulse(conversation_radius)
 	async def close_poll(conversation_name: str, poll_id: int):
 		"""
 		Close a poll so no more votes can be cast. Only the poll creator or a moderator can close a poll.
