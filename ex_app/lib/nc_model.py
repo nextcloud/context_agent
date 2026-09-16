@@ -350,7 +350,10 @@ class ChatWithNextcloud(BaseChatModel):
 			raise task_failed_error(task)
 
 		if task.status in ("STATUS_RUNNING", "STATUS_SCHEDULED"):
-			raise Exception("Nextcloud TaskProcessing Task timed out")
+			raise UserFacingError(
+				"Nextcloud TaskProcessing Task timed out",
+				"The language model did not respond in time. Please try again.",
+			)
 
 		message = self._task_to_message(task)
 		return ChatResult(generations=[ChatGeneration(message=message)])
@@ -397,7 +400,10 @@ class ChatWithNextcloud(BaseChatModel):
 			raise task_failed_error(task)
 
 		if task.status in ("STATUS_RUNNING", "STATUS_SCHEDULED"):
-			raise Exception("Nextcloud TaskProcessing Task timed out")
+			raise UserFacingError(
+				"Nextcloud TaskProcessing Task timed out",
+				"The language model did not respond in time. Please try again.",
+			)
 
 		final_output = self._task_output_text(task)
 		if final_output is None:
