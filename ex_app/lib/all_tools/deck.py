@@ -1,17 +1,137 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import json
+import time
 from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+
+# Resolving a card to its board costs one request per board the user can see, so
+# the map is kept per user and out here, rather than in the get_tools closure that
+# timed_memoize drops every minute along with the tools themselves. Only the radius
+# each board works out to is kept, never the board itself: the boards are large,
+# and the radius is all anybody asks for.
+CARD_BOARD_TTL = 60
+# A miss is worth one crawl -- a card the agent just created is not in the map
+# yet. Right after a crawl it is not: an id that is simply not there would
+# otherwise walk every board again on every call that mentions it.
+CARD_BOARD_MISS_INTERVAL = 10
+_card_radii: dict[str, dict] = {}
+
+
+def _forget_stale_card_radii(now: float) -> None:
+	"""Drop the maps that the next call would refetch anyway.
+
+	Nothing here is ever handed back to a user who stopped asking, so without this
+	the process keeps a map per user that has ever used a Deck tool for as long as
+	it runs. Sweeping on the way in costs a pass over a dict that is as long as the
+	list of users active in the last minute.
+
+	A map somebody is still crawling is left alone: dropping it would leave the
+	crawl filling in a dict nobody reads any more, and send everyone waiting on it
+	off to walk every board over again. A map that has never been filled in reads
+	as infinitely old, so without this the first crawl of all would be swept out
+	from under itself by the next call to arrive.
+	"""
+	stale = [
+		user_id for user_id, cache in _card_radii.items()
+		if now - cache['fetched_at'] > CARD_BOARD_TTL and cache['crawl'] is None
+	]
+	for user_id in stale:
+		del _card_radii[user_id]
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
+	DECK_API = f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0"
+	DECK_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
+
+	async def deck_get(path):
+		response = await nc._session._create_adapter().request('GET', f"{DECK_API}{path}", headers=DECK_HEADERS)
+		return response.json()
+
+	async def board_acl_radius(board):
+		"""Who a board is shared with, read off its access control list."""
+		radius = ImpulseRadius.SELF
+		for entry in board.get('acl') or []:
+			# 0 = user, 1 = group, 7 = team (circle)
+			radius = max(radius, ImpulseRadius.INDIVIDUALS if entry.get('type') == 0 else ImpulseRadius.GROUP)
+		return radius
+
+	async def board_radius(board_id):
+		"""Look the board up to see who can already see what is on it."""
+		# The board list carries the full access control list, no details=true needed.
+		for board in await deck_get('/boards'):
+			if board.get('id') == int(board_id):
+				return await board_acl_radius(board)
+		raise ValueError(f'No board with id {board_id!r}')
+
+	async def assignment_radius(board_id):
+		"""Assigning reaches the assignee on top of whoever the board already reaches."""
+		return max(ImpulseRadius.INDIVIDUALS, await board_radius(board_id))
+
+	async def crawl_card_radii(cache):
+		"""Map every card the user can reach to the radius of the board it lives on.
+
+		One request for the board list, then one per board -- the stacks of a board
+		carry its cards, so the cards themselves cost nothing extra. Each board is
+		reduced to its radius as it goes past, so what stays behind is one small
+		integer per card rather than the board it came from.
+		"""
+		try:
+			radii = {}
+			for board in await deck_get('/boards'):
+				radius = await board_acl_radius(board)
+				for stack in await deck_get(f"/boards/{board['id']}/stacks"):
+					for card in stack.get('cards') or []:
+						radii[card['id']] = radius
+			cache['cards'] = radii
+			cache['fetched_at'] = time.monotonic()
+		finally:
+			# Cleared even when the crawl failed, so the next call tries again rather
+			# than waiting on a task that is never coming back.
+			cache['crawl'] = None
+
+	async def refresh_card_radii(cache):
+		"""Fill the map in, or wait for the crawl that is already doing it.
+
+		The pending tool calls of one turn are classified against each other, so a
+		batch naming several cards the map has not seen yet arrives here all at once.
+		Each of those would otherwise walk every board of its own, for the same
+		answer. The first one to get here starts the crawl and the rest wait on it,
+		shielded so that a caller giving up does not cancel the crawl the others are
+		still waiting for.
+		"""
+		crawl = cache['crawl']
+		if crawl is None:
+			crawl = asyncio.ensure_future(crawl_card_radii(cache))
+			# Set before the task gets to run: ensure_future only schedules it, and
+			# there is no await between here and there for it to start in.
+			cache['crawl'] = crawl
+		await asyncio.shield(crawl)
+
+	async def card_radius(card_id):
+		"""A comment on a card reaches whoever the card's board reaches."""
+		card_id = int(card_id)
+		now = time.monotonic()
+		_forget_stale_card_radii(now)
+		# A map that has just been swept, or was never there, reads as infinitely old
+		# and so gets fetched rather than being trusted while it is still empty.
+		cache = _card_radii.setdefault(await nc.user, {'cards': {}, 'fetched_at': float('-inf'), 'crawl': None})
+		age = now - cache['fetched_at']
+		# At most one crawl per call, whether the map went stale or the card is new.
+		if age > CARD_BOARD_TTL or (card_id not in cache['cards'] and age > CARD_BOARD_MISS_INTERVAL):
+			await refresh_card_radii(cache)
+		radius = cache['cards'].get(card_id)
+		if radius is None:
+			raise ValueError(f'No board holds a card with id {card_id!r}')
+		return radius
+
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_boards():
 		"""
 		List all existing kanban boards available in the Nextcloud Deck app for the current user with their available info
@@ -26,7 +146,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_board_cards(board_id: int, stack_id: Optional[int] = None):
 		"""
 		List all cards in a Deck board with their metadata.
@@ -78,7 +198,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(cards)
 
 	@tool
-	@dangerous_tool
+	@impulse(board_radius)
 	async def add_card(board_id: int, stack_id: int, title: str, description: Optional[str] = None, due_date: Optional[str] = None):
 		"""
 		Create a new card in a list of a kanban board in the Nextcloud Deck app.
@@ -109,7 +229,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(board_radius)
 	async def add_card_label(board_id: int, stack_id: int, card_id: int, label_id: int):
 		"""
 		Add a label to a card
@@ -129,7 +249,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(assignment_radius)
 	async def assign_card_to_user(board_id: int, stack_id: int, card_id: int, user_id: str):
 		"""
 		Assign a card to a user
@@ -149,7 +269,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(board_radius)
+	@destructive
 	async def delete_card(board_id: int, stack_id: int, card_id: int):
 		"""
 		Delete a card from a board
@@ -168,7 +289,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Card Comments (OCS API) ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_card_comments(card_id: int, limit: int = 20, offset: int = 0):
 		"""
 		List all comments on a Deck card
@@ -183,7 +304,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(card_radius)
 	async def add_card_comment(card_id: int, message: str, parent_id: Optional[int] = None):
 		"""
 		Add a comment to a Deck card
@@ -199,7 +320,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments', json=payload))
 
 	@tool
-	@dangerous_tool
+	@impulse(card_radius)
 	async def update_card_comment(card_id: int, comment_id: int, message: str):
 		"""
 		Update an existing comment on a Deck card. Only the comment author can update their own comments.
@@ -214,7 +335,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(card_radius)
+	@destructive
 	async def delete_card_comment(card_id: int, comment_id: int):
 		"""
 		Delete a comment from a Deck card. Only the comment author can delete their own comments.

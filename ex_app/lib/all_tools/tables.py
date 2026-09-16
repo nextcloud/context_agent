@@ -5,15 +5,65 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
+	TABLES_API = f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1"
+	TABLES_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
+
+	async def tables_get(path):
+		response = await nc._session._create_adapter().request('GET', f"{TABLES_API}{path}", headers=TABLES_HEADERS)
+		return response.json()
+
+	async def table_share_radius(table_id):
+		"""Who the table was shared out to, by receiver type."""
+		radius = ImpulseRadius.SELF
+		for share in await tables_get(f'/tables/{int(table_id)}/shares') or []:
+			receiver = (share.get('receiverType') or '').lower()
+			if receiver in ('group', 'circle'):
+				radius = max(radius, ImpulseRadius.GROUP)
+			elif receiver == 'user':
+				radius = max(radius, ImpulseRadius.INDIVIDUALS)
+			else:
+				# 'link' and 'remote' both leave the instance, as does anything new.
+				radius = max(radius, ImpulseRadius.EXTERNAL)
+		return radius
+
+	async def table_radius(table_id):
+		"""Look the table up to see whether anyone besides the user can reach it."""
+		table = next((t for t in await tables_get('/tables') if t.get('id') == int(table_id)), None)
+		if table is None:
+			raise ValueError(f'No table with id {table_id!r}')
+		if table.get('isFederated'):
+			return ImpulseRadius.EXTERNAL
+		if table.get('isShared'):
+			# Somebody else shared this table with us, and Tables tells recipients only
+			# that they received it, not who else did -- so assume the wider audience.
+			return ImpulseRadius.GROUP
+		if not table.get('hasShares'):
+			return ImpulseRadius.SELF
+		return await table_share_radius(table_id)
+
+	async def column_radius(column_id):
+		"""A column belongs to a table, and reaches whoever that table reaches."""
+		column = await tables_get(f'/columns/{int(column_id)}')
+		if not isinstance(column, dict) or column.get('tableId') is None:
+			raise ValueError(f'Could not resolve column {column_id!r} to a table')
+		return await table_radius(column['tableId'])
+
+	async def row_radius(row_id):
+		"""A row belongs to a table, and reaches whoever that table reaches."""
+		row = await tables_get(f'/rows/{int(row_id)}')
+		if not isinstance(row, dict) or row.get('tableId') is None:
+			raise ValueError(f'Could not resolve row {row_id!r} to a table')
+		return await table_radius(row['tableId'])
+
 	# --- Tables ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_tables():
 		"""
 		List all tables available to the current user in the Nextcloud Tables app
@@ -26,7 +76,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def create_table(title: str, emoji: Optional[str] = None, template: Optional[str] = None):
 		"""
 		Create a new table in the Nextcloud Tables app
@@ -48,7 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(table_radius)
 	async def update_table(table_id: int, title: Optional[str] = None, emoji: Optional[str] = None, archived: Optional[bool] = None):
 		"""
 		Update a table's properties
@@ -73,7 +123,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(table_radius)
+	@destructive
 	async def delete_table(table_id: int):
 		"""
 		Delete a table and all its columns and rows
@@ -89,7 +140,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Columns ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_columns(table_id: int):
 		"""
 		List all columns defined for a table
@@ -103,7 +154,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(table_radius)
 	async def create_column(
 		table_id: int,
 		title: str,
@@ -213,7 +264,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(column_radius)
 	async def update_column(
 		column_id: int,
 		title: Optional[str] = None,
@@ -271,7 +322,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(column_radius)
+	@destructive
 	async def delete_column(column_id: int):
 		"""
 		Delete a column from a table. This also removes all data stored in this column for every row.
@@ -287,7 +339,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Rows ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_rows(table_id: int, limit: Optional[int] = None, offset: Optional[int] = None):
 		"""
 		List all rows in a table with their data.
@@ -311,7 +363,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(table_radius)
 	async def create_row(table_id: int, data: str):
 		"""
 		Create a new row in a table.
@@ -343,7 +395,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(row_radius)
 	async def update_row(row_id: int, data: str, view_id: Optional[int] = None):
 		"""
 		Update an existing row's data.
@@ -374,7 +426,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(response.json())
 
 	@tool
-	@dangerous_tool
+	@impulse(row_radius)
+	@destructive
 	async def delete_row(row_id: int):
 		"""
 		Delete a row from a table

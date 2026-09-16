@@ -55,12 +55,12 @@ class ToolListMiddleware(Middleware):
 	) -> list[Tool]:
 		global LAST_MCP_TOOL_UPDATE
 		if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-			safe, dangerous = await get_tools(context.fastmcp_context.get_state("nextcloud"))
+			nc_tools = await get_tools(context.fastmcp_context.get_state("nextcloud"))
 			tools = await self.mcp.get_tools()
 			if LAST_MCP_TOOL_UPDATE + 60 < time.time():
 				for tool in tools.keys():
 					self.mcp.remove_tool(tool)
-				for tool in safe + dangerous:
+				for tool in nc_tools:
 					tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
 					if tool_action is None:
 						continue
@@ -78,8 +78,7 @@ def mcp_tool(tool, tool_name: str | None = None):
 	async def wrapper(*args, **kwargs):
 		ctx = get_context()
 		nc = ctx.get_state('nextcloud')
-		safe, dangerous = await get_tools(nc)
-		tools = safe + dangerous
+		tools = await get_tools(nc)
 		invoked_name = tool_name or tool.__name__
 		for t in tools:
 			action = getattr(t, "coroutine", None) or getattr(t, "func", None)

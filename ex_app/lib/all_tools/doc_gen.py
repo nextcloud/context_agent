@@ -4,13 +4,13 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.task_processing import run_task
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def generate_document(input: str, format: str) -> str:
 		"""
 		Generate an office document based on a description of what it should contain

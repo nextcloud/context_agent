@@ -6,7 +6,7 @@ from urllib.parse import quote
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 # Unlike the other write tools, which append their AI note to a value they create,
 # update_page_content replaces a whole page the agent usually read back first - so the
@@ -44,6 +44,18 @@ def _strip_ai_disclaimer(markdown: str) -> str:
 
 async def get_tools(nc: AsyncNextcloudApp):
 
+	async def collective_radius(collective_id):
+		"""A collective belongs to a team; if it also carries a public link, it reaches further."""
+		payload = await nc.ocs('GET', '/ocs/v2.php/apps/collectives/api/v1.0/collectives')
+		# The endpoint wraps the list in a 'collectives' key.
+		collectives = payload.get('collectives') if isinstance(payload, dict) else payload
+		collective = next((c for c in collectives or [] if str(c.get('id')) == str(collective_id)), None)
+		if collective is None:
+			raise ValueError(f'No collective with id {collective_id!r}')
+		if collective.get('shareToken'):
+			return ImpulseRadius.EXTERNAL
+		return ImpulseRadius.GROUP
+
 	async def _page_webdav_url(user_id: str, page: dict) -> str:
 		# A page's markdown file lives at:
 		#   /remote.php/dav/files/{user}/{collectivePath}/{filePath}/{fileName}
@@ -56,7 +68,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Collectives ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_collectives():
 		"""
 		List all Collectives (wiki-like knowledge bases) the current user is a member of.
@@ -68,7 +80,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Pages (read) ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_collective_pages(collective_id: int):
 		"""
 		List all pages in a Collective as a flat list with tree information.
@@ -81,7 +93,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages'))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_page(collective_id: int, page_id: int):
 		"""
 		Get metadata for a single Collectives page (without the markdown body).
@@ -93,7 +105,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/{page_id}'))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_page_content(collective_id: int, page_id: int):
 		"""
 		Get the Markdown content of a Collectives page.
@@ -118,7 +130,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response.text
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_page_trash(collective_id: int):
 		"""
 		List trashed pages in a Collective. Trashed pages can be restored with restore_page or
@@ -132,7 +144,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Pages (write) ---
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
 	async def create_page(collective_id: int, parent_id: int, title: str):
 		"""
 		Create a new page in a Collective as a child of an existing page.
@@ -149,7 +161,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
 	async def update_page_content(collective_id: int, page_id: int, content: str):
 		"""
 		Overwrite the Markdown content of a Collectives page.
@@ -177,7 +189,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps({'status': 'success', 'page_id': page_id})
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
 	async def rename_page(collective_id: int, page_id: int, title: str):
 		"""
 		Change the title of a Collectives page. Also renames the underlying .md file on disk.
@@ -191,7 +203,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
 	async def move_page(collective_id: int, page_id: int, parent_id: int):
 		"""
 		Move a page under a different parent within the same collective.
@@ -206,7 +218,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
 	async def set_page_emoji(collective_id: int, page_id: int, emoji: str):
 		"""
 		Set or clear the emoji icon for a Collectives page.
@@ -221,7 +233,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
+	@destructive
 	async def trash_page(collective_id: int, page_id: int):
 		"""
 		Soft-delete a page by moving it to the collective's page trash.
@@ -235,7 +248,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/{page_id}'))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
 	async def restore_page(collective_id: int, page_id: int):
 		"""
 		Restore a previously trashed page back to the collective.
@@ -246,7 +259,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('PATCH', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/trash/{page_id}'))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
+	@destructive
 	async def delete_page_permanently(collective_id: int, page_id: int):
 		"""
 		Permanently delete a page that is already in the trash. This cannot be undone.

@@ -16,7 +16,7 @@ from nc_py_api.ex_app import persistent_storage
 
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
-from ex_app.lib.graph import AgentState, get_graph
+from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.memorysaver import MemorySaver
 from ex_app.lib.nc_model import (
@@ -27,7 +27,7 @@ from ex_app.lib.nc_model import (
 	model,
 )
 from ex_app.lib.signature import add_signature, verify_signature
-from ex_app.lib.tools import get_tools
+from ex_app.lib.tools import get_destructive_threshold, get_impulse_threshold, get_tools
 
 # Dummy thread id as we return the whole state
 thread = {"configurable": {"thread_id": "thread-1"}}
@@ -112,9 +112,9 @@ async def react(
 	model.bind_nextcloud(nc)
 	model.multimodal = multimodal
 
-	safe_tools, dangerous_tools = await get_tools(nc)
-
-	tools = dangerous_tools + safe_tools
+	tools = await get_tools(nc)
+	impulse_threshold = await get_impulse_threshold(nc)
+	destructive_threshold = await get_destructive_threshold(nc)
 
 	bound_model = model.bind_tools(
 		tools,
@@ -203,12 +203,12 @@ At the end of each message to the user, if you have carried out a task or answer
 		# if this fails, we fail the whole task
 		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
+	graph = await get_graph(call_model, tools, checkpointer, impulse_threshold, destructive_threshold)
 
 	state_snapshot = graph.get_state(thread)
 
 	## if the next step is a tool call
-	if state_snapshot.next == ('dangerous_tools', ):
+	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
 		if task['input']['confirmation'] == 0:
 			new_input = {
 				"messages": [
@@ -289,7 +289,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	state_snapshot = graph.get_state(thread)
 	actions = ''
-	if state_snapshot.next == ('dangerous_tools', ):
+	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
 		actions = json.dumps(last_message.tool_calls)
 
 	result = {
