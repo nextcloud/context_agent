@@ -8,6 +8,7 @@ from nc_py_api.ex_app import LogLvl
 from niquests import ConnectionError, Timeout
 from pydantic import BaseModel, ValidationError
 
+from ex_app.lib.errors import UserFacingError
 from ex_app.lib.logger import log
 
 
@@ -15,6 +16,8 @@ class Task(BaseModel):
 	id: int
 	status: str
 	output: dict[str, typing.Any] | None = None
+	# Serialized by Nextcloud 33+; the admin-facing `errorMessage` is never exposed over OCS
+	userFacingErrorMessage: str | None = None
 
 class Response(BaseModel):
 	task: Task
@@ -77,7 +80,12 @@ async def run_task(nc: AsyncNextcloudApp, type, task_input):
 	except ValidationError as e:
 		raise Exception("Failed to parse Nextcloud TaskProcessing task result") from e
 	if task.status != "STATUS_SUCCESSFUL":
-		raise Exception("Nextcloud TaskProcessing Task failed")
+		if task.userFacingErrorMessage:
+			raise UserFacingError(
+				f"Nextcloud TaskProcessing task of type {type} failed: {task.userFacingErrorMessage}",
+				task.userFacingErrorMessage,
+			)
+		raise UserFacingError(f"Nextcloud TaskProcessing task of type {type} failed")
 
 	if not isinstance(task.output, dict) or all(x not in ACCEPTED_OUTPUT_KEYS for x in task.output):
 		raise Exception(f'Expected one of {ACCEPTED_OUTPUT_KEYS} in Nextcloud TaskProcessing task result')
