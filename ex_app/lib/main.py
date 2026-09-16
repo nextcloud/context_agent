@@ -41,6 +41,52 @@ mcp.add_middleware(UserAuthMiddleware())
 mcp.add_middleware(ToolListMiddleware(mcp))
 http_mcp_app = mcp.http_app("/", transport="http", stateless_http=True)
 
+
+MCP_METHOD_NOT_ALLOWED = json.dumps({
+    "jsonrpc": "2.0",
+    "id": "server-error",
+    "error": {"code": -32600, "message": "Method Not Allowed: this server does not offer an SSE stream"},
+}).encode()
+
+
+class MCPTransportMiddleware:
+    """Smooth over two rough edges of the mounted MCP app.
+
+    1. The MCP app is mounted at /mcp and serves "/", so Starlette answers a bare
+       /mcp with a 307 whose Location is rebuilt from the forwarded Host, dropping
+       the AppAPI proxy prefix. MCP clients follow redirects, land on Nextcloud
+       itself and get a 404, which the MCP SDK surfaces as "Session terminated".
+       Serve /mcp directly instead of redirecting to /mcp/.
+    2. We run the MCP app stateless, so a standalone GET stream can never carry
+       anything: every request gets its own transport and server-initiated
+       messages go out over that request's own SSE stream. Left to the SDK the
+       GET opens a stream that never emits and never closes, pinning a proxy
+       connection per client. Answer 405 instead, which clients handle as
+       "no SSE stream offered here".
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") in ("/mcp", "/mcp/"):
+            if scope["method"] == "GET":
+                await send({
+                    "type": "http.response.start",
+                    "status": 405,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(MCP_METHOD_NOT_ALLOWED)).encode()),
+                        (b"allow", b"POST, DELETE"),
+                    ],
+                })
+                await send({"type": "http.response.body", "body": MCP_METHOD_NOT_ALLOWED})
+                return
+            if scope["path"] == "/mcp":
+                scope = dict(scope, path="/mcp/", raw_path=b"/mcp/")
+        await self.app(scope, receive, send)
+
+
 fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
 app_enabled = Event()
@@ -278,6 +324,7 @@ async def wait_for_task(interval = None):
 
 
 APP.mount("/mcp", http_mcp_app)
+APP.add_middleware(MCPTransportMiddleware)
 
 if __name__ == "__main__":
     # Wrapper around `uvicorn.run`.

@@ -49,7 +49,7 @@ Positive:
 		</docker-install>
         <routes>
 			<route>
-				<url>mcp</url>
+				<url>^/mcp</url>
 				<verb>POST,GET,DELETE</verb>
 				<access_level>USER</access_level>
 				<headers_to_exclude>[]</headers_to_exclude>
