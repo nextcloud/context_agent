@@ -4,12 +4,18 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.audience import share_id_radius
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	async def existing_share_radius(share_id):
+		"""Look the share up to see who it already grants access to."""
+		return await share_id_radius(nc, share_id)
+
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_shares(path: Optional[str] = None, shared_with_me: bool = False):
 		"""
 		List all shares or shares for a specific file/folder
@@ -26,7 +32,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('GET', '/ocs/v2.php/apps/files_sharing/api/v1/shares', params=params)
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.INDIVIDUALS)
 	async def share_with_user(path: str, share_with: str, permissions: int = 19):
 		"""
 		Share a file or folder with a user
@@ -43,7 +49,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		})
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.GROUP)
 	async def share_with_group(path: str, share_with: str, permissions: int = 19):
 		"""
 		Share a file or folder with a group
@@ -60,7 +66,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		})
 
 	@tool
-	@dangerous_tool
+	@impulse(existing_share_radius)
 	async def update_share_permissions(share_id: int, permissions: int):
 		"""
 		Update permissions for an existing share
@@ -73,7 +79,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		})
 
 	@tool
-	@dangerous_tool
+	@impulse(existing_share_radius)
+	@destructive
 	async def delete_share(share_id: int):
 		"""
 		Remove/delete a share
@@ -83,7 +90,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await nc.ocs('DELETE', f'/ocs/v2.php/apps/files_sharing/api/v1/shares/{share_id}')
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_user_groups():
 		"""
 		List all groups the current user belongs to
@@ -93,7 +100,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return user_info.get('groups', [])
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_share_info(share_id: int):
 		"""
 		Get detailed information about a specific share

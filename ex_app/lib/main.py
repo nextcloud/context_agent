@@ -26,6 +26,13 @@ from ex_app.lib.errors import UserFacingError
 from ex_app.lib.logger import log
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider, multimodal_provider
+from ex_app.lib.all_tools.lib.impulse import (
+    DEFAULT_DESTRUCTIVE_THRESHOLD,
+    DEFAULT_IMPULSE_THRESHOLD,
+    DESTRUCTIVE_THRESHOLD_SETTING_ID,
+    IMPULSE_THRESHOLD_SETTING_ID,
+    ImpulseRadius,
+)
 from ex_app.lib.tools import get_categories
 
 PROVIDERS = [provider, multimodal_provider]
@@ -138,6 +145,46 @@ SETTINGS = SettingsForm(
             type=SettingsFieldType.MULTI_CHECKBOX,
             default=dict.fromkeys(categories, True),
             options={v: k for k, v in categories.items()},
+        ),
+        SettingsField(
+            id=IMPULSE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm an action from this impulse radius on"),
+            description=_(
+                "Before Context Agent carries out an action it works out its impulse radius: who gains"
+                " access to the item the action touches. Actions that reach at least this far have to be"
+                " confirmed by the user, everything below is carried out right away."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_IMPULSE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every action, including read-only ones"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm when named people gain access, e.g. a share with a user"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm when a group, team or conversation gains access"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only when something leaves the instance, e.g. an email"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=DESTRUCTIVE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm losing content from this impulse radius on"),
+            description=_(
+                "Deleting something takes it away without giving anyone access to it, and overwriting it"
+                " loses it just the same, so both are judged on their own bar. Pick how far the content"
+                " being lost has to reach before Context Agent asks."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_DESTRUCTIVE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every deletion or overwrite"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm losing what named people can see"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm losing what a group, team or conversation can see"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only losing what left the instance"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
         ),
         SettingsField(
             id="here_api",

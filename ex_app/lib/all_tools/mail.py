@@ -7,13 +7,13 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 from ex_app.lib.logger import log
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.EXTERNAL)
 	async def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
 		"""
 		Send an email to a list of email addresses
@@ -45,7 +45,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		raise Exception("Failed to send email")
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_mail_account_list():
 		"""
 		Lists all available email accounts of the current user including their account id
@@ -56,7 +56,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_mail_folder_list(account_id: int):
 		"""
 		Lists all mail folders for an email account 
@@ -66,7 +66,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_mails(folder_id: int, n_mails: int = 30):
 		"""
 		Lists all messages in a mailbox folder
