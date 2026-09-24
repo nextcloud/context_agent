@@ -203,7 +203,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		# if this fails, we fail the whole task
 		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	graph = await get_graph(call_model, tools, checkpointer, impulse_threshold, destructive_threshold)
+	graph, pending_classification = await get_graph(call_model, tools, checkpointer, impulse_threshold, destructive_threshold)
 
 	state_snapshot = graph.get_state(thread)
 
@@ -289,8 +289,10 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	state_snapshot = graph.get_state(thread)
 	actions = ''
+	classification = None
 	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
 		actions = json.dumps(last_message.tool_calls)
+		classification = pending_classification.of(last_message)
 
 	result = {
 		'output': extract_text_content(last_message.content),
@@ -298,6 +300,12 @@ At the end of each message to the user, if you have carried out a task or answer
 		'conversation_token': export_conversation(checkpointer),
 		'sources': source_list,
 	}
+	if classification is not None:
+		# Only sent along with the actions they describe -- see provider.py, where
+		# the two shapes are declared.
+		radius, destroys = classification
+		result['impulse_radius'] = radius.name.lower()
+		result['destructive'] = int(destroys)
 	if multimodal:
 		result['output_attachments'] = extract_file_ids(last_message.content)
 	return result

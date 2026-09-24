@@ -8,6 +8,7 @@ from langchain_core.messages import ToolMessage, BaseMessage
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict, Annotated
 
@@ -38,6 +39,39 @@ class AgentState(TypedDict):
 	messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
+class PendingClassification:
+	"""What the router last worked out about a batch of tool calls.
+
+	The radius and destructiveness of a call are settled while routing it, before
+	the run stops to ask the user about it. Keeping them here lets the caller
+	report how far the calls it is asking about reach without running the hooks --
+	several of which query the Nextcloud API -- a second time.
+
+	The record is tied to the message holding the calls: a run that ends anywhere
+	other than :data:`CONFIRM_TOOLS_NODE` leaves the previous turn's record behind,
+	and matching on the message keeps that from being read as this turn's answer.
+	"""
+
+	def __init__(self):
+		self._recorded = False
+		self._message_id = None
+		self._radius = ImpulseRadius.SELF
+		self._destroys = False
+
+	def record(self, message: BaseMessage, radius: ImpulseRadius, destroys: bool) -> None:
+		self._recorded = True
+		self._message_id = getattr(message, 'id', None)
+		self._radius = radius
+		self._destroys = destroys
+
+	def of(self, message: BaseMessage) -> tuple[ImpulseRadius, bool] | None:
+		"""The classification of this message's tool calls, or None if no routing
+		decision was recorded for this message."""
+		if not self._recorded or getattr(message, 'id', None) != self._message_id:
+			return None
+		return self._radius, self._destroys
+
+
 def handle_tool_error(state) -> dict:
 	error = state.get("error")
 	tool_calls = state["messages"][-1].tool_calls
@@ -64,8 +98,12 @@ async def get_graph(
 	checkpointer,
 	impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD,
 	destructive_threshold: ImpulseRadius = DEFAULT_DESTRUCTIVE_THRESHOLD,
-):
+) -> tuple[CompiledStateGraph, PendingClassification]:
+	"""Build the agent graph, along with the :class:`PendingClassification` that its
+	routing writes to.
+	"""
 	tools_by_name = {tool.name: tool for tool in tools}
+	pending = PendingClassification()
 
 	# Define a new graph
 	workflow = StateGraph(AgentState)
@@ -133,6 +171,7 @@ async def get_graph(
 		if next_node == END:
 			return END
 		radius, destroys, always = await classify_pending_calls(state)
+		pending.record(state["messages"][-1], radius, destroys)
 		if needs_confirmation(radius, impulse_threshold, destroys, destructive_threshold, always):
 			if always:
 				print("A pending tool call is always confirmed, asking the user")
@@ -155,4 +194,4 @@ async def get_graph(
 		debug=False
 	)
 
-	return graph
+	return graph, pending
