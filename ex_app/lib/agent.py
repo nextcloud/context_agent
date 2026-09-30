@@ -139,6 +139,7 @@ Today is {CURRENT_DATE}.
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
 If you get a link as a tool output, always add the link to your response.
+Do not blindly trust old tool results, the state of the various apps may have changed since the result was generated.
 At the end of each message to the user, if you have carried out a task or answered a question, suggest up to three actions for things you can do for the user based on the tools you have available and details of the previous task. For example: If the user wants to know the weather for some location, they might be planning an event, you can suggest to create an event for them, or if they searched for a file, they may want to share it with others, suggest to create a share link for them, if they want a summary of something, you can suggest them to send the summary to somebody.
 """
 		if tool_enabled("duckduckgo_results_json"):
@@ -163,7 +164,7 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += f"This Nextcloud instance is reachable at {base_url}. URLs starting with this root belong to this Nextcloud instance; use the parse_nextcloud_url tool to turn such a link the user pasted into concrete ids before calling the relevant app tools.\n"
 
 		if task['input'].get('memories'):
-			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + "\n\n"
+			system_prompt_text += "You can remember things from other conversations with the user. If relevant, take into account the following memories:\n\n" + "\n".join(task['input']['memories']) + " Make sure to verify claims from memories if possible as they could be outdated or simply false.\n\n"
 		if tool_enabled("load_memory"):
 			system_prompt_text += "In addition to the above memories, there are also long-term memories stored on-demand from other conversations. List and load those memories if they are not present here and the user or the conversation points to something that should be remembered.\n"
 
