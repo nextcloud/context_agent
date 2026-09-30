@@ -146,7 +146,13 @@ jobs:
       - name: Check server download link for ${{ fromJSON(steps.appinfo.outputs.result).nextcloud.min-version }}
         run: |
           NCVERSION='${{ fromJSON(steps.appinfo.outputs.result).nextcloud.min-version }}'
-          DOWNLOAD_URL=$(curl -s "https://updates.nextcloud.com/updater_server/latest?channel=beta&version=$NCVERSION" | jq -r '.downloads.zip[0]')
+          # The updater server only understands major (or major.minor) versions.
+          # A full min-version such as 31.0.8 makes it answer with an error, which
+          # would silently send us to the master fallback below - and master needs
+          # a newer PHP than the php-min we set up, breaking the signing step.
+          NCMAJOR="${NCVERSION%%.*}"
+          echo "NCMAJOR=$NCMAJOR" >> $GITHUB_ENV
+          DOWNLOAD_URL=$(curl -s "https://updates.nextcloud.com/updater_server/latest?channel=beta&version=$NCMAJOR" | jq -r '.downloads.zip[0]')
           echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
 
       - name: Download server ${{ fromJSON(steps.appinfo.outputs.result).nextcloud.min-version }}
@@ -158,13 +164,27 @@ jobs:
           wget $DOWNLOAD_URL -O nextcloud.zip
           unzip nextcloud.zip
 
-      - name: Checkout server master fallback
+      - name: Determine server fallback branch
+        if: ${{ steps.server-download.outcome != 'success' }}
+        run: |
+          # Prefer the stable branch matching the minimum supported version, so the
+          # server we sign with still runs on php-min. Only unreleased majors fall
+          # back to master.
+          SERVER_REF="stable${NCMAJOR}"
+          if ! git ls-remote --exit-code --heads https://github.com/nextcloud/server.git "$SERVER_REF" > /dev/null 2>&1; then
+            SERVER_REF=master
+          fi
+          echo "Falling back to nextcloud/server@$SERVER_REF"
+          echo "SERVER_REF=$SERVER_REF" >> $GITHUB_ENV
+
+      - name: Checkout server fallback
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ steps.server-download.outcome != 'success' }}
         with:
           persist-credentials: false
           submodules: true
           repository: nextcloud/server
+          ref: ${{ env.SERVER_REF }}
           path: nextcloud
 
 
