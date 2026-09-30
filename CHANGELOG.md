@@ -8,6 +8,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.9.0] - 2026-09-30
+
+### Added
+feat(collectives): add Collectives support for page management (thanks to @Pavlinchen)
+feat: add advanced calendar event search (thanks to Dick Tump)
+feat: Add an nc link parser tool
+
+fix(mcp-server): Fix Server access through HaRP
+feat: Make taskprocessing timeouts trigger UserFacingError so the user knows what's up
+feat: Pass on userFacingErrorMessages from chatwithtools task providers
+
+### Fixed
+fix: web_fetch tool
+fix: web_fetch redirect to internal file fetch for regex-matched links
+fix: disambiguate between nextcloud internal file links tool and web_fetch
+
 ## [2.8.0] - 2026-05-08
 
 ### Added
