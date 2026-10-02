@@ -4,7 +4,7 @@ import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 from ex_app.lib.all_tools.lib.files import (
 	MAX_FILE_SIZE,
 	TEXT_LIKE_MIMETYPE_PARTS,
@@ -16,7 +16,7 @@ from ex_app.lib.all_tools.lib.files import (
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def web_fetch(url: str) -> str:
 		"""
 		Fetch the contents of an external web page via HTTP.

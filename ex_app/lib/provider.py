@@ -8,6 +8,19 @@ _optional_output_shape = [
 		name="sources",
 		description="Used tools",
 		shape_type=ShapeType.LIST_OF_TEXTS
+	),
+	# Both describe the actions in the `actions` output and are only set when
+	# there are any, i.e. when the task is waiting for the user's confirmation.
+	ShapeDescriptor(
+		name="impulse_radius",
+		description="How far the actions awaiting confirmation reach: "
+		            "'self', 'individuals', 'group' or 'external'",
+		shape_type=ShapeType.TEXT
+	),
+	ShapeDescriptor(
+		name="destructive",
+		description="Whether the actions awaiting confirmation delete or overwrite something (1) or not (0)",
+		shape_type=ShapeType.NUMBER
 	)
 ]
 

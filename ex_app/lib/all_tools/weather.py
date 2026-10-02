@@ -6,12 +6,12 @@ import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_current_weather_for_coordinates(lat: str, lon: str) -> dict[str, typing.Any]:
 		"""
 		Retrieve the current weather for a given latitude and longitude
