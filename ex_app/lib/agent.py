@@ -29,8 +29,12 @@ from ex_app.lib.nc_model import (
 from ex_app.lib.signature import add_signature, verify_signature
 from ex_app.lib.tools import get_tools
 
-# Dummy thread id as we return the whole state
-thread = {"configurable": {"thread_id": "thread-1"}}
+graph_config = {
+	# Dummy thread id as we return the whole state
+	"configurable": {"thread_id": "thread-1"},
+	# Maximum amount of tool calls per interaction
+	"recursion_limit": 256
+}
 
 key_file_path = persistent_storage() + '/secret_key.txt'
 
@@ -206,7 +210,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
 
-	state_snapshot = graph.get_state(thread)
+	state_snapshot = graph.get_state(graph_config)
 
 	## if the next step is a tool call
 	if state_snapshot.next == ('dangerous_tools', ):
@@ -259,7 +263,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		last_stream_update = now
 		last_reported_stream_state = stream_state
 
-	async for event in graph.astream(new_input, thread, stream_mode=stream_mode):
+	async for event in graph.astream(new_input, graph_config, stream_mode=stream_mode):
 		if isinstance(event, tuple):
 			mode, payload = event
 		else:
@@ -288,7 +292,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	await report_stream_state(force=True)
 
-	state_snapshot = graph.get_state(thread)
+	state_snapshot = graph.get_state(graph_config)
 	actions = ''
 	if state_snapshot.next == ('dangerous_tools', ):
 		actions = json.dumps(last_message.tool_calls)
