@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from niquests import ConnectionError, Timeout
 import pytz
-from ics import Calendar, Event, Attendee, Organizer, Todo
+from icalendar import Event as ICalendarEvent, vCalAddress, vText
+from ics import Calendar, Todo
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp, NextcloudApp
 import xml.etree.ElementTree as ET
@@ -111,17 +113,23 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		description_with_ai_note = f"{description}\n\n---\n\nThis event was scheduled by Nextcloud AI Assistant."
 
-		# Create event
-		c = Calendar()
-		e = Event()
-		e.name = title
-		e.begin = start_datetime
-		e.end = end_datetime
-		e.description = description_with_ai_note
-		e.location = location
-		if attendees is not None:
-			for attendee in attendees:
-				e.add_attendee(Attendee(common_name=attendee, email=attendee, partstat='NEEDS-ACTION', role='REQ-PARTICIPANT', cutype='INDIVIDUAL'))
+		# Create event (icalendar keeps the event's timezone as a TZID; the ics library would serialize it to UTC)
+		e = ICalendarEvent()
+		e.add('summary', title)
+		e.add('dtstart', start_datetime)
+		e.add('dtend', end_datetime)
+		e.add('description', description_with_ai_note)
+		if location:
+			e.add('location', location)
+		e.add('uid', str(uuid.uuid4()) + '@context-agent')
+		e.add('dtstamp', datetime.now(pytz.UTC))
+		for attendee in attendees or []:
+			a = vCalAddress('mailto:' + attendee)
+			a.params['CN'] = vText(attendee)
+			a.params['PARTSTAT'] = vText('NEEDS-ACTION')
+			a.params['ROLE'] = vText('REQ-PARTICIPANT')
+			a.params['CUTYPE'] = vText('INDIVIDUAL')
+			e.add('attendee', a)
 
 		# let's check who we are...
 		i = 0
@@ -141,15 +149,16 @@ async def get_tools(nc: AsyncNextcloudApp):
 			raise Exception('Error fetching current user information')
 
 		# ...and set the organizer
-		e.organizer = Organizer(common_name=json['displayname'], email=json['email'])
+		organizer = vCalAddress('mailto:' + (json['email'] or ''))
+		organizer.params['CN'] = vText(json['displayname'])
+		e.add('organizer', organizer)
 
 		# Add event to calendar
-		c.events.add(e)
 
 		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		calendar = {cal.name: cal for cal in calendars}[calendar_name]
-		calendar.add_event(str(c))
+		calendar.add_event(e.to_ical().decode())
 
 	@tool
 	@impulse(event_radius)
