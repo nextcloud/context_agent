@@ -9,12 +9,28 @@ from nc_py_api import AsyncNextcloudApp
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, always_confirm, destructive, impulse
 
 
+def _require_timezone(timezone):
+	if timezone is None or not timezone.strip():
+		raise ValueError("timezone is REQUIRED and must be a valid IANA timezone name, e.g. 'America/New_York'")
+	try:
+		return pytz.timezone(timezone).zone
+	except pytz.UnknownTimeZoneError:
+		raise ValueError(f"Invalid timezone '{timezone}'. Must be a valid IANA name, e.g. 'America/New_York'") from None
+
+
+def _starts_at_timestamp(starts_at, timezone):
+	parsed = datetime.datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+	if parsed.tzinfo is None or parsed.utcoffset() is None:
+		parsed = pytz.timezone(timezone).localize(parsed)
+	return int(parsed.timestamp())
+
+
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@always_confirm
-	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, timezone: str|None = None, starts_at: None|str = None):
+	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, timezone: str, starts_at: None|str = None):
 		"""
 		Create a Scheduled Task for the assistant that will be carried out autonomously.
 		The user will still have to approve sensitive actions.
@@ -25,16 +41,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param prompt: The instructions for the agent carrying out the Scheduled Task (Do not tell it to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day, an empty string as the recurrence_rule means the task does not repeat.
 		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Make sure to use the user's timezone for this, obtainable with find_details_of_current_user
-		:param timezone: Timezone (e.g., 'America/New_York') defaults to the user's current time zone
+		:param timezone: Timezone (e.g., 'America/New_York'). REQUIRED. Must be a valid IANA timezone name; used to
+			interpret starts_at.
 		:return:
 		"""
 
+		tz = _require_timezone(timezone)
 		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
 			'title': title,
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
-			'startsAt': int(datetime.datetime.fromisoformat(starts_at.replace('Z', '+00:00')).timestamp()) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
-			'timezone': pytz.timezone(timezone).zone if timezone is not None else None
+			'startsAt': _starts_at_timestamp(starts_at, tz) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
+			'timezone': tz
 		})
 
 		return True
@@ -52,22 +70,24 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@always_confirm
-	async def update_scheduled_task(id: int, prompt: None|str = None, recurrence_rule: None|str = None, timezone: str|None = None, starts_at: None|str = None):
+	async def update_scheduled_task(id: int, timezone: str, prompt: None|str = None, recurrence_rule: None|str = None, starts_at: None|str = None):
 		"""
 		Update a assistant Scheduled Task
 		:param id: The ID of the Scheduled Task to update, you can obtain this from the list_scheduled_tasks tool
 		:param prompt: The instructions for the AI carrying out the Scheduled Task. Pass `None` to leave this unchanged. (Do not tell the other AI to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day. An empty string means, it does not repeat. Pass `None` to leave this unchanged.
-		:param timezone A timezone for the scheduled task, set to None to leave this as is.
+		:param timezone: Timezone (e.g., 'America/New_York'). REQUIRED. Must be a valid IANA timezone name; used to
+			interpret starts_at.
 		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Pass `None` to leave this unchanged.
 		:return:
 		"""
 
+		tz = _require_timezone(timezone)
 		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/assistant/assignments/{id}', json={
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
-			'startsAt': int(datetime.datetime.fromisoformat(starts_at.replace('Z', '+00:00')).timestamp()) if starts_at is not None else None,
-			'timezone': pytz.timezone(timezone).zone if timezone is not None else None
+			'startsAt': _starts_at_timestamp(starts_at, tz) if starts_at is not None else None,
+			'timezone': tz
 		})
 
 	@tool

@@ -18,6 +18,15 @@ from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
 
 
+def _require_timezone(timezone):
+	if timezone is None or not timezone.strip():
+		raise ValueError("timezone is REQUIRED and must be a valid IANA timezone name, e.g. 'America/New_York'")
+	try:
+		pytz.timezone(timezone)
+	except pytz.UnknownTimeZoneError:
+		raise ValueError(f"Invalid timezone '{timezone}'. Must be a valid IANA name, e.g. 'America/New_York'") from None
+
+
 async def get_tools(nc: AsyncNextcloudApp):
 	ncSync = NextcloudApp()
 	ncSync.set_user(await nc.user)
@@ -78,7 +87,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		return await asyncio.to_thread(list_calendars_sync)
 
-	def schedule_event_sync(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
+	def schedule_event_sync(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: str):
 		# Parse date and times
 		start_date = datetime.strptime(start_date, "%Y-%m-%d")
 		end_date = datetime.strptime(end_date, "%Y-%m-%d")
@@ -95,7 +104,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			end_datetime = end_date
 
 		# Set timezone
-		if timezone != None:
+		if timezone is not None:
 			tz = pytz.timezone(timezone)
 			start_datetime = tz.localize(start_datetime)
 			end_datetime = tz.localize(end_datetime)
@@ -144,7 +153,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(event_radius)
-	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str]):
+	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: str):
 		"""
 		Crete a new event or meeting in a calendar. Omit start_time and end_time parameters to create an all-day event.
 		:param calendar_name: The name of the calendar to add the event to
@@ -156,9 +165,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param start_time: the start time in the following form: HH:MM AM/PM e.g. '3:00 PM'
 		:param end_time: the start time in the following form: HH:MM AM/PM e.g. '4:00 PM'
 		:param location: The location of the event
-		:param timezone: Timezone (e.g., 'America/New_York').
+		:param timezone: Timezone (e.g., 'America/New_York'). REQUIRED. Must be a valid IANA timezone name.
 		:return: bool
 		"""
+		_require_timezone(timezone)
 		await asyncio.to_thread(schedule_event_sync, calendar_name, title, description, start_date, end_date, attendees, start_time, end_time, location, timezone)
 
 		return True
@@ -241,7 +251,7 @@ END:VCALENDAR
 		return available_slots
 
 	def add_task_sync(calendar_name: str, title: str, description: str, due_date: Optional[str],
-					   due_time: Optional[str], timezone: Optional[str]):
+					   due_time: Optional[str], timezone: str):
 		description_with_ai_note = f"{description}\n\n---\n\nThis task was scheduled by Nextcloud AI Assistant."
 
 		# Create task
@@ -263,7 +273,7 @@ END:VCALENDAR
 				due_datetime = due_date
 
 			# Set timezone
-			if timezone != None:
+			if timezone is not None:
 				tz = pytz.timezone(timezone)
 				due_datetime = tz.localize(due_datetime)
 
@@ -281,7 +291,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
-	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: Optional[str]):
+	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: str):
 		"""
 		Crete a new task in a calendar.
 		:param calendar_name: The name of the calendar to add the task to
@@ -289,9 +299,10 @@ END:VCALENDAR
 		:param description: The description of the task
 		:param due_date: the due date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
 		:param due_time: the due time in the following form: HH:MM AM/PM e.g. '3:00 PM'
-		:param timezone: Timezone (e.g., 'America/New_York'). Is required if there is a specified due date.
+		:param timezone: Timezone (e.g., 'America/New_York'). REQUIRED. Must be a valid IANA timezone name.
 		:return: bool
 		"""
+		_require_timezone(timezone)
 
 		await asyncio.to_thread(add_task_sync, calendar_name, title, description, due_date, due_time, timezone)
 
@@ -387,7 +398,7 @@ END:VCALENDAR
 		"""
 		return await asyncio.to_thread(complete_task_sync, calendar_name, task_uid)
 
-	def update_task_sync(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone_str: Optional[str] = None, priority: Optional[int] = None):
+	def update_task_sync(calendar_name: str, task_uid: str, timezone: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None):
 		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		calendar = {cal.name: cal for cal in calendars}[calendar_name]
@@ -416,8 +427,8 @@ END:VCALENDAR
 							else:
 								due_datetime = parsed_date
 
-							if timezone_str:
-								tz = pytz.timezone(timezone_str)
+							if timezone:
+								tz = pytz.timezone(timezone)
 								due_datetime = tz.localize(due_datetime)
 
 							ics_todo.due = due_datetime
@@ -433,7 +444,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
-	async def update_task(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone: Optional[str] = None, priority: Optional[int] = None):
+	async def update_task(calendar_name: str, task_uid: str, timezone: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None):
 		"""
 		Update an existing task
 		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
@@ -442,11 +453,12 @@ END:VCALENDAR
 		:param description: New description for the task
 		:param due_date: New due date in the form: YYYY-MM-DD e.g. '2024-12-01'
 		:param due_time: New due time in the form: HH:MM AM/PM e.g. '3:00 PM'
-		:param timezone: Timezone (e.g., 'America/New_York')
+		:param timezone: Timezone (e.g., 'America/New_York'). REQUIRED. Must be a valid IANA timezone name.
 		:param priority: Priority from 0 (undefined) to 9 (lowest), where 1 is highest priority
 		:return: bool indicating success
 		"""
-		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, title, description, due_date, due_time, timezone, priority)
+		_require_timezone(timezone)
+		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, timezone, title, description, due_date, due_time, priority)
 
 	def delete_task_sync(calendar_name: str, task_uid: str):
 		principal = ncSync.cal.principal()
