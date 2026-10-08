@@ -7,30 +7,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, always_confirm, destructive, impulse
-
-
-async def _user_timezone(nc):
-	try:
-		user = (await nc.ocs('GET', '/ocs/v2.php/cloud/user')) or {}
-		return user.get('timezone') or None
-	except Exception:
-		return None
-
-
-def _require_timezone(timezone):
-	if timezone is None or not timezone.strip():
-		raise ValueError("No timezone given and the user's profile has none set; provide a valid IANA timezone name, e.g. 'America/New_York'")
-	try:
-		return pytz.timezone(timezone).zone
-	except pytz.UnknownTimeZoneError:
-		raise ValueError(f"Invalid timezone '{timezone}'. Must be a valid IANA name, e.g. 'America/New_York'") from None
-
-
-def _starts_at_timestamp(starts_at, timezone):
-	parsed = datetime.datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
-	if parsed.tzinfo is None or parsed.utcoffset() is None:
-		parsed = pytz.timezone(timezone).localize(parsed)
-	return int(parsed.timestamp())
+from ex_app.lib.all_tools.lib.tz import get_timezone, starts_at_timestamp, user_timezone_async
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -48,17 +25,17 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param title: A title for the Scheduled Task, e.g. "Transcribe audio files" -- This is only for the user's reference and has no effect on the execution of the Scheduled Task.
 		:param prompt: The instructions for the agent carrying out the Scheduled Task (Do not tell it to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day, an empty string as the recurrence_rule means the task does not repeat.
-		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Make sure to use the user's timezone for this, obtainable with find_details_of_current_user
+		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately.
 		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone; used to interpret starts_at. Must be a valid IANA timezone name when supplied.
 		:return:
 		"""
 
-		tz = _require_timezone(timezone or await _user_timezone(nc))
+		tz = get_timezone(timezone or await user_timezone_async(nc))
 		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
 			'title': title,
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
-			'startsAt': _starts_at_timestamp(starts_at, tz) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
+			'startsAt': starts_at_timestamp(starts_at, tz) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
 			'timezone': tz
 		})
 
@@ -88,11 +65,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return:
 		"""
 
-		tz = _require_timezone(timezone or await _user_timezone(nc))
+		tz = get_timezone(timezone or await user_timezone_async(nc))
 		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/assistant/assignments/{id}', json={
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
-			'startsAt': _starts_at_timestamp(starts_at, tz) if starts_at is not None else None,
+			'startsAt': starts_at_timestamp(starts_at, tz) if starts_at is not None else None,
 			'timezone': tz
 		})
 

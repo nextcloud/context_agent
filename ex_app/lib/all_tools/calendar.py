@@ -17,24 +17,8 @@ import vobject
 
 from ex_app.lib.all_tools.lib.audience import principal_radius
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.tz import get_timezone, user_timezone
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
-
-
-def _user_timezone(nc):
-	try:
-		user = nc.ocs('GET', '/ocs/v2.php/cloud/user') or {}
-		return user.get('timezone') or None
-	except Exception:
-		return None
-
-
-def _require_timezone(timezone):
-	if timezone is None or not timezone.strip():
-		raise ValueError("No timezone given and the user's profile has none set; provide a valid IANA timezone name, e.g. 'America/New_York'")
-	try:
-		pytz.timezone(timezone)
-	except pytz.UnknownTimeZoneError:
-		raise ValueError(f"Invalid timezone '{timezone}'. Must be a valid IANA name, e.g. 'America/New_York'") from None
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -97,7 +81,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		return await asyncio.to_thread(list_calendars_sync)
 
-	def schedule_event_sync(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str] = None):
+	def schedule_event_sync(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, location: Optional[str] = None, timezone: Optional[str] = None):
 		# Parse date and times
 		start_date = datetime.strptime(start_date, "%Y-%m-%d")
 		end_date = datetime.strptime(end_date, "%Y-%m-%d")
@@ -114,9 +98,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			end_datetime = end_date
 
 		# Set timezone (defaults to the user's profile timezone)
-		timezone = timezone or _user_timezone(ncSync)
-		_require_timezone(timezone)
-		tz = pytz.timezone(timezone)
+		timezone = timezone or user_timezone(ncSync)
+		tz = pytz.timezone(get_timezone(timezone))
 		start_datetime = tz.localize(start_datetime)
 		end_datetime = tz.localize(end_datetime)
 
@@ -171,7 +154,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(event_radius)
-	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]], start_time: Optional[str], end_time: Optional[str], location: Optional[str], timezone: Optional[str] = None):
+	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, location: Optional[str] = None, timezone: Optional[str] = None):
 		"""
 		Crete a new event or meeting in a calendar. Omit start_time and end_time parameters to create an all-day event.
 		:param calendar_name: The name of the calendar to add the event to
@@ -186,7 +169,6 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
 		:return: bool
 		"""
-		_require_timezone(timezone)
 		await asyncio.to_thread(schedule_event_sync, calendar_name, title, description, start_date, end_date, attendees, start_time, end_time, location, timezone)
 
 		return True
@@ -268,8 +250,8 @@ END:VCALENDAR
 		available_slots = await asyncio.to_thread(find_free_time_slot_in_calendar_sync, participants, slot_duration, start_time, end_time)
 		return available_slots
 
-	def add_task_sync(calendar_name: str, title: str, description: str, due_date: Optional[str],
-					   due_time: Optional[str], timezone: Optional[str] = None):
+	def add_task_sync(calendar_name: str, title: str, description: str, due_date: Optional[str] = None,
+					   due_time: Optional[str] = None, timezone: Optional[str] = None):
 		description_with_ai_note = f"{description}\n\n---\n\nThis task was scheduled by Nextcloud AI Assistant."
 
 		# Create task
@@ -291,9 +273,8 @@ END:VCALENDAR
 				due_datetime = due_date
 
 			# Set timezone (defaults to the user's profile timezone)
-			timezone = timezone or _user_timezone(ncSync)
-			_require_timezone(timezone)
-			due_datetime = pytz.timezone(timezone).localize(due_datetime)
+			timezone = timezone or user_timezone(ncSync)
+			due_datetime = pytz.timezone(get_timezone(timezone)).localize(due_datetime)
 
 			t.due = due_datetime
 
@@ -309,7 +290,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
-	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str], due_time: Optional[str], timezone: Optional[str] = None):
+	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone: Optional[str] = None):
 		"""
 		Crete a new task in a calendar.
 		:param calendar_name: The name of the calendar to add the task to
@@ -320,8 +301,6 @@ END:VCALENDAR
 		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
 		:return: bool
 		"""
-		_require_timezone(timezone)
-
 		await asyncio.to_thread(add_task_sync, calendar_name, title, description, due_date, due_time, timezone)
 
 		return True
@@ -445,9 +424,8 @@ END:VCALENDAR
 							else:
 								due_datetime = parsed_date
 
-							timezone = timezone or _user_timezone(ncSync)
-							_require_timezone(timezone)
-							due_datetime = pytz.timezone(timezone).localize(due_datetime)
+							timezone = timezone or user_timezone(ncSync)
+							due_datetime = pytz.timezone(get_timezone(timezone)).localize(due_datetime)
 
 							ics_todo.due = due_datetime
 
@@ -471,11 +449,10 @@ END:VCALENDAR
 		:param description: New description for the task
 		:param due_date: New due date in the form: YYYY-MM-DD e.g. '2024-12-01'
 		:param due_time: New due time in the form: HH:MM AM/PM e.g. '3:00 PM'
-		:param timezone: Timezone (e.g., 'America/New_York'). REQUIRED. Must be a valid IANA timezone name.
+		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
 		:param priority: Priority from 0 (undefined) to 9 (lowest), where 1 is highest priority
 		:return: bool indicating success
 		"""
-		_require_timezone(timezone)
 		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, timezone, title, description, due_date, due_time, priority)
 
 	def delete_task_sync(calendar_name: str, task_uid: str):
