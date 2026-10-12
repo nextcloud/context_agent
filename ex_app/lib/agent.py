@@ -141,17 +141,18 @@ async def react(
 			config: RunnableConfig,
 	):
 		if user_tz is not None:
-			now = datetime.now(user_tz)
-			current_date = now.strftime("%Y-%m-%d")
-			current_time = f" The current time is {now.strftime('%H:%M')} in the user's timezone {tz_name}."
+			current_date = datetime.now(user_tz).strftime("%Y-%m-%d")
+			date_suffix = (
+				f" The user's timezone is {tz_name}; use it for the timezone parameter of calendar and task tools."
+			)
 		else:
 			current_date = date.today().strftime("%Y-%m-%d")
-			current_time = ""
+			date_suffix = ""
 
 		system_prompt_text = """
 You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools if necessary. If no tool is needed to provide a correct answer, do not use one. If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
-Today is {CURRENT_DATE}.{CURRENT_TIME}
+Today is {CURRENT_DATE}.{DATE_SUFFIX}
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
 If you get a link as a tool output, always add the link to your response.
@@ -168,12 +169,10 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Use the find_person_in_contacts tool to find a person's email address and location.\n"
 		if tool_enabled("find_person_in_users"):
 			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
-		if tz_name is not None:
-			system_prompt_text += (
-				f"The user's timezone is {tz_name}. Use it for the timezone parameter of calendar/task tools.\n"
-			)
-		elif tool_enabled("find_details_of_current_user"):
+		if tz_name is None and tool_enabled("find_details_of_current_user"):
 			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location and timezone.\n"
+		if tool_enabled("get_current_datetime"):
+			system_prompt_text += "Use the get_current_datetime tool when the user asks for the current date or time.\n"
 		if tool_enabled("list_mails"):
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 		if tool_enabled("web_fetch"):
@@ -209,7 +208,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
-			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{CURRENT_TIME}", current_time)
+			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
 		)
 
 		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
