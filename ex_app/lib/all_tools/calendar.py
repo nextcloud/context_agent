@@ -396,7 +396,7 @@ END:VCALENDAR
 		"""
 		return await asyncio.to_thread(complete_task_sync, calendar_name, task_uid)
 
-	def update_task_sync(calendar_name: str, task_uid: str, timezone: Optional[str] = None, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None):
+	def update_task_sync(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None, timezone: Optional[str] = None):
 		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
 		calendar = {cal.name: cal for cal in calendars}[calendar_name]
@@ -441,7 +441,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
-	async def update_task(calendar_name: str, task_uid: str, timezone: Optional[str] = None, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None):
+	async def update_task(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None, timezone: Optional[str] = None):
 		"""
 		Update an existing task
 		:param calendar_name: The name of the calendar containing the task (obtainable via list_calendars)
@@ -450,11 +450,11 @@ END:VCALENDAR
 		:param description: New description for the task
 		:param due_date: New due date in the form: YYYY-MM-DD e.g. '2024-12-01'
 		:param due_time: New due time in the form: HH:MM AM/PM e.g. '3:00 PM'
-		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
 		:param priority: Priority from 0 (undefined) to 9 (lowest), where 1 is highest priority
+		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
 		:return: bool indicating success
 		"""
-		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, timezone, title, description, due_date, due_time, priority)
+		return await asyncio.to_thread(update_task_sync, calendar_name, task_uid, title, description, due_date, due_time, priority, timezone)
 
 	def delete_task_sync(calendar_name: str, task_uid: str):
 		principal = ncSync.cal.principal()
