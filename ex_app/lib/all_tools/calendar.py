@@ -86,22 +86,23 @@ async def get_tools(nc: AsyncNextcloudApp):
 		start_date = datetime.strptime(start_date, "%Y-%m-%d")
 		end_date = datetime.strptime(end_date, "%Y-%m-%d")
 
+		# Set timezone (defaults to the user's profile timezone); validated even for
+		# all-day events so a bad value errors instead of being silently ignored
+		timezone = timezone or user_timezone(ncSync)
+		tz = pytz.timezone(get_timezone(timezone))
+
 		# Combine date and time
 		if start_time and end_time:
 			start_time = datetime.strptime(start_time, "%I:%M %p").time()
 			end_time = datetime.strptime(end_time, "%I:%M %p").time()
 
-			start_datetime = datetime.combine(start_date, start_time)
-			end_datetime = datetime.combine(end_date, end_time)
+			# icalendar keeps the timezone as a TZID on datetime values
+			start_datetime = tz.localize(datetime.combine(start_date, start_time))
+			end_datetime = tz.localize(datetime.combine(end_date, end_time))
 		else:
-			start_datetime = start_date
-			end_datetime = end_date
-
-		# Set timezone (defaults to the user's profile timezone)
-		timezone = timezone or user_timezone(ncSync)
-		tz = pytz.timezone(get_timezone(timezone))
-		start_datetime = tz.localize(start_datetime)
-		end_datetime = tz.localize(end_datetime)
+			# All-day events are DATE values; DTEND is exclusive, so the day after
+			start_datetime = start_date.date()
+			end_datetime = (end_date + timedelta(days=1)).date()
 
 		description_with_ai_note = f"{description}\n\n---\n\nThis event was scheduled by Nextcloud AI Assistant."
 
