@@ -16,6 +16,7 @@ from nc_py_api.ex_app import persistent_storage
 
 import pytz
 
+from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
@@ -119,8 +120,7 @@ async def react(
 	destructive_threshold = await get_destructive_threshold(nc)
 	tz_name = user_tz = None
 	try:
-		user = (await nc.ocs("GET", "/ocs/v2.php/cloud/user")) or {}
-		tz_name = user.get("timezone") or None
+		tz_name = await user_timezone_async(nc)
 		if tz_name:
 			user_tz = pytz.timezone(tz_name)
 	except Exception:
