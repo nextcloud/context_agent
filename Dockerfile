@@ -12,21 +12,25 @@ RUN apt-get update && \
   apt-get install -y --no-install-recommends curl pipx build-essential git && \
   rm -rf /var/lib/apt/lists/*
 
-# Download and install FRP client into /usr/local/bin.
+# Download and install FRP client into /usr/local/bin, verifying the
+# tarball against the release's published SHA256 checksums.
+ARG FRP_VERSION=0.71.0
 RUN set -ex; \
-    ARCH=$(uname -m); \
-    if [ "$ARCH" = "aarch64" ]; then \
-      FRP_URL="https://raw.githubusercontent.com/nextcloud/HaRP/main/exapps_dev/frp_0.61.1_linux_arm64.tar.gz"; \
-    else \
-      FRP_URL="https://raw.githubusercontent.com/nextcloud/HaRP/main/exapps_dev/frp_0.61.1_linux_amd64.tar.gz"; \
-    fi; \
-    echo "Downloading FRP client from $FRP_URL"; \
-    curl -L "$FRP_URL" -o /tmp/frp.tar.gz; \
-    tar -C /tmp -xzf /tmp/frp.tar.gz; \
-    mv /tmp/frp_0.61.1_linux_* /tmp/frp; \
-    cp /tmp/frp/frpc /usr/local/bin/frpc; \
-    chmod +x /tmp/frp/frpc /usr/local/bin/frpc; \
-    rm -rf /tmp/frp /tmp/frp.tar.gz
+    case "$(uname -m)" in \
+      aarch64) FRP_ARCH="arm64" ;; \
+      *) FRP_ARCH="amd64" ;; \
+    esac; \
+    FRP_TGZ="frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz"; \
+    FRP_BASE="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}"; \
+    echo "Downloading FRP client from $FRP_BASE/$FRP_TGZ"; \
+    curl -fsSL "$FRP_BASE/$FRP_TGZ" -o "/tmp/$FRP_TGZ"; \
+    curl -fsSL "$FRP_BASE/frp_sha256_checksums.txt" -o /tmp/frp_sha256_checksums.txt; \
+    grep "${FRP_TGZ}\$" /tmp/frp_sha256_checksums.txt > /tmp/frp.checksum; \
+    (cd /tmp && sha256sum -c frp.checksum); \
+    tar -C /tmp -xzf "/tmp/$FRP_TGZ"; \
+    cp "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" /usr/local/bin/frpc; \
+    chmod +x /usr/local/bin/frpc; \
+    rm -rf "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}" "/tmp/$FRP_TGZ" /tmp/frp_sha256_checksums.txt /tmp/frp.checksum
 
 RUN pipx install poetry
 ENV PATH="/root/.local/bin:${PATH}"
