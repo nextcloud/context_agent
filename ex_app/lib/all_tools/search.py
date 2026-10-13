@@ -20,9 +20,9 @@ async def get_tools(nc: AsyncNextcloudApp):
             return tool
 
         tool_func = make_tool(provider)
-        tool_func.__name__ = re.sub(r"[^a-zA-Z0-9_-]+", '_', "search_" + provider['name'].lower())
+        tool_func.__name__ = re.sub(r"[^a-zA-Z0-9_-]+", '_', "search_" + provider['id'].lower())
         tool_func.__doc__ = (
-            f"Searches {provider['name']} in Nextcloud.\n"
+            f"Searches {provider['name']} (search provider '{provider['id']}') in Nextcloud.\n"
             f":param search_query: A mapping of filter names to filter values to use for the search. "
             f"Choose filters from {json.dumps(provider['filters'])}. (The 'person' filter, if available, takes a userID. Use find_person_in_users to obtain it.)"
             'For example: {"term": "hans", ...}\n'
