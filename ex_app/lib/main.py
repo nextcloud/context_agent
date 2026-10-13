@@ -1,12 +1,13 @@
+
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-import concurrent.futures
 import os
 import traceback
 from contextlib import asynccontextmanager
-from json import JSONDecodeError
 from threading import Event
 import asyncio
+import logging
+import time
 
 from niquests import RequestException
 import json
@@ -91,8 +92,26 @@ fast_app = FastAPI(lifespan=http_mcp_app.lifespan)
 
 app_enabled = Event()
 TRIGGER = asyncio.Event()
-IDLE_POLLING_INTERVAL = 5
-IDLE_POLLING_INTERVAL_WITH_TRIGGER = 5 * 60
+logger = logging.getLogger("uvicorn.error")
+
+
+def positive_timeout(name: str, default: int) -> int:
+    """Read a positive timeout from the environment without breaking startup."""
+    try:
+        value = int(os.getenv(name, str(default)))
+        if value > 0:
+            return value
+    except ValueError:
+        pass
+    logger.warning("Invalid %s; using default %s seconds", name, default)
+    return default
+
+
+CLAIM_TIMEOUT_SECONDS = positive_timeout("CONTEXT_AGENT_CLAIM_TIMEOUT_SEC", 60)
+IDLE_POLLING_INTERVAL = positive_timeout("CONTEXT_AGENT_IDLE_POLL_SEC", 30)
+POLL_RETRY_INTERVAL = 5
+BUSY_POLL_INTERVAL = 2
+
 
 LOCALE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "locale")
 current_translator = ContextVar("current_translator")
@@ -114,11 +133,19 @@ async def exapp_lifespan(app: FastAPI):
         enabled_handler,
         trigger_handler=trigger_handler,
     )
-    start_bg_task()
     nc = NextcloudApp()
     if nc.enabled_state:
         app_enabled.set()
-    yield
+
+    poller = asyncio.create_task(supervise_poller(), name="context-agent-poller")
+    try:
+        yield
+    finally:
+        poller.cancel()
+        try:
+            await poller
+        except asyncio.CancelledError:
+            pass
 
 
 APP = FastAPI(lifespan=lifespan)
@@ -147,7 +174,7 @@ SETTINGS = SettingsForm(
             default="",
             placeholder=_("API key"),
         ),
-		SettingsField(
+                SettingsField(
             id="mcp_config",
             title=_("MCP Config"),
             description=_("JSON configuration for the MCP. Structured as {\"service_name\": {\"url\": \"https://service.url\",\"transport\": \"streamable_http\"}}. For more details view the documentation for context_agent."),
@@ -185,45 +212,79 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
     return ""
 
 
+async def supervise_poller():
+    """Keep task acquisition alive even if its coroutine exits unexpectedly."""
+    while True:
+        try:
+            logger.info("Task poller starting")
+            await background_thread_task()
+            logger.error("Task poller stopped unexpectedly")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Task poller crashed; restarting")
+        await asyncio.sleep(POLL_RETRY_INTERVAL)
+
+
+async def handle_task_safely(task, nc: AsyncNextcloudApp):
+    """Do not let an unexpected handler failure cancel sibling tasks."""
+    task_id = task.get("id") if isinstance(task, dict) else None
+    started = time.monotonic()
+    try:
+        await handle_task(task, nc)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.exception("Unhandled error in Context Agent task %s", task_id)
+        # handle_task() normally reports task failures itself; this fallback only
+        # runs if unexpected code or error-reporting failures escape the handler.
+        try:
+            await asyncio.wait_for(report_error(nc, task_id, exc), timeout=20)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to report unexpected error for task %s", task_id)
+    finally:
+        logger.info("Task handler %s ended after %.2f s", task_id, time.monotonic() - started)
+
+
 async def background_thread_task():
     nc = AsyncNextcloudApp()
-
     async with asyncio.TaskGroup() as tg:
         while True:
             if not app_enabled.is_set():
-                await asyncio.sleep(5)
+                await asyncio.sleep(POLL_RETRY_INTERVAL)
                 continue
 
+            started = time.monotonic()
             try:
-                response = await nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES)
-                if not response or not 'task' in response:
-                    async with NUM_RUNNING_TASKS_LOCK:
-                        no_tasks_running = NUM_RUNNING_TASKS == 0
-                    if no_tasks_running:
-                        # if there are no running tasks we will get a trigger
-                        await wait_for_task()
-                    else:
-                        # otherwise, wait with fast frequency
-                        await asyncio.sleep(2)
-                    continue
-            except (NextcloudException, RequestException, JSONDecodeError) as e:
-                tb_str = ''.join(traceback.format_exception(e))
-                await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
-                await wait_for_task(5)
+                response = await asyncio.wait_for(
+                    nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES),
+                    timeout=CLAIM_TIMEOUT_SECONDS,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Failed to fetch next Context Agent task; retrying")
+                await wait_for_task(POLL_RETRY_INTERVAL)
+                continue
+
+            if not response or "task" not in response:
+                async with NUM_RUNNING_TASKS_LOCK:
+                    no_tasks_running = NUM_RUNNING_TASKS == 0
+                if no_tasks_running:
+                    await wait_for_task()
+                else:
+                    await asyncio.sleep(BUSY_POLL_INTERVAL)
                 continue
 
             task = response["task"]
-            await log(nc, LogLvl.INFO, 'New Task incoming')
-            await log(nc, LogLvl.DEBUG, str(task))
-            await log(nc, LogLvl.INFO, str({
-                'type': task.get('type'),
-                'input': task['input']['input'],
-                'confirmation': task['input']['confirmation'],
-                'conversation_token': '<skipped>',
-                'memories': task['input'].get('memories', None),
-                'input_attachments': task['input'].get('input_attachments', None),
-            }))
-            tg.create_task(handle_task(task, nc))
+            logger.info(
+                "Claimed Context Agent task %s in %.2f s",
+                task.get("id"), time.monotonic() - started,
+            )
+            tg.create_task(handle_task_safely(task, nc))
+
 
 NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
 NUM_RUNNING_TASKS = 0
@@ -295,29 +356,17 @@ async def handle_task(task, nc: AsyncNextcloudApp):
 
 
 
-def start_bg_task():
-    loop = asyncio.get_event_loop()
-    loop.create_task(background_thread_task())
-
-# Trigger event is available starting with nextcloud v33
+# Trigger event is available starting with Nextcloud v33.
 async def trigger_handler(providerId: str):
-    # now runs in the same thread as the task processing, which is why we can use asyncio.Event
-    global TRIGGER
     TRIGGER.set()
 
-# Waits for interval seconds or IDLE_POLLING_INTERVAL seconds
-# but can return earlier when TRIGGER event is received from nextcloud
-# if the trigger event is received, IDLE_POLLING_INTERVAL is set to IDLE_POLLING_INTERVAL_WITH_TRIGGER
-async def wait_for_task(interval = None):
-    global TRIGGER
-    global IDLE_POLLING_INTERVAL
-    global IDLE_POLLING_INTERVAL_WITH_TRIGGER
+
+async def wait_for_task(interval: int | None = None):
+    """Wait for a trigger, falling back to periodic task acquisition."""
     if interval is None:
         interval = IDLE_POLLING_INTERVAL
     try:
         await asyncio.wait_for(TRIGGER.wait(), timeout=interval)
-        # In case we received the event, we change the polling interval
-        IDLE_POLLING_INTERVAL = IDLE_POLLING_INTERVAL_WITH_TRIGGER
     except asyncio.TimeoutError:
         pass
     TRIGGER.clear()
@@ -327,6 +376,6 @@ APP.mount("/mcp", http_mcp_app)
 APP.add_middleware(MCPTransportMiddleware)
 
 if __name__ == "__main__":
-    # Wrapper around `uvicorn.run`.
-    # You are free to call it directly, with just using the `APP_HOST` and `APP_PORT` variables from the environment.
+    # Wrapper around uvicorn.run.
+    # You are free to call it directly, with just using APP_HOST and APP_PORT.
     run_app("main:APP", log_level="trace")
