@@ -162,7 +162,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param title: The title of the event
 		:param description: The description of the event
 		:param start_date: the start date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
-		:param end_date: the end date of the event in the following form: YYYY-MM-DD e.g. '2024-12-01'
+		:param end_date: the last day of the event, inclusive: for a single-day event pass the
+			same date as start_date. Form: YYYY-MM-DD e.g. '2024-12-01'
 		:param attendees: the list of attendees to add to the event (as email addresses)
 		:param start_time: the start time in the following form: HH:MM AM/PM e.g. '3:00 PM'
 		:param end_time: the start time in the following form: HH:MM AM/PM e.g. '4:00 PM'
