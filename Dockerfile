@@ -25,7 +25,8 @@ RUN set -ex; \
     echo "Downloading FRP client from $FRP_BASE/$FRP_TGZ"; \
     curl -fsSL "$FRP_BASE/$FRP_TGZ" -o "/tmp/$FRP_TGZ"; \
     curl -fsSL "$FRP_BASE/frp_sha256_checksums.txt" -o /tmp/frp_sha256_checksums.txt; \
-    grep "${FRP_TGZ}\$" /tmp/frp_sha256_checksums.txt > /tmp/frp.checksum; \
+    awk -v f="$FRP_TGZ" '$2 == f' /tmp/frp_sha256_checksums.txt > /tmp/frp.checksum; \
+    test -s /tmp/frp.checksum; \
     (cd /tmp && sha256sum -c frp.checksum); \
     tar -C /tmp -xzf "/tmp/$FRP_TGZ"; \
     cp "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" /usr/local/bin/frpc; \
@@ -34,12 +35,13 @@ RUN set -ex; \
 
 RUN pipx install poetry
 ENV PATH="/root/.local/bin:${PATH}"
+ENV VIRTUAL_ENV=/opt/app/.venv PATH="/opt/app/.venv/bin:${PATH}"
 
 # Install requirements into /opt/app/.venv
 WORKDIR /opt/app
 COPY pyproject.toml poetry.lock ./
 RUN poetry install && \
-    /opt/app/.venv/bin/python -m pip uninstall -y pip setuptools wheel || true
+    (/opt/app/.venv/bin/python -m pip uninstall -y pip setuptools wheel || true)
 
 # Runtime stage: interpreter + app venv + frpc only — no build toolchain,
 # no vim, no git, no curl, no pipx/poetry.
