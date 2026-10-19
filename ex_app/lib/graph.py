@@ -39,37 +39,44 @@ class AgentState(TypedDict):
 	messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
-class PendingClassification:
-	"""What the router last worked out about a batch of tool calls.
+class CallClassifications:
+	"""What the router worked out about each tool call it has routed.
 
 	The radius and destructiveness of a call are settled while routing it, before
 	the run stops to ask the user about it. Keeping them here lets the caller
-	report how far the calls it is asking about reach without running the hooks --
-	several of which query the Nextcloud API -- a second time.
+	describe the calls it is asking about without running the hooks -- several of
+	which query the Nextcloud API -- a second time.
 
-	The record is tied to the message holding the calls: a run that ends anywhere
-	other than :data:`CONFIRM_TOOLS_NODE` leaves the previous turn's record behind,
-	and matching on the message keeps that from being read as this turn's answer.
+	Records are keyed by tool call id, which is unique to a call, so a record left
+	behind by an earlier turn can never be read as this turn's answer.
 	"""
 
 	def __init__(self):
-		self._recorded = False
-		self._message_id = None
-		self._radius = ImpulseRadius.SELF
-		self._destroys = False
+		self._by_call_id: dict[str, tuple[ImpulseRadius, bool]] = {}
 
-	def record(self, message: BaseMessage, radius: ImpulseRadius, destroys: bool) -> None:
-		self._recorded = True
-		self._message_id = getattr(message, 'id', None)
-		self._radius = radius
-		self._destroys = destroys
+	def record(self, tool_call, radius: ImpulseRadius, destroys: bool) -> None:
+		call_id = tool_call.get('id')
+		if call_id is None:
+			return
+		self._by_call_id[call_id] = (radius, destroys)
 
-	def of(self, message: BaseMessage) -> tuple[ImpulseRadius, bool] | None:
-		"""The classification of this message's tool calls, or None if no routing
-		decision was recorded for this message."""
-		if not self._recorded or getattr(message, 'id', None) != self._message_id:
-			return None
-		return self._radius, self._destroys
+	def annotate(self, tool_calls) -> list[dict]:
+		"""The tool calls as they go out to the user, each carrying how far it
+		reaches and whether it takes something away.
+
+		A call no record was kept for -- a tool name the model made up, which no
+		node can run -- is passed on as it came in rather than guessed at.
+		"""
+		annotated = []
+		for tool_call in tool_calls:
+			call = dict(tool_call)
+			classification = self._by_call_id.get(tool_call.get('id'))
+			if classification is not None:
+				radius, destroys = classification
+				call['impulse_radius'] = radius.name.lower()
+				call['destructive'] = destroys
+			annotated.append(call)
+		return annotated
 
 
 def handle_tool_error(state) -> dict:
@@ -98,12 +105,12 @@ async def get_graph(
 	checkpointer,
 	impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD,
 	destructive_threshold: ImpulseRadius = DEFAULT_DESTRUCTIVE_THRESHOLD,
-) -> tuple[CompiledStateGraph, PendingClassification]:
-	"""Build the agent graph, along with the :class:`PendingClassification` that its
+) -> tuple[CompiledStateGraph, CallClassifications]:
+	"""Build the agent graph, along with the :class:`CallClassifications` that its
 	routing writes to.
 	"""
 	tools_by_name = {tool.name: tool for tool in tools}
-	pending = PendingClassification()
+	classifications = CallClassifications()
 
 	# Define a new graph
 	workflow = StateGraph(AgentState)
@@ -144,7 +151,8 @@ async def get_graph(
 
 		The calls are classified against each other -- a batch of them would
 		otherwise pay for every lookup in series before any tool runs -- and folded
-		together afterwards, so what gets logged stays in the model's order.
+		together afterwards, so what gets logged and recorded stays in the model's
+		order.
 		"""
 		tool_calls = state["messages"][-1].tool_calls
 		classified = await asyncio.gather(*(classify_one(tc) for tc in tool_calls))
@@ -160,6 +168,7 @@ async def get_graph(
 			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}"
 			      f"{', destroys something' if call_destroys else ''}"
 			      f"{', always confirmed' if call_always else ''}")
+			classifications.record(tool_call, call_radius, call_destroys)
 			radius = max(radius, call_radius)
 			destroys = destroys or call_destroys
 			always = always or call_always
@@ -171,7 +180,6 @@ async def get_graph(
 		if next_node == END:
 			return END
 		radius, destroys, always = await classify_pending_calls(state)
-		pending.record(state["messages"][-1], radius, destroys)
 		if needs_confirmation(radius, impulse_threshold, destroys, destructive_threshold, always):
 			if always:
 				print("A pending tool call is always confirmed, asking the user")
@@ -194,4 +202,4 @@ async def get_graph(
 		debug=False
 	)
 
-	return graph, pending
+	return graph, classifications
