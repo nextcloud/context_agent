@@ -139,10 +139,10 @@ jobs:
         run: |
           ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
 
-      - name: Setup python 3.11
+      - name: Setup python 3.13
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 #v7.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install llm2 app
         working-directory: llm2

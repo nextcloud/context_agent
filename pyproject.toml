@@ -47,7 +47,7 @@ extend-ignore = ["D101", "D102", "D103", "D105", "D107", "D203", "D213", "D401",
 profile = "black"
 
 [tool.pylint]
-master.py-version = "3.11"
+master.py-version = "3.13"
 master.extension-pkg-allow-list = ["pydantic"]
 design.max-attributes = 8
 design.max-locals = 16
