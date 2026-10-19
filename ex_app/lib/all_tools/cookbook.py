@@ -5,12 +5,12 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_recipes(category: Optional[str] = None):
 		"""
 		List all recipes or filter by category
@@ -29,7 +29,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return recipes
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def search_recipes(search_term: str):
 		"""
 		Search for recipes by keyword
@@ -45,7 +45,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response.json()
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_recipe_details(recipe_id: int):
 		"""
 		Get complete details of a recipe including ingredients and instructions
@@ -59,7 +59,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response.json()
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
 	async def create_recipe(name: str, description: Optional[str] = None, ingredients: Optional[list[str]] = None, instructions: Optional[str] = None, prep_time: Optional[str] = None, cook_time: Optional[str] = None, category: Optional[str] = None):
 		"""
 		Create a new recipe
@@ -98,7 +98,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
+	@destructive
 	async def delete_recipe(recipe_id: int):
 		"""
 		Delete a recipe
@@ -112,7 +113,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return response.json()
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_recipe_categories():
 		"""
 		List all recipe categories

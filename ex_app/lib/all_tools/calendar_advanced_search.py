@@ -28,7 +28,7 @@ from ex_app.lib.all_tools.lib.calendar_search import (
     principal_calendar_home_propfind_body,
     validate_search,
 )
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 
 MAX_CONCURRENT_CALENDAR_QUERIES = 4
 MAX_PROCESSED_OCCURRENCES_PER_SEARCH = 250_000
@@ -46,7 +46,7 @@ class CalendarRequestError(RuntimeError):
 
 async def get_tools(nc: AsyncNextcloudApp):
     @tool
-    @safe_tool
+    @impulse(ImpulseRadius.SELF)
     async def search_calendar_events(
         range_start: str,
         range_end: str,

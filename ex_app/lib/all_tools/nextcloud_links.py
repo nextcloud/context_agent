@@ -10,7 +10,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
 from ex_app.lib.logger import log
 
 # The user-facing absolute base URL is stable for the app's lifetime; resolve it once.
@@ -501,7 +501,7 @@ def _parse_nextcloud_url(url: str) -> dict:
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def parse_nextcloud_url(url: str):
 		"""
 		Parse a Nextcloud deep-link URL and extract which app it belongs to, the
