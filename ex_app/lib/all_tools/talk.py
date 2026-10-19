@@ -6,10 +6,26 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.talk import ConversationType
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	async def conversation_radius(conversation_name=None):
+		"""How far a conversation reaches: one person, its participants, or anyone with the link."""
+		if conversation_name is None:
+			return ImpulseRadius.EXTERNAL
+		conversations = await nc.talk.get_user_conversations()
+		conversation = {conv.display_name: conv for conv in conversations}.get(conversation_name)
+		if conversation is None:
+			# The name does not resolve; the tool will fail on it, until then assume the worst.
+			return ImpulseRadius.EXTERNAL
+		if conversation.conversation_type == ConversationType.PUBLIC:
+			# Anyone holding the link can read along, including guests without an account.
+			return ImpulseRadius.EXTERNAL
+		if conversation.conversation_type in (ConversationType.ONE_TO_ONE, ConversationType.FORMER):
+			return ImpulseRadius.INDIVIDUALS
+		return ImpulseRadius.GROUP
 
 	async def _get_token(conversation_name: str) -> str:
 		conversations = await nc.talk.get_user_conversations()
@@ -19,7 +35,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Conversations & Messages (enhanced existing tools) ---
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_talk_conversations():
 		"""
 		List all conversations of the current user in the Nextcloud Talk app.
@@ -35,7 +51,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		} for conv in conversations])
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.EXTERNAL)
 	async def create_public_conversation(conversation_name: str) -> str:
 		"""
 		Create a new public conversation in the Nextcloud Talk app
@@ -46,7 +62,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return f"{nc.app_cfg.endpoint}/index.php/call/{conversation.token}"
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def send_message_to_conversation(conversation_name: str, message: str):
 		"""
 		Send a message to a conversation in the Nextcloud Talk app
@@ -61,7 +77,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return "Message sent successfully."
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_messages_in_conversation(conversation_name: str, n_messages: int = 30):
 		"""
 		List messages of a conversation in the Nextcloud Talk app.
@@ -85,7 +101,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Reactions ---
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def add_reaction(conversation_name: str, message_id: int, reaction: str):
 		"""
 		Add an emoji reaction to a message in a Talk conversation
@@ -100,7 +116,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
+	@destructive
 	async def remove_reaction(conversation_name: str, message_id: int, reaction: str):
 		"""
 		Remove an emoji reaction from a message in a Talk conversation.
@@ -116,7 +133,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_reactions(conversation_name: str, message_id: int, reaction: Optional[str] = None):
 		"""
 		List all reactions on a message in a Talk conversation
@@ -134,7 +151,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Reply to message ---
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def reply_to_message(conversation_name: str, message_id: int, message: str, silent: bool = False):
 		"""
 		Send a message as a reply to another message in a Talk conversation.
@@ -156,7 +173,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- Polls ---
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def create_poll(conversation_name: str, question: str, options: list[str], result_mode: int = 0, max_votes: int = 0):
 		"""
 		Create a poll in a Talk conversation
@@ -176,7 +193,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def get_poll(conversation_name: str, poll_id: int):
 		"""
 		Get the current state and results of a poll
@@ -188,7 +205,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/spreed/api/v1/poll/{token}/{poll_id}'))
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def vote_on_poll(conversation_name: str, poll_id: int, option_ids: list[int]):
 		"""
 		Vote on a poll in a Talk conversation.
@@ -204,7 +221,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def close_poll(conversation_name: str, poll_id: int):
 		"""
 		Close a poll so no more votes can be cast. Only the poll creator or a moderator can close a poll.
@@ -219,7 +236,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# --- File sharing ---
 
 	@tool
-	@dangerous_tool
+	@impulse(conversation_radius)
 	async def share_file_to_conversation(conversation_name: str, file_path: str, caption: Optional[str] = None):
 		"""
 		Share a file from Nextcloud Files into a Talk conversation.
@@ -241,7 +258,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/files_sharing/api/v1/shares', json=payload))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_shared_items(conversation_name: str, object_type: str, limit: int = 100):
 		"""
 		List items of a specific type that have been shared in a Talk conversation.
@@ -261,7 +278,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
 	async def list_shared_items_overview(conversation_name: str, limit: int = 7):
 		"""
 		Get an overview of all types of shared items in a Talk conversation (files, media, polls, etc.)

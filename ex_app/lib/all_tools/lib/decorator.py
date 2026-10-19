@@ -4,14 +4,6 @@ import functools
 import time
 from functools import wraps
 
-def safe_tool(tool):
-	setattr(tool, 'safe', True)
-	return tool
-
-def dangerous_tool(tool):
-	setattr(tool, 'safe', False)
-	return tool
-
 # cache for get_tools
 # needs NextcloudApp as first arg in the cached function
 def timed_memoize(timeout):
