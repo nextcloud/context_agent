@@ -32,8 +32,8 @@ from ex_app.lib.tools import get_tools
 graph_config = {
 	# Dummy thread id as we return the whole state
 	"configurable": {"thread_id": "thread-1"},
-	# Maximum amount of tool calls per interaction
-	"recursion_limit": 256
+	# Maximum amount of recursions
+	"recursion_limit": 256 # allows ~128 tool calls per conversation step
 }
 
 key_file_path = persistent_storage() + '/secret_key.txt'
