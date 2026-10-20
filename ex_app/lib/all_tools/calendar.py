@@ -402,6 +402,9 @@ END:VCALENDAR
 		calendars = principal.calendars()
 		calendar = {cal.name: cal for cal in calendars}[calendar_name]
 
+		# resolve the timezone before the loop, so an invalid or missing one is reported instead of swallowed below
+		tz = pytz.timezone(get_timezone(timezone or user_timezone(ncSync))) if due_date else None
+
 		todos = calendar.todos()
 		for todo in todos:
 			# Parse the todo data using ics library
@@ -426,8 +429,7 @@ END:VCALENDAR
 							else:
 								due_datetime = parsed_date
 
-							timezone = timezone or user_timezone(ncSync)
-							due_datetime = pytz.timezone(get_timezone(timezone)).localize(due_datetime)
+							due_datetime = tz.localize(due_datetime)
 
 							ics_todo.due = due_datetime
 

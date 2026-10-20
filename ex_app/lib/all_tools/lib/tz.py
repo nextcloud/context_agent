@@ -33,8 +33,9 @@ async def user_timezone_async(nc) -> str | None:
 		return None
 
 
-def starts_at_timestamp(starts_at: str, timezone: str) -> int:
+def starts_at_timestamp(starts_at: str, timezone: str | None) -> int:
 	parsed = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
 	if parsed.tzinfo is None or parsed.utcoffset() is None:
-		parsed = pytz.timezone(timezone).localize(parsed)
+		# only naive values need a timezone to be interpreted
+		parsed = pytz.timezone(get_timezone(timezone)).localize(parsed)
 	return int(parsed.timestamp())
