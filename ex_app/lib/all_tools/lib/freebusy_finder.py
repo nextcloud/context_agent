@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def find_available_slots(start_time, end_time, busy_intervals, slot_duration=timedelta(hours=1), max_slots=3):
 	"""
@@ -59,7 +59,7 @@ def round_to_nearest_half_hour(dt=None):
 	:return: A rounded datetime object
 	"""
 	if dt is None:
-		dt = datetime.utcnow()
+		dt = datetime.now(timezone.utc)
 
 	# Get minutes and determine rounding
 	minutes = dt.minute

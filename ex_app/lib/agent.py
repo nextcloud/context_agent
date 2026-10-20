@@ -5,7 +5,7 @@ import os
 import random
 import string
 from collections.abc import Awaitable, Callable
-from datetime import date
+from datetime import date, datetime
 from time import monotonic
 from typing import Any, cast
 
@@ -14,6 +14,9 @@ from langchain_core.runnables import RunnableConfig
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import persistent_storage
 
+import pytz
+
+from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
@@ -115,6 +118,13 @@ async def react(
 	tools = await get_tools(nc)
 	impulse_threshold = await get_impulse_threshold(nc)
 	destructive_threshold = await get_destructive_threshold(nc)
+	tz_name = user_tz = None
+	try:
+		tz_name = await user_timezone_async(nc)
+		if tz_name:
+			user_tz = pytz.timezone(tz_name)
+	except Exception:
+		tz_name = user_tz = None
 
 	bound_model = model.bind_tools(
 		tools,
@@ -130,12 +140,19 @@ async def react(
 			state: AgentState,
 			config: RunnableConfig,
 	):
-		current_date = date.today().strftime("%Y-%m-%d")
+		if user_tz is not None:
+			current_date = datetime.now(user_tz).strftime("%Y-%m-%d")
+			date_suffix = (
+				f" The user's timezone is {tz_name}; use it for the timezone parameter of calendar and task tools."
+			)
+		else:
+			current_date = date.today().strftime("%Y-%m-%d")
+			date_suffix = ""
 
 		system_prompt_text = """
 You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools if necessary. If no tool is needed to provide a correct answer, do not use one. If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
-Today is {CURRENT_DATE}.
+Today is {CURRENT_DATE}.{DATE_SUFFIX}
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
 If you get a link as a tool output, always add the link to your response.
@@ -152,8 +169,10 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Use the find_person_in_contacts tool to find a person's email address and location.\n"
 		if tool_enabled("find_person_in_users"):
 			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
-		if tool_enabled("find_details_of_current_user"):
+		if tz_name is None and tool_enabled("find_details_of_current_user"):
 			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location and timezone.\n"
+		if tool_enabled("get_current_datetime"):
+			system_prompt_text += "Use the get_current_datetime tool when the user asks for the current date or time.\n"
 		if tool_enabled("list_mails"):
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 		if tool_enabled("web_fetch"):
@@ -189,7 +208,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
-			system_prompt_text.replace("{CURRENT_DATE}", current_date)
+			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
 		)
 
 		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
