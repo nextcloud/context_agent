@@ -25,12 +25,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param title: A title for the Scheduled Task, e.g. "Transcribe audio files" -- This is only for the user's reference and has no effect on the execution of the Scheduled Task.
 		:param prompt: The instructions for the agent carrying out the Scheduled Task (Do not tell it to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day, an empty string as the recurrence_rule means the task does not repeat.
-		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately.
+		:param starts_at: A date time string in ISO 8601 format in the user's local time that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00". It is interpreted in the given timezone. If not provided, the Scheduled Task will start immediately.
 		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone; used to interpret starts_at. Must be a valid IANA timezone name when supplied.
 		:return:
 		"""
 
-		tz = get_timezone(timezone or await user_timezone_async(nc))
+		tz = get_timezone(timezone) if timezone is not None else await user_timezone_async(nc)
 		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
 			'title': title,
 			'prompt': prompt,
@@ -60,16 +60,20 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param id: The ID of the Scheduled Task to update, you can obtain this from the list_scheduled_tasks tool
 		:param prompt: The instructions for the AI carrying out the Scheduled Task. Pass `None` to leave this unchanged. (Do not tell the other AI to create a scheduled task here, as this is the instruction that runs as the scheduled task already. So instead of "Create a scheduled task to do X", just pass "Do X" here)
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day. An empty string means, it does not repeat. Pass `None` to leave this unchanged.
-		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone; used to interpret starts_at. Must be a valid IANA timezone name when supplied.
-		:param starts_at: A date time string in ISO 8601 format that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00Z". If not provided, the Scheduled Task will start immediately. Pass `None` to leave this unchanged.
+		:param timezone: A new timezone for the Scheduled Task (e.g., 'America/New_York'), also used to interpret starts_at. Must be a valid IANA timezone name. Pass `None` to leave this unchanged.
+		:param starts_at: A date time string in ISO 8601 format in the user's local time that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00". It is interpreted in the given timezone, or the user's profile timezone if none is given. Pass `None` to leave this unchanged.
 		:return:
 		"""
 
-		tz = get_timezone(timezone or await user_timezone_async(nc))
+		# only send a timezone when one was given explicitly, so the stored one is left unchanged otherwise
+		tz = get_timezone(timezone) if timezone is not None else None
+		starts_at_ts = None
+		if starts_at is not None:
+			starts_at_ts = starts_at_timestamp(starts_at, tz or await user_timezone_async(nc))
 		return await nc.ocs('PATCH', f'/ocs/v2.php/apps/assistant/assignments/{id}', json={
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
-			'startsAt': starts_at_timestamp(starts_at, tz) if starts_at is not None else None,
+			'startsAt': starts_at_ts,
 			'timezone': tz
 		})
 
