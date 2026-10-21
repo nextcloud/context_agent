@@ -78,6 +78,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Content-Type": "application/json",
 		})
 
+		response.raise_for_status()
 		return response.text
 
 	@tool
@@ -156,6 +157,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Content-Type": "text/plain",
 		}, data=content)
 
+		response.raise_for_status()
 		return {"status": "success", "path": path}
 
 	@tool
@@ -173,6 +175,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Content-Type": "application/json",
 		})
 
+		response.raise_for_status()
 		return {"status": "success", "path": path}
 
 	@tool
@@ -193,6 +196,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Destination": f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{destination_path}",
 		})
 
+		response.raise_for_status()
 		return {"status": "success", "from": source_path, "to": destination_path}
 
 	@tool
@@ -213,6 +217,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Destination": f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{destination_path}",
 		})
 
+		response.raise_for_status()
 		return {"status": "success", "from": source_path, "to": destination_path}
 
 	@tool
@@ -237,6 +242,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
 			data=propfind_body,
 		)
+		propfind_response.raise_for_status()
 
 		root = ET.fromstring(propfind_response.text)
 		fileid_element = root.find(".//{http://owncloud.org/ns}fileid")
@@ -276,6 +282,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			headers={"Content-Type": "text/xml; charset=utf-8"},
 			data=search_body,
 		)
+		search_response.raise_for_status()
 
 		root = ET.fromstring(search_response.text)
 		href_element = root.find(".//{DAV:}response/{DAV:}href")
@@ -313,6 +320,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
 			data=propfind_body,
 		)
+		propfind_response.raise_for_status()
 
 		root = ET.fromstring(propfind_response.text)
 		fileid_element = root.find(".//{http://owncloud.org/ns}fileid")
@@ -347,6 +355,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"Content-Type": "application/json",
 		})
 
+		response.raise_for_status()
 		return {"status": "success", "deleted": path}
 
 	return [
