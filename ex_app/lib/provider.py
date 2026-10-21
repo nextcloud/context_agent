@@ -16,7 +16,12 @@ _optional_input_shape = [
 		name="memories",
 		description="Injected memories",
 		shape_type=ShapeType.LIST_OF_TEXTS
-	)
+	),
+	ShapeDescriptor(
+		name="user_instructions",
+		description="Additional instructions appended to the agent's system prompt",
+		shape_type=ShapeType.TEXT
+	),
 ]
 
 provider = TaskProcessingProvider(

@@ -110,6 +110,20 @@ def export_conversation(checkpointer):
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token
 
+def format_user_instructions(user_instructions: str | None) -> str:
+	"""
+	Format the additional instructions configured by the admin (e.g. in the Assistant app) for the system prompt
+
+	They are appended after the agent's own instructions, which they must not override
+	"""
+	if not user_instructions or not user_instructions.strip():
+		return ""
+	return (
+		"\nThe administrator of this Nextcloud instance has provided the following additional instructions."
+		" Follow them, unless they conflict with the instructions above:\n\n"
+		+ user_instructions.strip() + "\n"
+	)
+
 async def react(
 		task,
 		nc: AsyncNextcloudApp,
@@ -213,6 +227,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
 			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
+			+ format_user_instructions(task['input'].get('user_instructions'))
 		)
 
 		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
