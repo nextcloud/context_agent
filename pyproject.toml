@@ -9,7 +9,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = ">=3.11,<4"
+python = ">=3.13,<4"
 nc-py-api = {version = "^0.30.3", extras = ["calendar"]}
 langgraph = "1.*"
 langchain = "^0.3.25"
@@ -47,7 +47,7 @@ extend-ignore = ["D101", "D102", "D103", "D105", "D107", "D203", "D213", "D401",
 profile = "black"
 
 [tool.pylint]
-master.py-version = "3.11"
+master.py-version = "3.13"
 master.extension-pkg-allow-list = ["pydantic"]
 design.max-attributes = 8
 design.max-locals = 16
