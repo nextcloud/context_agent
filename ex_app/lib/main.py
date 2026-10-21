@@ -23,7 +23,7 @@ from nc_py_api.ex_app import (
 
 from ex_app.lib.agent import react
 from ex_app.lib.errors import UserFacingError
-from ex_app.lib.logger import log
+from ex_app.lib.logger import log, logger
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider, multimodal_provider
 from ex_app.lib.all_tools.lib.impulse import (
@@ -234,32 +234,39 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
 
 async def background_thread_task():
     nc = AsyncNextcloudApp()
+    await log(nc, LogLvl.INFO, "Task polling started")
 
-    async with asyncio.TaskGroup() as tg:
-        while True:
-            if not app_enabled.is_set():
-                await asyncio.sleep(5)
+    while True:
+        if not app_enabled.is_set():
+            await asyncio.sleep(5)
+            continue
+
+        try:
+            response = await nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES)
+            if not response or not 'task' in response:
+                async with NUM_RUNNING_TASKS_LOCK:
+                    no_tasks_running = NUM_RUNNING_TASKS == 0
+                if no_tasks_running:
+                    # if there are no running tasks we will get a trigger
+                    await wait_for_task()
+                else:
+                    # otherwise, wait with fast frequency
+                    await asyncio.sleep(2)
                 continue
+        except (NextcloudException, RequestException, JSONDecodeError) as e:
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
+            await wait_for_task(5)
+            continue
+        except Exception as e:  # noqa
+            # Anything unexpected must not end the polling loop, or no task would be picked up anymore
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.ERROR, "Unexpected error fetching the next task " + tb_str)
+            await wait_for_task(5)
+            continue
 
-            try:
-                response = await nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES)
-                if not response or not 'task' in response:
-                    async with NUM_RUNNING_TASKS_LOCK:
-                        no_tasks_running = NUM_RUNNING_TASKS == 0
-                    if no_tasks_running:
-                        # if there are no running tasks we will get a trigger
-                        await wait_for_task()
-                    else:
-                        # otherwise, wait with fast frequency
-                        await asyncio.sleep(2)
-                    continue
-            except (NextcloudException, RequestException, JSONDecodeError) as e:
-                tb_str = ''.join(traceback.format_exception(e))
-                await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
-                await wait_for_task(5)
-                continue
-
-            task = response["task"]
+        task = response["task"]
+        try:
             await log(nc, LogLvl.INFO, 'New Task incoming')
             await log(nc, LogLvl.DEBUG, str(task))
             await log(nc, LogLvl.INFO, str({
@@ -270,7 +277,17 @@ async def background_thread_task():
                 'memories': task['input'].get('memories', None),
                 'input_attachments': task['input'].get('input_attachments', None),
             }))
-            tg.create_task(handle_task(task, nc))
+        except Exception as e:  # noqa
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.WARNING, "Error logging the incoming task " + tb_str)
+        # Tasks are not run in a TaskGroup: one failing task would cancel the group and stop the polling loop
+        running_task = asyncio.create_task(handle_task(task, nc))
+        RUNNING_TASKS.add(running_task)
+        running_task.add_done_callback(RUNNING_TASKS.discard)
+
+# Keep strong references to running tasks, the event loop only holds weak ones
+RUNNING_TASKS: set[asyncio.Task] = set()
+BG_TASK: asyncio.Task | None = None
 
 NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
 NUM_RUNNING_TASKS = 0
@@ -287,9 +304,24 @@ async def report_error(nc: AsyncNextcloudApp, task_id: int, e: Exception):
 
 async def handle_task(task, nc: AsyncNextcloudApp):
     global NUM_RUNNING_TASKS
+    async with NUM_RUNNING_TASKS_LOCK:
+        NUM_RUNNING_TASKS += 1
     try:
+        await _handle_task(task, nc)
+    except Exception as e:  # noqa
+        # Last resort, _handle_task should already have reported everything
+        try:
+            tb_str = ''.join(traceback.format_exception(e))
+            await log(nc, LogLvl.ERROR, "Unhandled error while processing a task: " + tb_str)
+        except Exception:
+            pass
+    finally:
         async with NUM_RUNNING_TASKS_LOCK:
-            NUM_RUNNING_TASKS += 1
+            NUM_RUNNING_TASKS -= 1
+
+
+async def _handle_task(task, nc: AsyncNextcloudApp):
+    try:
         nextcloud = AsyncNextcloudApp()
         if task['userId']:
             await nextcloud.set_user(task['userId'])
@@ -318,12 +350,9 @@ async def handle_task(task, nc: AsyncNextcloudApp):
             tb_str = ''.join(traceback.format_exception(e))
             await log(nc, LogLvl.ERROR, "Error: " + tb_str)
             await report_error(nc, task["id"], e)
-        except (NextcloudException, RequestException) as net_err:
-            tb_str = ''.join(traceback.format_exception(net_err))
-            await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
-        finally:
-            async with NUM_RUNNING_TASKS_LOCK:
-                NUM_RUNNING_TASKS -= 1
+        except Exception as report_err:  # noqa
+            tb_str = ''.join(traceback.format_exception(report_err))
+            await log(nc, LogLvl.WARNING, "Error in reporting the error: " + tb_str)
         return
     try:
         await nc.providers.task_processing.report_result(
@@ -336,15 +365,27 @@ async def handle_task(task, nc: AsyncNextcloudApp):
             await log(nc, LogLvl.ERROR, "Error trying to report the task result: " + tb_str)
         except Exception:
             pass
-    finally:
-        async with NUM_RUNNING_TASKS_LOCK:
-            NUM_RUNNING_TASKS -= 1
 
 
 
 def start_bg_task():
-    loop = asyncio.get_event_loop()
-    loop.create_task(background_thread_task())
+    global BG_TASK
+    BG_TASK = asyncio.get_event_loop().create_task(background_thread_task())
+    BG_TASK.add_done_callback(_restart_bg_task)
+
+
+def _restart_bg_task(task: asyncio.Task):
+    # The polling loop never returns on its own, so if it ended, restart it to keep picking up tasks
+    if task.cancelled():
+        # cancelled on shutdown
+        return
+    exc = task.exception()
+    if exc is not None:
+        tb_str = ''.join(traceback.format_exception(exc))
+    else:
+        tb_str = "returned without an error"
+    logger.error("Task polling stopped unexpectedly, restarting it: " + tb_str)
+    asyncio.get_event_loop().call_later(5, start_bg_task)
 
 # Trigger event is available starting with nextcloud v33
 async def trigger_handler(providerId: str):
