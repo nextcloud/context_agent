@@ -35,6 +35,7 @@ async def _ocs_response_text(e: NextcloudException) -> str | None:
 	except asyncio.CancelledError:
 		raise
 	except Exception:
+		logger.debug("Failed to read OCS error response body", exc_info=True)
 		return None
 	if not isinstance(text, str):
 		return None
@@ -46,7 +47,7 @@ async def _ocs_response_text(e: NextcloudException) -> str | None:
 	return text
 
 
-async def format_exception(e: BaseException) -> str:
+async def format_exception_with_ocs_body(e: BaseException) -> str:
 	"""Format an exception with its traceback, like traceback.format_exception,
 	and append the body of any OCS error response in its chain, since
 	str(NextcloudException) only carries the status code and reason."""
