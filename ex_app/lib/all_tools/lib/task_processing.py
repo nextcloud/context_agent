@@ -23,7 +23,7 @@ class Response(BaseModel):
 	task: Task
 
 
-ACCEPTED_OUTPUT_KEYS = ["file", "output", "images", "slide_deck", "sources"]
+ACCEPTED_OUTPUT_KEYS = ["file", "output", "images", "slide_deck", "slide_deck_source", "sources"]
 
 
 async def run_task(nc: AsyncNextcloudApp, type, task_input):
