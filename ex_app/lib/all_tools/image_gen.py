@@ -23,7 +23,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'numberOfImages': 1,
 		}
 		task = await run_task(nc,  tasktype, task_input)
-		url = await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
+		url = (await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'}))["absolute_url"]
 		return f"{url}/{task.id}/output-file/{task.output['images'][0]}/download"
 
 	return [
