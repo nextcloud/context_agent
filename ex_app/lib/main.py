@@ -275,6 +275,8 @@ async def background_thread_task():
                 'confirmation': task['input']['confirmation'],
                 'conversation_token': '<skipped>',
                 'memories': task['input'].get('memories', None),
+                'user_instructions': task['input'].get('user_instructions', None),
+                'output_mode': task['input'].get('output_mode', None),
                 'input_attachments': task['input'].get('input_attachments', None),
             }))
         except Exception as e:  # noqa
