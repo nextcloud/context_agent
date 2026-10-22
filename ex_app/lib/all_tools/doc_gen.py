@@ -18,7 +18,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
 		:return: a download link to the generated document
 		"""
-		url = await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
+		url = (await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'}))["absolute_url"]
 
 		match format:
 			case "text document":
