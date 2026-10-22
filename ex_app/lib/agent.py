@@ -124,6 +124,23 @@ def format_user_instructions(user_instructions: str | None) -> str:
 		+ user_instructions.strip() + "\n"
 	)
 
+# Value of the optional "output_mode" input when the agent's reply is converted to speech
+OUTPUT_MODE_SPEECH = "speech"
+
+def format_output_mode(output_mode: str | None) -> str:
+	"""
+	Formatting rules for the agent's reply, depending on how it is presented to the user
+
+	They are part of the agent's own instructions, so they take precedence over the admin-provided ones
+	"""
+	if output_mode == OUTPUT_MODE_SPEECH:
+		return (
+			"Your reply will be converted to speech and read out loud to the user."
+			" Answer in plain spoken text only: do not use Markdown or any other formatting"
+			" (no headings, bullet or numbered lists, tables, bold or italic text, code blocks or emojis).\n"
+		)
+	return ""
+
 async def react(
 		task,
 		nc: AsyncNextcloudApp,
@@ -223,6 +240,8 @@ At the end of each message to the user, if you have carried out a task or answer
 					"Only create a new skill with `store_skill` when the user explicitly asks you to,"
 					" or when they describe a clearly reusable procedure that should be remembered.\n"
 				)
+
+		system_prompt_text += format_output_mode(task['input'].get('output_mode'))
 
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(

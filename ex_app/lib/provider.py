@@ -22,6 +22,11 @@ _optional_input_shape = [
 		description="Additional instructions appended to the agent's system prompt",
 		shape_type=ShapeType.TEXT
 	),
+	ShapeDescriptor(
+		name="output_mode",
+		description="How the reply is presented to the user: \"speech\" if it is read out loud (no formatting)",
+		shape_type=ShapeType.TEXT
+	),
 ]
 
 provider = TaskProcessingProvider(
