@@ -11,7 +11,7 @@ package-mode = false
 [tool.poetry.dependencies]
 python = ">=3.13,<4"
 nc-py-api = {version = "^0.30.3", extras = ["calendar"]}
-langgraph = "1.*"
+langgraph = ">=1.0.1,<2.0"
 langchain = "^0.3.25"
 ics = "^0.7.2"
 icalendar = "^7.1.2"
@@ -24,6 +24,7 @@ youtube-search = "^2.1.2"
 uvicorn = "^0.40"
 langchain-mcp-adapters = "^0.1.9"
 fastmcp = "^2.14"
+mcp = ">=1.30.0,<2.0"
 niquests = "^3.17.0"
 ddgs = "^9.13.1"
 
