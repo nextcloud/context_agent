@@ -35,7 +35,7 @@ from langgraph.checkpoint.serde.base import SerializerProtocol
 from langgraph.checkpoint.serde.types import SendProtocol
 from langgraph.store.base import Item
 
-LC_REVIVER = Reviver()
+LC_REVIVER = Reviver(allowed_objects="core")
 EMPTY_BYTES = b""
 
 
