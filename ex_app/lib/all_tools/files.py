@@ -85,13 +85,15 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@impulse(ImpulseRadius.SELF)
 	async def get_file_content_by_file_link(file_url: str):
 		"""
-		Get the content of a Nextcloud-internal file using its internal file link.
+		Get the content of a Nextcloud file with the internal link to that file.
 		This is NOT for fetching arbitrary web URLs, use web_fetch for those.
-		Only use this tool when the URL points to a file stored in Nextcloud (e.g., https://cloud.example.com/index.php/f/12345 or https://cloud.example.com/f/12345).
-		:param file_url: a Nextcloud-internal file URL (must match the pattern https://<host>/f/<fileId> or https://<host>/index.php/f/<fileId>)
+		Use this tool only when the URL points to a file in Nextcloud, for example https://cloud.example.com/index.php/f/12345 or https://cloud.example.com/f/12345.
+		:param file_url: an internal Nextcloud file URL. The URL must agree with the pattern https://<host>/f/<fileId> or the pattern https://<host>/index.php/f/<fileId>.
 		:return: text content of the file
 		"""
-
+		# This tool does not check that the URL belongs to this instance. The check stays
+		# permissive, because the set of known hosts can omit some URLs from
+		# "trusted_domains". A similar check in web_fetch is more strict.
 		return await get_file_content_from_int_link(nc, file_url)
 
 	@tool
