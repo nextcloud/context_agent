@@ -58,7 +58,7 @@ def load_conversation_old(conversation_token: str):
 
 	This is the old way which is only used as a fallback anymore
 	"""
-	checkpointer = MemorySaver()
+	checkpointer = MemorySaver(serde=JsonPlusSerializer())
 	if conversation_token == '' or conversation_token == '{}':
 		# return an empty checkpointer
 		return checkpointer
@@ -76,7 +76,7 @@ def load_conversation(conversation_token: str):
 
 	This is the new way which only restores that last checkpoint of the checkpointer instead of the whole checkpointer history
 	"""
-	checkpointer = MemorySaver()
+	checkpointer = MemorySaver(serde=JsonPlusSerializer())
 	if conversation_token == '' or conversation_token == '{}':
 		# return an empty checkpointer
 		return checkpointer
