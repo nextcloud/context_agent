@@ -58,14 +58,15 @@ def load_conversation_old(conversation_token: str):
 
 	This is the old way which is only used as a fallback anymore
 	"""
-	checkpointer = MemorySaver()
+	checkpointer = MemorySaver(serde=JsonPlusSerializer())
 	if conversation_token == '' or conversation_token == '{}':
 		# return an empty checkpointer
 		return checkpointer
 	# Verify whether this conversation token was signed by this instance of context_agent
 	serialized_checkpointer = verify_signature(conversation_token, key)
 	# Deserialize the checkpointer storage
-	checkpointer.storage = checkpointer.serde.loads(serialized_checkpointer.encode())
+	# langgraph's own serializer has no loads() anymore since langgraph-checkpoint 3.0, the vendored one still does
+	checkpointer.storage = JsonPlusSerializer().loads(serialized_checkpointer.encode())
 	# return the prepared checkpointer
 	return checkpointer
 
@@ -75,7 +76,7 @@ def load_conversation(conversation_token: str):
 
 	This is the new way which only restores that last checkpoint of the checkpointer instead of the whole checkpointer history
 	"""
-	checkpointer = MemorySaver()
+	checkpointer = MemorySaver(serde=JsonPlusSerializer())
 	if conversation_token == '' or conversation_token == '{}':
 		# return an empty checkpointer
 		return checkpointer
