@@ -103,12 +103,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Get the file tree of the user (lists the folders and files the user has in Nextcloud Files)
 		:param path: the path to enumerate. It should be relative to the root directory like /Media and NOT /userid/files/Media
 		:param include_metadata: include the etag, file/folder id, last modified times, etc. with the file/folder paths
-		:param depth: how many directory levels should be included in output. Default = 1 (only specified directory). Max depth = 5.
+		:param depth: how many directory levels should be included in output. Default = 1 (only specified directory). Min depth = 1, max depth = 5.
 		:return:
 		"""
 
 		files_handle = AsyncFilesAPI(nc._session)
-		fsnode_list = await files_handle.listdir(path, min(5, depth))
+		fsnode_list = await files_handle.listdir(path, max(1, min(5, depth)))
 		if include_metadata:
 			return [format_fs_node(fsnode) for fsnode in fsnode_list]
 
