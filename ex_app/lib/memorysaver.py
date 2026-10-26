@@ -26,6 +26,8 @@ from langgraph.checkpoint.base import (
 )
 from langgraph.checkpoint.serde.types import TASKS, ChannelProtocol
 
+from ex_app.lib.jsonplus import JsonPlusSerializer
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,7 +83,11 @@ class InMemorySaver(
 			serde: Optional[SerializerProtocol] = None,
 			factory: type[defaultdict] = defaultdict,
 	) -> None:
-		super().__init__(serde=serde)
+		# pin the vendored serde as the default: the base class default in
+		# langgraph-checkpoint 4.x dropped the untyped loads()/dumps() methods
+		# that the conversation token fallback path relies on, and its typed
+		# encodings must stay under our control
+		super().__init__(serde=serde if serde is not None else JsonPlusSerializer())
 		self.storage = factory(lambda: defaultdict(dict))
 		self.writes = factory(dict)
 		self.stack = ExitStack()
