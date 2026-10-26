@@ -62,7 +62,7 @@ def load_agent_namespace():
 	for node in tree.body:
 		if isinstance(node, ast.ImportFrom) and node.module in modules:
 			keep.append(node)
-		elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'thread' for t in node.targets):
+		elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in ('thread', 'graph_config') for t in node.targets):
 			keep.append(node)
 		elif isinstance(node, ast.FunctionDef) and node.name.startswith(('load_conversation', 'export_conversation')):
 			keep.append(node)
@@ -81,7 +81,22 @@ def import_graph_module():
 
 ns = load_agent_namespace()
 get_graph = import_graph_module().get_graph
-thread = ns['thread']
+# renamed to graph_config after 2.9.1
+thread = ns['thread'] if 'thread' in ns else ns['graph_config']
+# releases up to 2.9.1 take the safe and the dangerous tools separately, later ones
+# take all tools and decide per call by its impulse radius
+split_tools = 'safe_tools' in inspect.signature(get_graph).parameters
+if not split_tools:
+	from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+	# get_weather reaches nobody, so it runs without confirmation, while send_message
+	# carries no hook and is confirmed like any tool of unknown reach
+	impulse(ImpulseRadius.SELF)(get_weather.func)
+
+
+def build_graph(call_model, checkpointer):
+	if split_tools:
+		return get_graph(call_model, [get_weather], [send_message], checkpointer)
+	return get_graph(call_model, [get_weather, send_message], checkpointer)
 
 
 def scripted_model(script):
@@ -112,9 +127,12 @@ def load(token):
 async def run_turn(token, script, confirmation=None, user_input=''):
 	"""One task of the release: load the token, run the graph, export the new token"""
 	checkpointer = load(token)
-	graph = get_graph(scripted_model(script), [get_weather], [send_message], checkpointer)
+	graph = build_graph(scripted_model(script), checkpointer)
 	if inspect.isawaitable(graph):
 		graph = await graph
+	if isinstance(graph, tuple):
+		# returned along with the call classifications after 2.9.1
+		graph, _classifications = graph
 
 	snapshot = graph.get_state(thread)
 	if snapshot.next == ('dangerous_tools',):
