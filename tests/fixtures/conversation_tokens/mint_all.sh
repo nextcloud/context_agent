@@ -6,7 +6,8 @@
 #
 # For each tag, the sources of the tag are run by mint.py in an environment with
 # the dependencies the tag shipped with: the versions pinned in its poetry.lock,
-# or, for releases before the lock file, what was the newest on the release day.
+# or, for releases before the lock file, what was the newest on the release day,
+# installed into the python version of the tag's Docker image.
 # Requires git and uv. Run it after tagging a release and commit the new fixture.
 #
 #   tests/fixtures/conversation_tokens/mint_all.sh [tag...]
@@ -47,7 +48,17 @@ for tag in "${tags[@]}"; do
 		requirements+=(langgraph langchain-core)
 	fi
 
-	uv venv --quiet --python 3.11 "$WORK/$tag/venv"
+	# the python of the release image, or the lowest one the release supports
+	python="$(git -C "$REPO" show "$tag:Dockerfile" 2>/dev/null | sed -n 's/^FROM python:\([0-9]*\.[0-9]*\).*/\1/p' | tail -n1 || true)"
+	if [ -z "$python" ]; then
+		python="$(git -C "$REPO" show "$tag:pyproject.toml" 2>/dev/null | sed -n 's/^python = "[^0-9]*\([0-9]*\.[0-9]*\).*"$/\1/p' | head -n1 || true)"
+	fi
+	if [ -z "$python" ]; then
+		echo "Cannot tell the python version of $tag" >&2
+		exit 1
+	fi
+
+	uv venv --quiet --python "$python" "$WORK/$tag/venv"
 	VIRTUAL_ENV="$WORK/$tag/venv" uv pip install --quiet --exclude-newer "$cutoff" "${requirements[@]}"
 	"$WORK/$tag/venv/bin/python" -I "$HERE/mint.py" "$src" "$tag" "$out"
 done
