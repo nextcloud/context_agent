@@ -44,9 +44,14 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies
+      - name: Install poetry
         run: |
           pipx install poetry
+          # pipx's bin dir is not on PATH on our runners
+          echo "$(pipx environment --value PIPX_BIN_DIR)" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: |
           poetry install
           poetry run pip install pytest==8.4.2
 
