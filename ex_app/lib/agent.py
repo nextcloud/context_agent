@@ -65,7 +65,8 @@ def load_conversation_old(conversation_token: str):
 	# Verify whether this conversation token was signed by this instance of context_agent
 	serialized_checkpointer = verify_signature(conversation_token, key)
 	# Deserialize the checkpointer storage
-	checkpointer.storage = checkpointer.serde.loads(serialized_checkpointer.encode())
+	# langgraph's own serializer has no loads() anymore since langgraph-checkpoint 3.0, the vendored one still does
+	checkpointer.storage = JsonPlusSerializer().loads(serialized_checkpointer.encode())
 	# return the prepared checkpointer
 	return checkpointer
 
