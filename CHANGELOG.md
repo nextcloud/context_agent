@@ -8,6 +8,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.10.0] - 2026-10-26
+
+### Added
+* feat: Implement dynamic impulse radius classification of tools
+* feat: Implement destructiveness dimension to confirmation classification
+* feat: support additional user instructions in the system prompt (Thanks to Viacheslav Huliaiev)
+
+### Fixed
+* fix: include OCS error response bodies in logged errors (Thanks to Cestercian)
+* fix(agent): Load MemorySaver with our custom JsonPlusSerializer
+* fix(agent): Use our custom JsonPlusSerializer in load_conversation_old instead of the one from langgraph
+* fix(tools): extract absolute_url from the app_api OCS response in download links
+* fix: ask for plain text when the reply is read out loud
+* fix(web): Harden web fetch
+* fix(search): name unified search tools after the provider id (Thanks to Volodymyr Fesko)
+* fix(files): Make sure webdav failures raise an error
+* fix(main): Prevent task polling from dying
+* fix(agent): Raise recursion_limit to allow more tool calls per interaction
+* perf(agent): memoize the user timezone lookup per user
+* feat(agent): get_current_datetime tool, date-only system prompt
+* fix(tools): emit DATE values for all-day events with next-day DTEND
+* refactor(tools): default the timezone to the user's profile instead of requiring it
+* fix(tools): preserve the event timezone as TZID instead of serializing to UTC
+* fix(tools): schedule calendar events in the user's timezone, not the server's
+* fix(tables): Small consistency fix
+* fix(deck): More caching
+* fix: dependency updates
+
+
 ## [2.9.1] - 2026-09-30
 
 ### Fixed
@@ -17,18 +46,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [2.9.0] - 2026-09-30
 
 ### Added
-feat(collectives): add Collectives support for page management (thanks to @Pavlinchen)
-feat: add advanced calendar event search (thanks to Dick Tump)
-feat: Add an nc link parser tool
-
-fix(mcp-server): Fix Server access through HaRP
-feat: Make taskprocessing timeouts trigger UserFacingError so the user knows what's up
-feat: Pass on userFacingErrorMessages from chatwithtools task providers
+* feat(collectives): add Collectives support for page management (thanks to @Pavlinchen)
+* feat: add advanced calendar event search (thanks to Dick Tump)
+* feat: Add an nc link parser tool
+* fix(mcp-server): Fix Server access through HaRP
+* feat: Make taskprocessing timeouts trigger UserFacingError so the user knows what's up
+* feat: Pass on userFacingErrorMessages from chatwithtools task providers
 
 ### Fixed
-fix: web_fetch tool
-fix: web_fetch redirect to internal file fetch for regex-matched links
-fix: disambiguate between nextcloud internal file links tool and web_fetch
+* fix: web_fetch tool
+* fix: web_fetch redirect to internal file fetch for regex-matched links
+* fix: disambiguate between nextcloud internal file links tool and web_fetch
 
 ## [2.8.0] - 2026-05-08
 
