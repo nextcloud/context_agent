@@ -28,3 +28,9 @@ path = ".github/workflows/**.patch"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Nextcloud GmbH and Nextcloud contributors"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["tests/fixtures/conversation_token_pre_langchain_1x_new_style.txt", "tests/fixtures/conversation_token_pre_langchain_1x_legacy_whole_storage.txt"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nextcloud GmbH and Nextcloud contributors"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
