@@ -26,6 +26,7 @@ vobject = "^0.9.9"
 youtube-search = "^2.1.2"
 uvicorn = "^0.40"
 fastmcp = "^2.14"
+mcp = ">=1.30.0,<2.0"
 niquests = "^3.17.0"
 ddgs = "^9.13.1"
 
