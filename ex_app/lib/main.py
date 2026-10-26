@@ -23,7 +23,7 @@ from nc_py_api.ex_app import (
 
 from ex_app.lib.agent import react
 from ex_app.lib.errors import UserFacingError
-from ex_app.lib.logger import log, logger
+from ex_app.lib.logger import format_exception_with_ocs_body, log, logger
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider, multimodal_provider
 from ex_app.lib.all_tools.lib.impulse import (
@@ -254,13 +254,13 @@ async def background_thread_task():
                     await asyncio.sleep(2)
                 continue
         except (NextcloudException, RequestException, JSONDecodeError) as e:
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
             await wait_for_task(5)
             continue
         except Exception as e:  # noqa
             # Anything unexpected must not end the polling loop, or no task would be picked up anymore
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.ERROR, "Unexpected error fetching the next task " + tb_str)
             await wait_for_task(5)
             continue
@@ -280,7 +280,7 @@ async def background_thread_task():
                 'input_attachments': task['input'].get('input_attachments', None),
             }))
         except Exception as e:  # noqa
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.WARNING, "Error logging the incoming task " + tb_str)
         # Tasks are not run in a TaskGroup: one failing task would cancel the group and stop the polling loop
         running_task = asyncio.create_task(handle_task(task, nc))
@@ -313,7 +313,7 @@ async def handle_task(task, nc: AsyncNextcloudApp):
     except Exception as e:  # noqa
         # Last resort, _handle_task should already have reported everything
         try:
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.ERROR, "Unhandled error while processing a task: " + tb_str)
         except Exception:
             pass
@@ -343,17 +343,17 @@ async def _handle_task(task, nc: AsyncNextcloudApp):
                 )
             except (NextcloudException, RequestException) as stream_err:
                 stream_update_failed = True
-                tb_str = ''.join(traceback.format_exception(stream_err))
+                tb_str = await format_exception_with_ocs_body(stream_err)
                 await log(nc, LogLvl.WARNING, "Error streaming intermediate task result: " + tb_str)
 
         output = await react(task, nextcloud, stream_output=stream_output if stream_updates_enabled else None)
     except Exception as e:  # noqa
         try:
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.ERROR, "Error: " + tb_str)
             await report_error(nc, task["id"], e)
         except Exception as report_err:  # noqa
-            tb_str = ''.join(traceback.format_exception(report_err))
+            tb_str = await format_exception_with_ocs_body(report_err)
             await log(nc, LogLvl.WARNING, "Error in reporting the error: " + tb_str)
         return
     try:
@@ -363,7 +363,7 @@ async def _handle_task(task, nc: AsyncNextcloudApp):
         )
     except Exception as e:
         try:
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.ERROR, "Error trying to report the task result: " + tb_str)
         except Exception:
             pass
