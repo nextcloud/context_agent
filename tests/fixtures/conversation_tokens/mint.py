@@ -4,7 +4,8 @@
 
 This is not a test. It is run by ``mint_all.sh`` once per release tag, with the
 sources of that tag and an environment holding the dependencies that tag shipped
-with, to record what the tokens of that release looked like:
+with, to record what the tokens of that release looked like. The tests also run
+it on the current code, as tag HEAD:
 
 	python mint.py <checkout of the tag> <tag> <output.json>
 

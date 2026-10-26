@@ -15,6 +15,8 @@ there), for these conversations:
 
 Each token has to load into the conversation it was minted from, the conversation
 has to go on from where it stopped, and the token of that has to load again.
+The same goes for tokens minted by the current code (as tag HEAD), which also makes
+sure mint.py still works for the next release.
 
 Run standalone:
 
@@ -117,7 +119,27 @@ def load_fixtures():
 	return fixtures
 
 
+def mint_current():
+	"""Mint tokens with the current code, so mint.py is known to work for the next release
+
+	Returns the fixture and the error of mint.py, if it failed.
+	"""
+	with tempfile.TemporaryDirectory() as tmp:
+		out = os.path.join(tmp, 'HEAD.json')
+		result = subprocess.run(
+			[sys.executable, os.path.join(FIXTURES_DIR, 'mint.py'), os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'HEAD', out],
+			capture_output=True, text=True,
+		)
+		if result.returncode != 0:
+			return None, result.stderr
+		with open(out) as f:
+			return json.load(f), None
+
+
 FIXTURES = load_fixtures()
+CURRENT, MINT_ERROR = mint_current()
+if CURRENT is not None:
+	FIXTURES['HEAD'] = CURRENT
 CASES = [(tag, scenario) for tag, fixture in FIXTURES.items() for scenario in fixture['tokens']]
 
 
@@ -170,6 +192,10 @@ def test_every_release_has_fixtures():
 	assert not missing, f'No conversation token fixtures for {missing}, run tests/fixtures/conversation_tokens/mint_all.sh'
 	for tag, fixture in FIXTURES.items():
 		assert set(fixture['tokens']) == set(EXPECTED), f'{tag} has fixtures for {sorted(fixture["tokens"])}'
+
+
+def test_current_code_mints_tokens():
+	assert MINT_ERROR is None, f'mint.py does not work with the current code, it has to for the next release:\n{MINT_ERROR}'
 
 
 @parametrize('tag,scenario', CASES)
