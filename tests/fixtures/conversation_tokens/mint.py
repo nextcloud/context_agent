@@ -67,7 +67,8 @@ def load_agent_namespace():
 			keep.append(node)
 		elif isinstance(node, ast.FunctionDef) and node.name.startswith(('load_conversation', 'export_conversation')):
 			keep.append(node)
-	namespace = {'key': KEY}
+	# releases after 2.10.0 verify the tokens of older ones with legacy_key
+	namespace = {'key': KEY, 'legacy_key': KEY}
 	exec(compile(ast.Module(body=keep, type_ignores=[]), 'agent.py', 'exec'), namespace)
 	return namespace
 

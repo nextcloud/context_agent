@@ -146,6 +146,7 @@ CASES = [(tag, scenario) for tag, fixture in FIXTURES.items() for scenario in fi
 def load(token):
 	"""Load a token the way agent.react does, falling back to the old token type"""
 	agent.key = KEY
+	agent.legacy_key = KEY
 	try:
 		return agent.load_conversation(token)
 	except Exception:

@@ -6,6 +6,7 @@ import dataclasses
 import decimal
 import importlib
 import json
+import logging
 import pathlib
 import pickle
 import re
@@ -37,6 +38,105 @@ from langgraph.store.base import Item
 
 LC_REVIVER = Reviver(allowed_objects="core")
 EMPTY_BYTES = b""
+
+logger = logging.getLogger(__name__)
+
+# The only types that are revived on load, as (module, name). Any other type would let
+# whoever controls the serialized data import and call arbitrary functions.
+# Mirrors langgraph's SAFE_MSGPACK_TYPES, plus bytes and bytearray which dumps() emits.
+SAFE_TYPES: frozenset[tuple[str, str]] = frozenset(
+    {
+        # datetime types
+        ("datetime", "datetime"),
+        ("datetime", "date"),
+        ("datetime", "time"),
+        ("datetime", "timedelta"),
+        ("datetime", "timezone"),
+        # uuid
+        ("uuid", "UUID"),
+        # numeric
+        ("decimal", "Decimal"),
+        # collections
+        ("builtins", "set"),
+        ("builtins", "frozenset"),
+        ("builtins", "bytes"),
+        ("builtins", "bytearray"),
+        ("collections", "deque"),
+        # ip addresses
+        ("ipaddress", "IPv4Address"),
+        ("ipaddress", "IPv4Interface"),
+        ("ipaddress", "IPv4Network"),
+        ("ipaddress", "IPv6Address"),
+        ("ipaddress", "IPv6Interface"),
+        ("ipaddress", "IPv6Network"),
+        # pathlib
+        ("pathlib", "Path"),
+        ("pathlib", "PosixPath"),
+        ("pathlib", "WindowsPath"),
+        # pathlib in Python 3.13+
+        ("pathlib._local", "Path"),
+        ("pathlib._local", "PosixPath"),
+        ("pathlib._local", "WindowsPath"),
+        # zoneinfo
+        ("zoneinfo", "ZoneInfo"),
+        # regex
+        ("re", "compile"),
+        # langchain-core messages
+        ("langchain_core.messages.base", "BaseMessage"),
+        ("langchain_core.messages.base", "BaseMessageChunk"),
+        ("langchain_core.messages.human", "HumanMessage"),
+        ("langchain_core.messages.human", "HumanMessageChunk"),
+        ("langchain_core.messages.ai", "AIMessage"),
+        ("langchain_core.messages.ai", "AIMessageChunk"),
+        ("langchain_core.messages.system", "SystemMessage"),
+        ("langchain_core.messages.system", "SystemMessageChunk"),
+        ("langchain_core.messages.chat", "ChatMessage"),
+        ("langchain_core.messages.chat", "ChatMessageChunk"),
+        ("langchain_core.messages.tool", "ToolMessage"),
+        ("langchain_core.messages.tool", "ToolMessageChunk"),
+        ("langchain_core.messages.function", "FunctionMessage"),
+        ("langchain_core.messages.function", "FunctionMessageChunk"),
+        ("langchain_core.messages.modifier", "RemoveMessage"),
+        # langchain-core document model
+        ("langchain_core.documents.base", "Document"),
+        # langgraph
+        ("langgraph.types", "Send"),
+        ("langgraph.types", "TimeoutPolicy"),
+        ("langgraph.types", "Interrupt"),
+        ("langgraph.types", "Command"),
+        ("langgraph.types", "StateSnapshot"),
+        ("langgraph.types", "PregelTask"),
+        ("langgraph.types", "Overwrite"),
+        ("langgraph.store.base", "Item"),
+        ("langgraph.store.base", "GetOp"),
+    }
+)
+
+# Methods of the safe types that may be called instead of the type itself, as (module, name, method)
+SAFE_METHODS: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        ("datetime", "datetime", "fromisoformat"),
+        ("builtins", "bytes", "fromhex"),
+        ("builtins", "bytearray", "fromhex"),
+    }
+)
+
+# Pydantic constructors that bypass validation, allowed for any of the safe types
+SAFE_CONSTRUCT_METHODS = frozenset({"model_construct", "construct"})
+
+
+def _is_safe_type(module: str, name: str) -> bool:
+    if (module, name) in SAFE_TYPES:
+        return True
+    logger.warning("Blocked deserialization of %s.%s, it is not an allowed type", module, name)
+    return False
+
+
+def _is_safe_method(module: str, name: str, method: str) -> bool:
+    if method in SAFE_CONSTRUCT_METHODS or (module, name, method) in SAFE_METHODS:
+        return True
+    logger.warning("Blocked deserialization via %s.%s.%s, it is not an allowed method", module, name, method)
+    return False
 
 
 class JsonPlusSerializer(SerializerProtocol):
@@ -165,21 +265,29 @@ class JsonPlusSerializer(SerializerProtocol):
             try:
                 # Get module and class name
                 [*module, name] = value["id"]
+                module_name = ".".join(module)
+                if not _is_safe_type(module_name, name):
+                    return None
+                method = value.get("method")
+                if isinstance(method, str):
+                    method_names = [method]
+                elif isinstance(method, list):
+                    method_names = method
+                else:
+                    method_names = [None]
+                if any(
+                    m is not None and not _is_safe_method(module_name, name, m)
+                    for m in method_names
+                ):
+                    return None
                 # Import module
-                mod = importlib.import_module(".".join(module))
+                mod = importlib.import_module(module_name)
                 # Import class
                 cls = getattr(mod, name)
                 # Instantiate class
-                method = value.get("method")
-                if isinstance(method, str):
-                    methods = [getattr(cls, method)]
-                elif isinstance(method, list):
-                    methods = [
-                        cls if method is None else getattr(cls, method)
-                        for method in method
-                    ]
-                else:
-                    methods = [cls]
+                methods = [
+                    cls if m is None else getattr(cls, m) for m in method_names
+                ]
                 args = value.get("args")
                 kwargs = value.get("kwargs")
                 for method in methods:
@@ -491,6 +599,8 @@ def _msgpack_ext_hook(code: int, data: bytes) -> Any:
                 data, ext_hook=_msgpack_ext_hook, option=ormsgpack.OPT_NON_STR_KEYS
             )
             # module, name, arg
+            if not _is_safe_type(tup[0], tup[1]):
+                return
             return getattr(importlib.import_module(tup[0]), tup[1])(tup[2])
         except Exception:
             return
@@ -500,6 +610,8 @@ def _msgpack_ext_hook(code: int, data: bytes) -> Any:
                 data, ext_hook=_msgpack_ext_hook, option=ormsgpack.OPT_NON_STR_KEYS
             )
             # module, name, args
+            if not _is_safe_type(tup[0], tup[1]):
+                return
             return getattr(importlib.import_module(tup[0]), tup[1])(*tup[2])
         except Exception:
             return
@@ -509,6 +621,8 @@ def _msgpack_ext_hook(code: int, data: bytes) -> Any:
                 data, ext_hook=_msgpack_ext_hook, option=ormsgpack.OPT_NON_STR_KEYS
             )
             # module, name, args
+            if not _is_safe_type(tup[0], tup[1]):
+                return
             return getattr(importlib.import_module(tup[0]), tup[1])(**tup[2])
         except Exception:
             return
@@ -518,6 +632,8 @@ def _msgpack_ext_hook(code: int, data: bytes) -> Any:
                 data, ext_hook=_msgpack_ext_hook, option=ormsgpack.OPT_NON_STR_KEYS
             )
             # module, name, arg, method
+            if not _is_safe_type(tup[0], tup[1]) or (tup[0], tup[1], tup[3]) not in SAFE_METHODS:
+                return
             return getattr(getattr(importlib.import_module(tup[0]), tup[1]), tup[3])(
                 tup[2]
             )
@@ -529,6 +645,8 @@ def _msgpack_ext_hook(code: int, data: bytes) -> Any:
                 data, ext_hook=_msgpack_ext_hook, option=ormsgpack.OPT_NON_STR_KEYS
             )
             # module, name, kwargs
+            if not _is_safe_type(tup[0], tup[1]):
+                return tup[2]
             cls = getattr(importlib.import_module(tup[0]), tup[1])
             try:
                 return cls(**tup[2])
@@ -547,6 +665,8 @@ def _msgpack_ext_hook(code: int, data: bytes) -> Any:
                 data, ext_hook=_msgpack_ext_hook, option=ormsgpack.OPT_NON_STR_KEYS
             )
             # module, name, kwargs, method
+            if not _is_safe_type(tup[0], tup[1]):
+                return tup[2]
             cls = getattr(importlib.import_module(tup[0]), tup[1])
             try:
                 return cls(**tup[2])
