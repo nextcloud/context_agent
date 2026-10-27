@@ -1,9 +1,6 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
-import os
-import random
-import string
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from time import monotonic
@@ -29,7 +26,7 @@ from ex_app.lib.nc_model import (
 	extract_text_content,
 	model,
 )
-from ex_app.lib.signature import add_signature, verify_signature
+from ex_app.lib.signature import add_signature, load_legacy_key, load_or_create_key, verify_signature
 from ex_app.lib.tools import get_destructive_threshold, get_impulse_threshold, get_tools
 
 graph_config = {
@@ -39,18 +36,10 @@ graph_config = {
 	"recursion_limit": 256 # allows ~128 tool calls per conversation step
 }
 
-key_file_path = persistent_storage() + '/secret_key.txt'
-
-if not os.path.exists(key_file_path):
-	with open(key_file_path, "w") as file:
-		# generate random string of 256 chars
-		random_string = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=256))
-		file.write(random_string)
-	print(f"The file '{key_file_path}' has been created.")
-
-with open(key_file_path, "r") as file:
-	print(f"Reading file '{key_file_path}'.")
-	key = file.read()
+# The key that conversation tokens are signed with
+key = load_or_create_key(persistent_storage() + '/conversation_token_key.txt')
+# The key that releases up to 2.10.0 signed conversation tokens with, only used to verify those
+legacy_key = load_legacy_key(persistent_storage() + '/secret_key.txt')
 
 def load_conversation_old(conversation_token: str):
 	"""
@@ -63,7 +52,7 @@ def load_conversation_old(conversation_token: str):
 		# return an empty checkpointer
 		return checkpointer
 	# Verify whether this conversation token was signed by this instance of context_agent
-	serialized_checkpointer = verify_signature(conversation_token, key)
+	serialized_checkpointer = verify_signature(conversation_token, key, legacy_key)
 	# Deserialize the checkpointer storage
 	# langgraph's own serializer has no loads() anymore since langgraph-checkpoint 3.0, the vendored one still does
 	checkpointer.storage = JsonPlusSerializer().loads(serialized_checkpointer.encode())
@@ -82,7 +71,7 @@ def load_conversation(conversation_token: str):
 		return checkpointer
 
 	# Verify whether this was signed by this instance of context_agent
-	serialized_state = verify_signature(conversation_token, key)
+	serialized_state = verify_signature(conversation_token, key, legacy_key)
 	# Deserialize the saved state
 	conversation = JsonPlusSerializer().loads(serialized_state.encode())
 	# Get the last checkpoint state
