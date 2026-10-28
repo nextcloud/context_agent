@@ -13,6 +13,7 @@ import os
 import stat
 import sys
 import tempfile
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -79,6 +80,29 @@ def test_key_is_created_once_and_private():
 		assert len(key) == 128 and int(key, 16) > 0
 		assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 		assert load_or_create_key(path) == key
+		assert os.listdir(tmp) == ['key.txt']
+
+
+def test_key_is_created_without_hard_links():
+	with tempfile.TemporaryDirectory() as tmp, \
+			mock.patch('os.link', side_effect=PermissionError(1, 'Operation not permitted')):
+		path = os.path.join(tmp, 'key.txt')
+		key = load_or_create_key(path)
+		assert len(key) == 128 and int(key, 16) > 0
+		assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+		assert load_or_create_key(path) == key
+		assert os.listdir(tmp) == ['key.txt']
+
+
+def test_key_created_concurrently_without_hard_links_is_shared():
+	with tempfile.TemporaryDirectory() as tmp, \
+			mock.patch('os.link', side_effect=PermissionError(1, 'Operation not permitted')):
+		path = os.path.join(tmp, 'key.txt')
+		with open(path, 'w') as f:
+			f.write(KEY)
+		# another process created the key after this one checked for it
+		with mock.patch('os.path.exists', return_value=False):
+			assert load_or_create_key(path) == KEY
 		assert os.listdir(tmp) == ['key.txt']
 
 
