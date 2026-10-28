@@ -197,7 +197,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def store_reversibility(path):
 		"""A new memory is undone by deleting it, an overwritten one only from its versions."""
 		full_path, _ = __validate_memory_path(path, memories_folder_path)
-		if await count_file_tree(nc, full_path, 1):
+		# count_file_tree goes through the files API, which quotes the path itself
+		if await count_file_tree(nc, unquote(full_path), 1):
 			return Reversibility.RECOVERABLE
 		return Reversibility.REVERSIBLE
 
@@ -208,7 +209,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def folder_count(path, count_limit=None):
 		"""The folder and every memory in it."""
 		full_path, _ = __validate_memory_path(path, memories_folder_path, only_allow_folder_path=True)
-		return await count_file_tree(nc, full_path, count_limit)
+		return await count_file_tree(nc, unquote(full_path), count_limit)
 
 
 	@tool
