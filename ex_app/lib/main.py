@@ -199,9 +199,10 @@ SETTINGS = SettingsForm(
             id=RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
             title=_("Do not ask about deletions that can be undone directly"),
             description=_(
-                "Some deletions and overwrites can simply be undone, for example when the previous"
-                " content is kept as a version. When this is checked they are not judged on the"
-                " deletion bar above. Content moved to a trash bin still counts as lost."
+                "Some deletions can simply be undone, for example removing a share with a user or"
+                " group, which can be made again just like it was. When this is checked they are not"
+                " judged on the deletion bar above. Content that has to be restored from a trash bin"
+                " or from older versions still counts as lost."
             ),
             type=SettingsFieldType.CHECKBOX,
             default=DEFAULT_RELAX_REVERSIBLE_DELETIONS,
