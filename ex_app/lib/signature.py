@@ -5,6 +5,7 @@ import hmac
 import os
 import secrets
 import tempfile
+import time
 
 # Tokens signed with HMAC-SHA512 start with this prefix, followed by the hex signature and the payload
 TOKEN_PREFIX = 'v2:'
@@ -55,7 +56,8 @@ def verify_signature(input_string: str, key: str, legacy_key: str | None = None)
 
 def _read_key(path: str):
 	with open(path, 'r') as file:
-		key = file.read()
+		# tolerate a trailing newline from writing the key by hand
+		key = file.read().strip()
 	if len(key) != KEY_BYTES * 2 or any(c not in '0123456789abcdef' for c in key):
 		raise RuntimeError(f"The signing key in '{path}' is corrupt, delete it to generate a new one (this invalidates all conversation tokens)")
 	return key
@@ -66,25 +68,58 @@ def load_or_create_key(path: str):
 
 	The key is written to a temporary file and linked into place only once complete,
 	so a crash never leaves a partial key behind and concurrent starts agree on one key.
+	On filesystems without hard links the key file is created exclusively instead.
 	"""
 	if os.path.exists(path):
 		return _read_key(path)
+	key = secrets.token_hex(KEY_BYTES)
 	directory = os.path.dirname(path) or '.'
 	# mkstemp creates the file with mode 0600
 	fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.signing_key.')
 	try:
-		with os.fdopen(fd, 'w') as file:
-			file.write(secrets.token_hex(KEY_BYTES))
-			file.flush()
-			os.fsync(file.fileno())
+		_write_key(fd, key)
 		try:
 			os.link(tmp_path, path)
-			print(f"The file '{path}' has been created.")
+			created = True
 		except FileExistsError:
 			# another process created the key in the meantime
-			pass
+			created = False
+		except OSError:
+			# the filesystem does not support hard links
+			created = _create_key_exclusively(path, key)
 	finally:
 		os.unlink(tmp_path)
+	if created:
+		print(f"The file '{path}' has been created.")
+		return _read_key(path)
+	return _wait_for_key(path)
+
+def _write_key(fd: int, key: str):
+	with os.fdopen(fd, 'w') as file:
+		file.write(key)
+		file.flush()
+		os.fsync(file.fileno())
+
+def _create_key_exclusively(path: str, key: str):
+	"""
+	Create the key file only if it does not exist yet, returning whether this process created it
+	"""
+	try:
+		fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+	except FileExistsError:
+		return False
+	_write_key(fd, key)
+	return True
+
+def _wait_for_key(path: str, attempts: int = 10):
+	"""
+	Read a key that another process created, giving it time to finish writing it
+	"""
+	for _ in range(attempts - 1):
+		try:
+			return _read_key(path)
+		except RuntimeError:
+			time.sleep(0.1)
 	return _read_key(path)
 
 def load_legacy_key(path: str):
