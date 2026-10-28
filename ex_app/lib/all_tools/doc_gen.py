@@ -15,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Generate an office document based on a description of what it should contain
 		:param input: the instructions for what the document should contain
-		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"
+		:param format: the format of the generated file, allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides" (presentations are produced by the slides ExApp when installed)
 		:return: a download link to the generated document
 		"""
 		url = (await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'}))["absolute_url"]
@@ -50,10 +50,20 @@ async def get_tools(nc: AsyncNextcloudApp):
 				}
 
 			case "slides":
-				tasktype = "richdocuments:slide_deck_generation"
-				task_input = {
-					'text': input,
-				}
+				# Prefer the slides ExApp's deck task when its type is registered
+				# server-side, fall back to richdocuments' deck task otherwise.
+				# Both answer with the "slide_deck" output key.
+				tasktypes = (await nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes'))['types'].keys()
+				if 'marp_slides:slide_deck_generation' in tasktypes:
+					tasktype = "marp_slides:slide_deck_generation"
+					task_input = {
+						'prompt': input,
+					}
+				else:
+					tasktype = "richdocuments:slide_deck_generation"
+					task_input = {
+						'text': input,
+					}
 				task = await run_task(nc,  tasktype, task_input)
 				return f"{url}/{task.id}/output-file/{task.output['slide_deck']}/download"
 
@@ -68,4 +78,7 @@ def get_category_name():
 	return "Office document generation"
 
 async def is_available(nc: AsyncNextcloudApp):
-	return 'richdocuments' in await nc.capabilities
+	if 'richdocuments' in await nc.capabilities:
+		return True
+	tasktypes = (await nc.ocs('GET', '/ocs/v2.php/taskprocessing/tasktypes'))['types'].keys()
+	return 'marp_slides:slide_deck_generation' in tasktypes
