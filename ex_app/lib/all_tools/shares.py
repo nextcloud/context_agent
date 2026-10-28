@@ -15,12 +15,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return await share_id_radius(nc, share_id)
 
 	async def share_deletion_reversibility(share_id):
-		"""A user or group share can be made again just like it was. A link or mail
-		share cannot: a new one gets a new token, and the old link stays dead."""
+		"""A share with a user, group, team or Talk conversation can be made again just
+		like it was. A link or mail share cannot: a new one gets a new token, and the
+		old link stays dead."""
 		share = await nc.ocs('GET', f'/ocs/v2.php/apps/files_sharing/api/v1/shares/{share_id}')
 		if isinstance(share, list):
 			share = share[0] if share else {}
-		if int(share.get('share_type')) in (0, 1):
+		try:
+			share_type = int(share.get('share_type'))
+		except (TypeError, ValueError):
+			return Reversibility.IRREVERSIBLE
+		# 0 = user, 1 = group, 7 = team (circle), 10 = Talk conversation
+		if share_type in (0, 1, 7, 10):
 			return Reversibility.REVERSIBLE
 		return Reversibility.IRREVERSIBLE
 
