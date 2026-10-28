@@ -89,10 +89,13 @@ thread = ns['thread'] if 'thread' in ns else ns['graph_config']
 # take all tools and decide per call by its impulse radius
 split_tools = 'safe_tools' in inspect.signature(get_graph).parameters
 if not split_tools:
-	from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+	import ex_app.lib.all_tools.lib.impulse as impulse_module
 	# get_weather reaches nobody, so it runs without confirmation, while send_message
 	# carries no hook and is confirmed like any tool of unknown reach
-	impulse(ImpulseRadius.SELF)(get_weather.func)
+	impulse_module.impulse(impulse_module.ImpulseRadius.SELF)(get_weather.func)
+	# releases after 2.10.0 also want to know that it changes nothing
+	if hasattr(impulse_module, 'read_only'):
+		impulse_module.read_only(get_weather.func)
 
 
 def build_graph(call_model, checkpointer):

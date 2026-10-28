@@ -27,7 +27,7 @@ from ex_app.lib.nc_model import (
 	model,
 )
 from ex_app.lib.signature import add_signature, load_legacy_key, load_or_create_key, verify_signature
-from ex_app.lib.tools import get_destructive_threshold, get_impulse_threshold, get_tools
+from ex_app.lib.tools import get_confirmation_policy, get_tools
 
 graph_config = {
 	# Dummy thread id as we return the whole state
@@ -141,8 +141,7 @@ async def react(
 	model.multimodal = multimodal
 
 	tools = await get_tools(nc)
-	impulse_threshold = await get_impulse_threshold(nc)
-	destructive_threshold = await get_destructive_threshold(nc)
+	policy = await get_confirmation_policy(nc)
 	tz_name = user_tz = None
 	try:
 		tz_name = await user_timezone_async(nc)
@@ -251,7 +250,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		# if this fails, we fail the whole task
 		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	graph, classifications = await get_graph(call_model, tools, checkpointer, impulse_threshold, destructive_threshold)
+	graph, classifications = await get_graph(call_model, tools, checkpointer, policy)
 
 	state_snapshot = graph.get_state(graph_config)
 
@@ -338,8 +337,9 @@ At the end of each message to the user, if you have carried out a task or answer
 	state_snapshot = graph.get_state(graph_config)
 	actions = ''
 	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
-		# Each call carries the impulse radius it reaches and whether it destroys
-		# something, so a consumer can word its confirmation dialog per action.
+		# Each call carries the impulse radius it reaches, whether it destroys
+		# something, whether it can be taken back and how many items it touches, so
+		# a consumer can word its confirmation dialog per action.
 		actions = json.dumps(classifications.annotate(last_message.tool_calls))
 
 	result = {

@@ -7,13 +7,18 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, impulse, item_count, read_only, reversibility
 from ex_app.lib.logger import log
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+	def recipient_count(to_emails=None):
+		return len(to_emails or [])
+
 	@tool
 	@impulse(ImpulseRadius.EXTERNAL)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(recipient_count)
 	async def send_email(subject: str, body: str, account_id: int, from_email: str, to_emails: list[str]):
 		"""
 		Send an email to a list of email addresses
@@ -46,6 +51,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_mail_account_list():
 		"""
 		Lists all available email accounts of the current user including their account id
@@ -57,6 +63,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_mail_folder_list(account_id: int):
 		"""
 		Lists all mail folders for an email account 
@@ -67,6 +74,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_mails(folder_id: int, n_mails: int = 30):
 		"""
 		Lists all messages in a mailbox folder

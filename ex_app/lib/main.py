@@ -29,9 +29,18 @@ from ex_app.lib.provider import provider, multimodal_provider
 from ex_app.lib.all_tools.lib.impulse import (
     DEFAULT_DESTRUCTIVE_THRESHOLD,
     DEFAULT_IMPULSE_THRESHOLD,
+    DEFAULT_IRREVERSIBLE_FROM,
+    DEFAULT_IRREVERSIBLE_THRESHOLD,
+    DEFAULT_ITEM_COUNT_THRESHOLD,
+    DEFAULT_RELAX_REVERSIBLE_DELETIONS,
     DESTRUCTIVE_THRESHOLD_SETTING_ID,
     IMPULSE_THRESHOLD_SETTING_ID,
+    IRREVERSIBLE_FROM_SETTING_ID,
+    IRREVERSIBLE_THRESHOLD_SETTING_ID,
+    ITEM_COUNT_THRESHOLD_SETTING_ID,
+    RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
     ImpulseRadius,
+    Reversibility,
 )
 from ex_app.lib.tools import get_categories
 
@@ -185,6 +194,60 @@ SETTINGS = SettingsForm(
                 _("Outside this Nextcloud - confirm only losing what left the instance"):
                     ImpulseRadius.EXTERNAL.name.lower(),
             },
+        ),
+        SettingsField(
+            id=RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
+            title=_("Do not ask about deletions that can be undone directly"),
+            description=_(
+                "Some deletions and overwrites can simply be undone, for example when the previous"
+                " content is kept as a version. When this is checked they are not judged on the"
+                " deletion bar above. Content moved to a trash bin still counts as lost."
+            ),
+            type=SettingsFieldType.CHECKBOX,
+            default=DEFAULT_RELAX_REVERSIBLE_DELETIONS,
+        ),
+        SettingsField(
+            id=IRREVERSIBLE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm actions that cannot be undone from this impulse radius on"),
+            description=_(
+                "Some actions cannot be taken back: a sent email or message cannot be unsent, a"
+                " permanently deleted file is gone. Pick how far such an action has to reach before"
+                " Context Agent asks."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_IRREVERSIBLE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every action that cannot be undone"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm when it reaches named people"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm when it reaches a group, team or conversation"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only when it reaches outside the instance"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=IRREVERSIBLE_FROM_SETTING_ID,
+            title=_("Treat as impossible to undo"),
+            description=_("Which actions the bar above applies to."),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_IRREVERSIBLE_FROM.name.lower(),
+            options={
+                _("Only actions that are gone for good"): Reversibility.IRREVERSIBLE.name.lower(),
+                _("Also actions that can only be restored from a trash bin or a version history"):
+                    Reversibility.RECOVERABLE.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=ITEM_COUNT_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm when an action changes more than this many items"),
+            description=_(
+                "Counts everything that is created, changed, deleted or sent to, including the"
+                " contents of folders, across all actions Context Agent wants to carry out at once."
+                " Reading does not count."
+            ),
+            type=SettingsFieldType.NUMBER,
+            default=DEFAULT_ITEM_COUNT_THRESHOLD,
         ),
         SettingsField(
             id="here_api",

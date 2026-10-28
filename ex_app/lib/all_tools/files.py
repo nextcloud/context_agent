@@ -9,8 +9,23 @@ from nc_py_api._exceptions import NextcloudException
 from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
 from ex_app.lib.all_tools.lib.audience import file_path_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, destructive_if, impulse
-from ex_app.lib.all_tools.lib.files import format_fs_node, get_file_content_from_int_link, get_file_id_from_file_url
+from ex_app.lib.all_tools.lib.impulse import (
+	ImpulseRadius,
+	Reversibility,
+	destructive,
+	destructive_if,
+	impulse,
+	item_count,
+	read_only,
+	reversibility,
+)
+from ex_app.lib.all_tools.lib.files import (
+	count_file_tree,
+	format_fs_node,
+	get_file_content_from_int_link,
+	get_file_id_from_file_url,
+	trash_enabled,
+)
 
 
 def _validate_path(path: str) -> str:
@@ -62,8 +77,35 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""Whether a copy would land on something, and so replace it."""
 		return await _target_taken(destination_path)
 
+	async def _write_reversibility(target):
+		"""A write onto a free path is undone by deleting what it made; one onto a
+		taken path only from the versions or the trash of what it replaced."""
+		return Reversibility.RECOVERABLE if await _target_taken(target) else Reversibility.REVERSIBLE
+
+	async def path_write_reversibility(path=None):
+		return await _write_reversibility(path)
+
+	async def destination_write_reversibility(destination_path=None):
+		return await _write_reversibility(destination_path)
+
+	async def deletion_reversibility():
+		"""Deleted files go to the trash bin, unless it is switched off."""
+		return Reversibility.RECOVERABLE if await trash_enabled(nc) else Reversibility.IRREVERSIBLE
+
+	async def tree_count(path=None, count_limit=None):
+		"""Everything at this path, folder contents included."""
+		return await count_file_tree(nc, _validate_path(path), count_limit)
+
+	async def transfer_count(source_path=None, destination_path=None, count_limit=None):
+		"""What a copy or move carries over, plus whatever it lands on."""
+		count = await count_file_tree(nc, _validate_path(source_path), count_limit)
+		if count < count_limit and destination_path:
+			count += await count_file_tree(nc, _validate_path(destination_path), count_limit - count)
+		return count
+
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_file_content(file_path: str):
 		"""
 		Get the content of a nextcloud-internal file of the current user
@@ -83,6 +125,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_file_content_by_file_link(file_url: str):
 		"""
 		Get the content of a Nextcloud file with the internal link to that file.
@@ -98,6 +141,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_file_tree(path: str = '/', include_metadata = False, depth: int = 1):
 		"""
 		Get the file tree of the user (lists the folders and files the user has in Nextcloud Files)
@@ -116,6 +160,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_folder_tree(depth: int):
 		"""
 		Get the folder tree of the user (lists only the folders the user has in Nextcloud Files)
@@ -127,6 +172,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.EXTERNAL)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_public_sharing_link(path: str):
 		"""
 		Creates a public sharing link for a file or folder
@@ -145,6 +192,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(path_radius)
 	@destructive_if(path_taken)
+	@reversibility(path_write_reversibility)
+	@item_count(1)
 	async def upload_file(path: str, content: str):
 		"""
 		Upload or create a new file with text content
@@ -164,6 +213,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(path_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_folder(path: str):
 		"""
 		Create a new folder
@@ -183,6 +234,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(transfer_radius)
 	@destructive
+	@reversibility(destination_write_reversibility)
+	@item_count(transfer_count)
 	async def move_file(source_path: str, destination_path: str):
 		"""
 		Move or rename a file or folder
@@ -204,6 +257,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(transfer_radius)
 	@destructive_if(destination_taken)
+	@reversibility(destination_write_reversibility)
+	@item_count(transfer_count)
 	async def copy_file(source_path: str, destination_path: str):
 		"""
 		Copy a file or folder
@@ -224,6 +279,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_file_id_by_path(file_path: str) -> int:
 		"""
 		Resolve a file or folder path to its Nextcloud file ID.
@@ -254,6 +310,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_file_path_by_id(file_id: int) -> str:
 		"""
 		Resolve a Nextcloud file ID to its path (relative to the user's files root).
@@ -299,6 +356,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(transfer_radius)
+	@reversibility(destination_write_reversibility)
+	@item_count(1)
 	async def convert_file(source_path: str, target_mime_type: str, destination_path: str | None = None):
 		"""
 		Convert a file from one MIME type to another (e.g., docx to pdf, jpg to png).
@@ -344,6 +403,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(path_radius)
 	@destructive
+	@reversibility(deletion_reversibility)
+	@item_count(tree_count)
 	async def delete_file(path: str):
 		"""
 		Delete a file or folder
