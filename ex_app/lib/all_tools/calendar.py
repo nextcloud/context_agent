@@ -67,6 +67,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		attendee_radius = ImpulseRadius.INDIVIDUALS if attendees else ImpulseRadius.SELF
 		return max(attendee_radius, await calendar_radius(calendar_name))
 
+	async def event_reversibility(attendees=None):
+		"""Invitations are emails sent to the attendees the moment the event is saved;
+		deleting the event afterwards cannot unsend them."""
+		return Reversibility.IRREVERSIBLE if attendees else Reversibility.REVERSIBLE
+
 	async def event_size(attendees=None):
 		return 1 + len(attendees or [])
 
@@ -159,7 +164,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(event_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	@reversibility(event_reversibility)
 	@item_count(event_size)
 	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, location: Optional[str] = None, timezone: Optional[str] = None):
 		"""
