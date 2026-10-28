@@ -187,7 +187,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(circle_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	# The name and description it replaces are not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(1)
 	async def update_circle(circle_id: str, name: Optional[str] = None, description: Optional[str] = None):
 		"""
