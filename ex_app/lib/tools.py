@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import importlib
 import json
 import os
@@ -54,18 +55,29 @@ async def _get_count(nc: AsyncNextcloudApp, setting_id: str, default: int) -> in
 @timed_memoize(1*60)
 async def get_confirmation_policy(nc: AsyncNextcloudApp) -> ConfirmationPolicy:
 	"""The configured thresholds from which on tool calls have to be confirmed."""
-	irreversible_from = await nc.appconfig_ex.get_value(
-		IRREVERSIBLE_FROM_SETTING_ID, default=DEFAULT_IRREVERSIBLE_FROM.name.lower(),
+	# Each read is a round-trip of its own, so they all go out at once.
+	(
+		impulse_threshold,
+		destructive_threshold,
+		irreversible_threshold,
+		irreversible_from,
+		relax_reversible_deletions,
+		item_count_threshold,
+	) = await asyncio.gather(
+		_get_threshold(nc, IMPULSE_THRESHOLD_SETTING_ID, DEFAULT_IMPULSE_THRESHOLD),
+		_get_threshold(nc, DESTRUCTIVE_THRESHOLD_SETTING_ID, DEFAULT_DESTRUCTIVE_THRESHOLD),
+		_get_threshold(nc, IRREVERSIBLE_THRESHOLD_SETTING_ID, DEFAULT_IRREVERSIBLE_THRESHOLD),
+		nc.appconfig_ex.get_value(IRREVERSIBLE_FROM_SETTING_ID, default=DEFAULT_IRREVERSIBLE_FROM.name.lower()),
+		_get_flag(nc, RELAX_REVERSIBLE_DELETIONS_SETTING_ID, DEFAULT_RELAX_REVERSIBLE_DELETIONS),
+		_get_count(nc, ITEM_COUNT_THRESHOLD_SETTING_ID, DEFAULT_ITEM_COUNT_THRESHOLD),
 	)
 	return ConfirmationPolicy(
-		impulse_threshold=await _get_threshold(nc, IMPULSE_THRESHOLD_SETTING_ID, DEFAULT_IMPULSE_THRESHOLD),
-		destructive_threshold=await _get_threshold(nc, DESTRUCTIVE_THRESHOLD_SETTING_ID, DEFAULT_DESTRUCTIVE_THRESHOLD),
-		irreversible_threshold=await _get_threshold(nc, IRREVERSIBLE_THRESHOLD_SETTING_ID, DEFAULT_IRREVERSIBLE_THRESHOLD),
+		impulse_threshold=impulse_threshold,
+		destructive_threshold=destructive_threshold,
+		irreversible_threshold=irreversible_threshold,
 		irreversible_from=parse_reversibility(irreversible_from, default=DEFAULT_IRREVERSIBLE_FROM),
-		relax_reversible_deletions=await _get_flag(
-			nc, RELAX_REVERSIBLE_DELETIONS_SETTING_ID, DEFAULT_RELAX_REVERSIBLE_DELETIONS,
-		),
-		item_count_threshold=await _get_count(nc, ITEM_COUNT_THRESHOLD_SETTING_ID, DEFAULT_ITEM_COUNT_THRESHOLD),
+		relax_reversible_deletions=relax_reversible_deletions,
+		item_count_threshold=item_count_threshold,
 	)
 
 
