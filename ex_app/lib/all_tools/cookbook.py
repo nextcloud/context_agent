@@ -5,12 +5,13 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_recipes(category: Optional[str] = None):
 		"""
 		List all recipes or filter by category
@@ -30,6 +31,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def search_recipes(search_term: str):
 		"""
 		Search for recipes by keyword
@@ -46,6 +48,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_recipe_details(recipe_id: int):
 		"""
 		Get complete details of a recipe including ingredients and instructions
@@ -60,6 +63,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_recipe(name: str, description: Optional[str] = None, ingredients: Optional[list[str]] = None, instructions: Optional[str] = None, prep_time: Optional[str] = None, cook_time: Optional[str] = None, category: Optional[str] = None):
 		"""
 		Create a new recipe
@@ -100,6 +105,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@destructive
+	# A recipe is a folder in the user's files, so it lands in the files trash bin.
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(1)
 	async def delete_recipe(recipe_id: int):
 		"""
 		Delete a recipe
@@ -114,6 +122,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_recipe_categories():
 		"""
 		List all recipe categories

@@ -5,7 +5,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.audience import share_id_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -14,8 +14,19 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""Look the share up to see who it already grants access to."""
 		return await share_id_radius(nc, share_id)
 
+	async def share_deletion_reversibility(share_id):
+		"""A user or group share can be made again just like it was. A link or mail
+		share cannot: a new one gets a new token, and the old link stays dead."""
+		share = await nc.ocs('GET', f'/ocs/v2.php/apps/files_sharing/api/v1/shares/{share_id}')
+		if isinstance(share, list):
+			share = share[0] if share else {}
+		if int(share.get('share_type')) in (0, 1):
+			return Reversibility.REVERSIBLE
+		return Reversibility.IRREVERSIBLE
+
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_shares(path: Optional[str] = None, shared_with_me: bool = False):
 		"""
 		List all shares or shares for a specific file/folder
@@ -33,6 +44,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.INDIVIDUALS)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def share_with_user(path: str, share_with: str, permissions: int = 19):
 		"""
 		Share a file or folder with a user
@@ -50,6 +63,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.GROUP)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def share_with_group(path: str, share_with: str, permissions: int = 19):
 		"""
 		Share a file or folder with a group
@@ -67,6 +82,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(existing_share_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def update_share_permissions(share_id: int, permissions: int):
 		"""
 		Update permissions for an existing share
@@ -81,6 +98,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(existing_share_radius)
 	@destructive
+	@reversibility(share_deletion_reversibility)
+	@item_count(1)
 	async def delete_share(share_id: int):
 		"""
 		Remove/delete a share
@@ -91,6 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_user_groups():
 		"""
 		List all groups the current user belongs to
@@ -101,6 +121,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_share_info(share_id: int):
 		"""
 		Get detailed information about a specific share

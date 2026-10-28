@@ -6,7 +6,7 @@ from urllib.parse import quote
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 # Unlike the other write tools, which append their AI note to a value they create,
 # update_page_content replaces a whole page the agent usually read back first - so the
@@ -56,6 +56,31 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return ImpulseRadius.EXTERNAL
 		return ImpulseRadius.GROUP
 
+	def _subtree_size(pages, page_id, count_limit) -> int:
+		"""The page and every page below it, counted no further than count_limit."""
+		children = {}
+		for page in pages:
+			children.setdefault(str(page.get('parentId')), []).append(str(page.get('id')))
+		count = 0
+		pending = [str(page_id)]
+		while pending and count < count_limit:
+			current = pending.pop()
+			count += 1
+			pending.extend(children.get(current, []))
+		return count
+
+	async def page_subtree_size(collective_id, page_id, count_limit=None):
+		"""Trashing a page takes its subpages along."""
+		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages')
+		pages = payload.get('pages') if isinstance(payload, dict) else payload
+		return _subtree_size(pages or [], page_id, count_limit)
+
+	async def trashed_subtree_size(collective_id, page_id, count_limit=None):
+		"""Deleting or restoring a trashed page acts on the subpages trashed with it."""
+		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/trash')
+		pages = payload.get('pages') if isinstance(payload, dict) else payload
+		return _subtree_size(pages or [], page_id, count_limit)
+
 	async def _page_webdav_url(user_id: str, page: dict) -> str:
 		# A page's markdown file lives at:
 		#   /remote.php/dav/files/{user}/{collectivePath}/{filePath}/{fileName}
@@ -69,6 +94,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_collectives():
 		"""
 		List all Collectives (wiki-like knowledge bases) the current user is a member of.
@@ -81,6 +107,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_collective_pages(collective_id: int):
 		"""
 		List all pages in a Collective as a flat list with tree information.
@@ -94,6 +121,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_page(collective_id: int, page_id: int):
 		"""
 		Get metadata for a single Collectives page (without the markdown body).
@@ -106,6 +134,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_page_content(collective_id: int, page_id: int):
 		"""
 		Get the Markdown content of a Collectives page.
@@ -131,6 +160,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_page_trash(collective_id: int):
 		"""
 		List trashed pages in a Collective. Trashed pages can be restored with restore_page or
@@ -145,6 +175,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_page(collective_id: int, parent_id: int, title: str):
 		"""
 		Create a new page in a Collective as a child of an existing page.
@@ -162,6 +194,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(1)
 	async def update_page_content(collective_id: int, page_id: int, content: str):
 		"""
 		Overwrite the Markdown content of a Collectives page.
@@ -190,6 +224,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def rename_page(collective_id: int, page_id: int, title: str):
 		"""
 		Change the title of a Collectives page. Also renames the underlying .md file on disk.
@@ -204,6 +240,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def move_page(collective_id: int, page_id: int, parent_id: int):
 		"""
 		Move a page under a different parent within the same collective.
@@ -219,6 +257,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def set_page_emoji(collective_id: int, page_id: int, emoji: str):
 		"""
 		Set or clear the emoji icon for a Collectives page.
@@ -235,6 +275,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(collective_radius)
 	@destructive
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(page_subtree_size)
 	async def trash_page(collective_id: int, page_id: int):
 		"""
 		Soft-delete a page by moving it to the collective's page trash.
@@ -249,6 +291,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(trashed_subtree_size)
 	async def restore_page(collective_id: int, page_id: int):
 		"""
 		Restore a previously trashed page back to the collective.
@@ -261,6 +305,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(collective_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(trashed_subtree_size)
 	async def delete_page_permanently(collective_id: int, page_id: int):
 		"""
 		Permanently delete a page that is already in the trash. This cannot be undone.

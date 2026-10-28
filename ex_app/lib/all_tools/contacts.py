@@ -8,12 +8,13 @@ from nc_py_api import AsyncNextcloudApp
 import xml.etree.ElementTree as ET
 import vobject
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def find_person_in_users(search_term: str):
 		"""
 		Search for users
@@ -32,6 +33,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def find_person_in_contacts(name: str) -> list[dict[str, typing.Any]]:
 		"""
 		Find a person's contact information from their name
@@ -96,6 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def find_details_of_current_user() -> dict[str, typing.Any]:
 		"""
 		Find the current user's personal information, such as name, location, timezone, language

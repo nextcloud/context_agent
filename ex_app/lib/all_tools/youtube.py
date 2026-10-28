@@ -4,7 +4,7 @@ from langchain_community.tools import YouTubeSearchTool
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -16,6 +16,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	# the call would fall back to the widest radius and be confirmed every time.
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def youtube_search(query: str) -> str:
 		"""
 		Search for youtube videos associated with a person.

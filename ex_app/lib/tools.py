@@ -12,10 +12,20 @@ from ex_app.lib.all_tools.lib.decorator import timed_memoize
 from ex_app.lib.all_tools.lib.impulse import (
 	DEFAULT_DESTRUCTIVE_THRESHOLD,
 	DEFAULT_IMPULSE_THRESHOLD,
+	DEFAULT_IRREVERSIBLE_FROM,
+	DEFAULT_IRREVERSIBLE_THRESHOLD,
+	DEFAULT_ITEM_COUNT_THRESHOLD,
+	DEFAULT_RELAX_REVERSIBLE_DELETIONS,
 	DESTRUCTIVE_THRESHOLD_SETTING_ID,
 	IMPULSE_THRESHOLD_SETTING_ID,
+	IRREVERSIBLE_FROM_SETTING_ID,
+	IRREVERSIBLE_THRESHOLD_SETTING_ID,
+	ITEM_COUNT_THRESHOLD_SETTING_ID,
+	RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
+	ConfirmationPolicy,
 	ImpulseRadius,
 	parse_impulse_radius,
+	parse_reversibility,
 )
 
 
@@ -24,20 +34,39 @@ async def _get_threshold(nc: AsyncNextcloudApp, setting_id: str, default: Impuls
 	return parse_impulse_radius(configured, default=default)
 
 
+async def _get_flag(nc: AsyncNextcloudApp, setting_id: str, default: bool) -> bool:
+	configured = await nc.appconfig_ex.get_value(setting_id, default='1' if default else '0')
+	if isinstance(configured, bool):
+		return configured
+	return str(configured).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+async def _get_count(nc: AsyncNextcloudApp, setting_id: str, default: int) -> int:
+	configured = await nc.appconfig_ex.get_value(setting_id, default=str(default))
+	try:
+		return max(int(str(configured).strip()), 0)
+	except ValueError:
+		return default
+
+
 # Cached like get_tools below, and for the same reason: every turn reads these, an
-# admin changes them once in a while. Each gets its own memoize closure because
-# timed_memoize keys on the user alone -- sharing one would serve whichever
-# threshold was asked for first.
+# admin changes them once in a while.
 @timed_memoize(1*60)
-async def get_impulse_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
-	"""The configured impulse radius from which on a tool call has to be confirmed."""
-	return await _get_threshold(nc, IMPULSE_THRESHOLD_SETTING_ID, DEFAULT_IMPULSE_THRESHOLD)
-
-
-@timed_memoize(1*60)
-async def get_destructive_threshold(nc: AsyncNextcloudApp) -> ImpulseRadius:
-	"""The configured impulse radius from which on a deletion has to be confirmed."""
-	return await _get_threshold(nc, DESTRUCTIVE_THRESHOLD_SETTING_ID, DEFAULT_DESTRUCTIVE_THRESHOLD)
+async def get_confirmation_policy(nc: AsyncNextcloudApp) -> ConfirmationPolicy:
+	"""The configured thresholds from which on tool calls have to be confirmed."""
+	irreversible_from = await nc.appconfig_ex.get_value(
+		IRREVERSIBLE_FROM_SETTING_ID, default=DEFAULT_IRREVERSIBLE_FROM.name.lower(),
+	)
+	return ConfirmationPolicy(
+		impulse_threshold=await _get_threshold(nc, IMPULSE_THRESHOLD_SETTING_ID, DEFAULT_IMPULSE_THRESHOLD),
+		destructive_threshold=await _get_threshold(nc, DESTRUCTIVE_THRESHOLD_SETTING_ID, DEFAULT_DESTRUCTIVE_THRESHOLD),
+		irreversible_threshold=await _get_threshold(nc, IRREVERSIBLE_THRESHOLD_SETTING_ID, DEFAULT_IRREVERSIBLE_THRESHOLD),
+		irreversible_from=parse_reversibility(irreversible_from, default=DEFAULT_IRREVERSIBLE_FROM),
+		relax_reversible_deletions=await _get_flag(
+			nc, RELAX_REVERSIBLE_DELETIONS_SETTING_ID, DEFAULT_RELAX_REVERSIBLE_DELETIONS,
+		),
+		item_count_threshold=await _get_count(nc, ITEM_COUNT_THRESHOLD_SETTING_ID, DEFAULT_ITEM_COUNT_THRESHOLD),
+	)
 
 
 @timed_memoize(1*60)
@@ -67,9 +96,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 			if callable(get_tools_from_import):
 				print(f"Invoking {function_name} from {module_name}")
 				imported_tools = await get_tools_from_import(nc)
-				# Tools carry their impulse radius hook on the wrapped function; tools
-				# without one (MCP tools cannot be decorated) fall back to the widest
-				# radius at classification time, so they always need confirmation.
+				# Tools carry their impulse hooks on the wrapped function; tools without
+				# them (MCP tools cannot be decorated) fall back to the worst case at
+				# classification time, so they always need confirmation.
 				tools.extend(imported_tools)
 			else:
 				print(f"{function_name} in {module_name} is not callable.")

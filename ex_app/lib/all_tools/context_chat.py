@@ -6,13 +6,14 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.task_processing import run_task
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_context_chat_providers() -> str:
 		"""
 		List the content providers available to context chat (e.g., files, mail).
@@ -27,6 +28,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def ask_context_chat(
 		question: str,
 		scope_type: Literal['none', 'source', 'provider'] = 'none',

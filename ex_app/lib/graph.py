@@ -13,17 +13,17 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict, Annotated
 
 from ex_app.lib.all_tools.lib.impulse import (
-	DEFAULT_DESTRUCTIVE_THRESHOLD,
-	DEFAULT_IMPULSE_THRESHOLD,
-	ImpulseRadius,
+	CallClassification,
+	ConfirmationPolicy,
 	classify_destructive,
+	classify_item_count,
+	classify_reversibility,
 	classify_tool_call,
 	is_always_confirmed,
-	needs_confirmation,
 )
 
 # The two tool nodes hold the same tools; only one of them is interrupted before.
-# Which one a call is routed to is decided per call from its impulse radius.
+# Which one a batch of calls is routed to is decided by the ConfirmationPolicy.
 # The node names are part of the persisted conversation state, so they are kept
 # as-is to not break conversations that are waiting for a confirmation across an
 # app update.
@@ -42,7 +42,7 @@ class AgentState(TypedDict):
 class CallClassifications:
 	"""What the router worked out about each tool call it has routed.
 
-	The radius and destructiveness of a call are settled while routing it, before
+	Every dimension of a call is settled while routing it, before
 	the run stops to ask the user about it. Keeping them here lets the caller
 	describe the calls it is asking about without running the hooks -- several of
 	which query the Nextcloud API -- a second time.
@@ -51,18 +51,24 @@ class CallClassifications:
 	behind by an earlier turn can never be read as this turn's answer.
 	"""
 
-	def __init__(self):
-		self._by_call_id: dict[str, tuple[ImpulseRadius, bool]] = {}
+	def __init__(self, policy: ConfirmationPolicy):
+		self._policy = policy
+		self._by_call_id: dict[str, CallClassification] = {}
 
-	def record(self, tool_call, radius: ImpulseRadius, destroys: bool) -> None:
+	def record(self, tool_call, classification: CallClassification) -> None:
 		call_id = tool_call.get('id')
 		if call_id is None:
 			return
-		self._by_call_id[call_id] = (radius, destroys)
+		self._by_call_id[call_id] = classification
 
 	def annotate(self, tool_calls) -> list[dict]:
 		"""The tool calls as they go out to the user, each carrying how far it
-		reaches and whether it takes something away.
+		reaches, whether it takes something away, whether it can be taken back and
+		how many items it touches.
+
+		Counting stops once the count limit is reached, so ``item_count`` is a lower
+		bound unless ``item_count_exact`` says otherwise; it is None when nobody can
+		tell.
 
 		A call no record was kept for -- a tool name the model made up, which no
 		node can run -- is passed on as it came in rather than guessed at.
@@ -72,9 +78,14 @@ class CallClassifications:
 			call = dict(tool_call)
 			classification = self._by_call_id.get(tool_call.get('id'))
 			if classification is not None:
-				radius, destroys = classification
-				call['impulse_radius'] = radius.name.lower()
-				call['destructive'] = destroys
+				call['impulse_radius'] = classification.radius.name.lower()
+				call['destructive'] = classification.destroys
+				call['reversibility'] = classification.reversibility.name.lower()
+				call['item_count'] = classification.item_count
+				call['item_count_exact'] = (
+					classification.item_count is not None
+					and classification.item_count < self._policy.count_limit
+				)
 			annotated.append(call)
 		return annotated
 
@@ -103,14 +114,13 @@ async def get_graph(
 	call_model,
 	tools,
 	checkpointer,
-	impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD,
-	destructive_threshold: ImpulseRadius = DEFAULT_DESTRUCTIVE_THRESHOLD,
+	policy: ConfirmationPolicy = ConfirmationPolicy(),
 ) -> tuple[CompiledStateGraph, CallClassifications]:
 	"""Build the agent graph, along with the :class:`CallClassifications` that its
 	routing writes to.
 	"""
 	tools_by_name = {tool.name: tool for tool in tools}
-	classifications = CallClassifications()
+	classifications = CallClassifications(policy)
 
 	# Define a new graph
 	workflow = StateGraph(AgentState)
@@ -124,11 +134,11 @@ async def get_graph(
 	# This means that this node is the first one called
 	workflow.set_entry_point("agent")
 
-	async def classify_one(tool_call) -> tuple[ImpulseRadius, bool, bool] | None:
+	async def classify_one(tool_call) -> CallClassification | None:
 		"""Classify a single pending call, or None if there is nothing to classify.
 
-		Both hooks hit the network, so run them against each other rather than one
-		after the other.
+		The hooks may hit the network, so run them against each other rather than
+		one after the other.
 		"""
 		tool = tools_by_name.get(tool_call["name"])
 		if tool is None:
@@ -139,53 +149,46 @@ async def get_graph(
 			# cannot happen, so it is left out of the reckoning entirely.
 			return None
 		call_args = tool_call.get("args") or {}
-		call_radius, call_destroys = await asyncio.gather(
+		radius, destroys, reversibility, item_count = await asyncio.gather(
 			classify_tool_call(tool, call_args),
 			classify_destructive(tool, call_args),
+			classify_reversibility(tool, call_args),
+			classify_item_count(tool, call_args, policy.count_limit),
 		)
-		return call_radius, call_destroys, is_always_confirmed(tool)
+		return CallClassification(radius, destroys, reversibility, item_count, is_always_confirmed(tool))
 
-	async def classify_pending_calls(state: AgentState) -> tuple[ImpulseRadius, bool, bool]:
-		"""The widest radius the pending tool calls reach, whether any destroys
-		something, and whether any is confirmed regardless of its radius.
+	async def classify_pending_calls(state: AgentState) -> list[CallClassification]:
+		"""What the hooks make of each pending tool call.
 
 		The calls are classified against each other -- a batch of them would
-		otherwise pay for every lookup in series before any tool runs -- and folded
-		together afterwards, so what gets logged and recorded stays in the model's
-		order.
+		otherwise pay for every lookup in series before any tool runs -- and logged
+		and recorded afterwards, so that stays in the model's order.
 		"""
 		tool_calls = state["messages"][-1].tool_calls
 		classified = await asyncio.gather(*(classify_one(tc) for tc in tool_calls))
 
-		radius = ImpulseRadius.SELF
-		destroys = False
-		always = False
+		calls = []
 		for tool_call, classification in zip(tool_calls, classified):
 			if classification is None:
 				print(f"Tool call: {tool_call['name']} -> no such tool, leaving it to the tool node to report")
 				continue
-			call_radius, call_destroys, call_always = classification
-			print(f"Tool call: {tool_call['name']} -> impulse radius {call_radius.name}"
-			      f"{', destroys something' if call_destroys else ''}"
-			      f"{', always confirmed' if call_always else ''}")
-			classifications.record(tool_call, call_radius, call_destroys)
-			radius = max(radius, call_radius)
-			destroys = destroys or call_destroys
-			always = always or call_always
-		return radius, destroys, always
+			item_count = '?' if classification.item_count is None else classification.item_count
+			print(f"Tool call: {tool_call['name']} -> impulse radius {classification.radius.name}"
+			      f", {classification.reversibility.name.lower()}, {item_count} items"
+			      f"{', destroys something' if classification.destroys else ''}"
+			      f"{', always confirmed' if classification.always else ''}")
+			classifications.record(tool_call, classification)
+			calls.append(classification)
+		return calls
 
 	async def route_tools(state: AgentState):
 		next_node = tools_condition(state)
 		# If no tools are invoked, return to the user
 		if next_node == END:
 			return END
-		radius, destroys, always = await classify_pending_calls(state)
-		if needs_confirmation(radius, impulse_threshold, destroys, destructive_threshold, always):
-			if always:
-				print("A pending tool call is always confirmed, asking the user")
-			else:
-				threshold = destructive_threshold if destroys and radius < impulse_threshold else impulse_threshold
-				print(f"Impulse radius {radius.name} reaches the threshold {threshold.name}, asking the user")
+		reasons = policy.reasons(await classify_pending_calls(state))
+		if reasons:
+			print(f"Asking the user: {'; '.join(reasons)}")
 			return CONFIRM_TOOLS_NODE
 		return AUTO_TOOLS_NODE
 

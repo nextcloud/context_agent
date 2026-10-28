@@ -5,7 +5,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.audience import share_type_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -22,8 +22,18 @@ async def get_tools(nc: AsyncNextcloudApp):
 		for share in form['shares'] or []:
 			radius = max(radius, share_type_radius(share.get('shareType')))
 		return radius
+
+	async def form_size(form_id):
+		"""Deleting a form takes every submission it collected along with it."""
+		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/submissions')
+		submissions = payload.get('submissions') if isinstance(payload, dict) else None
+		if submissions is None:
+			raise ValueError(f'Could not read the submissions of form {form_id!r}')
+		return 1 + len(submissions)
+
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_forms():
 		"""
 		List all forms created by the current user
@@ -33,6 +43,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_form_details(form_id: int):
 		"""
 		Get detailed information about a specific form including questions
@@ -43,6 +54,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_form(title: str, description: Optional[str] = None):
 		"""
 		Create a new form. First creates the form, then updates it with the title and description.
@@ -65,6 +78,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(form_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def add_question_to_form(form_id: int, question_text: str, question_type: str, is_required: bool = False, options: Optional[list[str]] = None):
 		"""
 		Add a question to an existing form
@@ -98,6 +113,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_form_responses(form_id: int):
 		"""
 		Get all responses/submissions for a form
@@ -109,6 +125,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(form_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(form_size)
 	async def delete_form(form_id: int):
 		"""
 		Delete a form
@@ -119,6 +137,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(form_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def update_form_settings(form_id: int, is_anonymous: Optional[bool] = None, submit_multiple: Optional[bool] = None, show_expiration: Optional[bool] = None, expires: Optional[int] = None):
 		"""
 		Update form settings
