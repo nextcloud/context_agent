@@ -91,6 +91,14 @@ def test_corrupt_key_is_refused():
 			assert raises(load_or_create_key, path)
 
 
+def test_key_written_by_hand_is_accepted():
+	with tempfile.TemporaryDirectory() as tmp:
+		path = os.path.join(tmp, 'key.txt')
+		with open(path, 'w') as f:
+			f.write(KEY + '\n')
+		assert load_or_create_key(path) == KEY
+
+
 def test_corrupt_legacy_key_is_ignored():
 	with tempfile.TemporaryDirectory() as tmp:
 		path = os.path.join(tmp, 'secret_key.txt')

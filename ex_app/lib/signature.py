@@ -55,7 +55,8 @@ def verify_signature(input_string: str, key: str, legacy_key: str | None = None)
 
 def _read_key(path: str):
 	with open(path, 'r') as file:
-		key = file.read()
+		# tolerate a trailing newline from writing the key by hand
+		key = file.read().strip()
 	if len(key) != KEY_BYTES * 2 or any(c not in '0123456789abcdef' for c in key):
 		raise RuntimeError(f"The signing key in '{path}' is corrupt, delete it to generate a new one (this invalidates all conversation tokens)")
 	return key
