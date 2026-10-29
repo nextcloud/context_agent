@@ -173,7 +173,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.EXTERNAL)
 	@reversibility(Reversibility.REVERSIBLE)
-	@item_count(1)
+	@item_count(tree_count)
 	async def create_public_sharing_link(path: str):
 		"""
 		Creates a public sharing link for a file or folder

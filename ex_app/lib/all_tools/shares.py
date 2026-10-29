@@ -5,6 +5,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.audience import share_id_radius
+from ex_app.lib.all_tools.lib.files import count_share_tree, count_shared_tree
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 
@@ -13,6 +14,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def existing_share_radius(share_id):
 		"""Look the share up to see who it already grants access to."""
 		return await share_id_radius(nc, share_id)
+
+	async def path_tree_count(path=None, count_limit=None):
+		"""Sharing a folder exposes everything in it."""
+		return await count_shared_tree(nc, path, count_limit)
+
+	async def existing_share_count(share_id=None, count_limit=None):
+		"""Everything the share already exposes, folder contents included."""
+		return await count_share_tree(nc, share_id, count_limit)
 
 	async def share_deletion_reversibility(share_id):
 		"""A share with a user, group, team or Talk conversation can be made again just
@@ -51,7 +60,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.INDIVIDUALS)
 	@reversibility(Reversibility.REVERSIBLE)
-	@item_count(1)
+	@item_count(path_tree_count)
 	async def share_with_user(path: str, share_with: str, permissions: int = 19):
 		"""
 		Share a file or folder with a user
@@ -70,7 +79,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.GROUP)
 	@reversibility(Reversibility.REVERSIBLE)
-	@item_count(1)
+	@item_count(path_tree_count)
 	async def share_with_group(path: str, share_with: str, permissions: int = 19):
 		"""
 		Share a file or folder with a group
@@ -89,7 +98,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(existing_share_radius)
 	@reversibility(Reversibility.REVERSIBLE)
-	@item_count(1)
+	@item_count(existing_share_count)
 	async def update_share_permissions(share_id: int, permissions: int):
 		"""
 		Update permissions for an existing share
@@ -105,7 +114,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@impulse(existing_share_radius)
 	@destructive
 	@reversibility(share_deletion_reversibility)
-	@item_count(1)
+	@item_count(existing_share_count)
 	async def delete_share(share_id: int):
 		"""
 		Remove/delete a share

@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.talk import ConversationType
 
+from ex_app.lib.all_tools.lib.files import count_shared_tree
 from ex_app.lib.all_tools.lib.impulse import (
 	ImpulseRadius,
 	Reversibility,
@@ -263,10 +264,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	# --- File sharing ---
 
+	async def shared_tree_count(file_path=None, count_limit=None):
+		"""Sharing a folder exposes everything in it."""
+		return await count_shared_tree(nc, file_path, count_limit)
+
 	@tool
 	@impulse(conversation_radius)
 	@reversibility(Reversibility.IRREVERSIBLE)
-	@item_count(1)
+	@item_count(shared_tree_count)
 	async def share_file_to_conversation(conversation_name: str, file_path: str, caption: Optional[str] = None):
 		"""
 		Share a file from Nextcloud Files into a Talk conversation.

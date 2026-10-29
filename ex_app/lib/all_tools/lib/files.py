@@ -225,6 +225,26 @@ async def count_file_tree(nc: AsyncNextcloudApp, path: str, count_limit: int) ->
 	return min(count, count_limit)
 
 
+async def count_shared_tree(nc: AsyncNextcloudApp, path: str, count_limit: int) -> int:
+	"""How many files and folders sharing this path exposes: the node itself and,
+	for a folder, everything in it."""
+	if not isinstance(path, str) or any(segment in ('.', '..') for segment in path.split('/')):
+		raise ValueError(f'Invalid path: {path!r}')
+	return await count_file_tree(nc, path, count_limit)
+
+
+async def count_share_tree(nc: AsyncNextcloudApp, share_id, count_limit: int) -> int:
+	"""How many files and folders an existing share exposes. A share whose node
+	cannot be found still counts as the one item it is."""
+	share = await nc.ocs('GET', f'/ocs/v2.php/apps/files_sharing/api/v1/shares/{share_id}')
+	if isinstance(share, list):
+		share = share[0] if share else {}
+	path = share.get('path')
+	if not path:
+		return 1
+	return max(await count_shared_tree(nc, path, count_limit), 1)
+
+
 async def trash_enabled(nc: AsyncNextcloudApp) -> bool:
 	"""Whether deleted files end up in a trash bin they can be restored from."""
 	files_capabilities = (await nc.capabilities).get('files') or {}
