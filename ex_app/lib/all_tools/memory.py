@@ -14,7 +14,16 @@ from nc_py_api._exceptions import NextcloudExceptionNotFound
 from nc_py_api.files.files_async import AsyncFilesAPI
 from pydantic import BaseModel, ValidationError, computed_field, field_validator
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.files import count_file_tree, trash_enabled
+from ex_app.lib.all_tools.lib.impulse import (
+	ImpulseRadius,
+	Reversibility,
+	destructive,
+	impulse,
+	item_count,
+	read_only,
+	reversibility,
+)
 from ex_app.lib.all_tools.lib.task_processing import run_task
 from ex_app.lib.logger import log
 
@@ -185,9 +194,27 @@ async def get_tools(nc: AsyncNextcloudApp):
 	assistant_folder_path = await __get_assistant_folder_path(nc)
 	memories_folder_path = f'{(assistant_folder_path or "").removesuffix("/")}/{MEMORIES_RELATIVE_FOLDER_PATH}'
 
+	async def store_reversibility(path):
+		"""A new memory is undone by deleting it, an overwritten one only from its versions."""
+		full_path, _ = __validate_memory_path(path, memories_folder_path)
+		# count_file_tree goes through the files API, which quotes the path itself
+		if await count_file_tree(nc, unquote(full_path), 1):
+			return Reversibility.RECOVERABLE
+		return Reversibility.REVERSIBLE
+
+	async def deletion_reversibility():
+		"""Deleted memories go to the trash bin, unless it is switched off."""
+		return Reversibility.RECOVERABLE if await trash_enabled(nc) else Reversibility.IRREVERSIBLE
+
+	async def folder_count(path, count_limit=None):
+		"""The folder and every memory in it."""
+		full_path, _ = __validate_memory_path(path, memories_folder_path, only_allow_folder_path=True)
+		return await count_file_tree(nc, unquote(full_path), count_limit)
+
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_memory_tree(depth: int = 2):
 		"""
 		Recursively list the memories stored in a file tree structure. Max depth is 2.
@@ -220,6 +247,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def load_memory(path: str):
 		"""
 		Load one particular memory from the memory store identified by full path.
@@ -245,6 +273,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@reversibility(store_reversibility)
+	@item_count(1)
 	async def store_memory(path: str, content: str):
 		"""
 		Stores a complete memory file overwriting it if it already exists.
@@ -284,6 +314,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@destructive
+	@reversibility(deletion_reversibility)
+	@item_count(1)
 	async def delete_memory(path: str):
 		"""
 		Deletes a particular memory file identified by a full file/memory path.
@@ -314,6 +346,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@destructive
+	@reversibility(deletion_reversibility)
+	@item_count(folder_count)
 	async def delete_memory_folder(path: str):
 		"""
 		Deletes the whole folder of memories by a full path.
@@ -337,6 +371,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def search_memories(query: str, k: int = 5) -> list[dict[str, str]]:
 		"""
 		Do a semantic search over the contents of all the stored memories.

@@ -6,12 +6,13 @@ import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_coordinates_for_address(address: str) -> (str, str):
 		"""
 		Calculates the coordinates for a given address
@@ -29,6 +30,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_osm_route(profile: str, origin_lat: str, origin_lon: str, destination_lat: str, destination_lon: str,):
 		"""
 		Retrieve a route between two coordinates traveled by foot, car or bike
@@ -70,6 +72,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_osm_link(location: str):
 		"""
 		Retrieve a URL for a map of a given location.

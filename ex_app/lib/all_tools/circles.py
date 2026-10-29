@@ -5,7 +5,16 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.files import count_shared_tree
+from ex_app.lib.all_tools.lib.impulse import (
+	ImpulseRadius,
+	Reversibility,
+	destructive,
+	impulse,
+	item_count,
+	read_only,
+	reversibility,
+)
 
 # Nextcloud Circles member type constants
 TYPE_USER = 1
@@ -78,8 +87,15 @@ async def get_tools(nc: AsyncNextcloudApp):
 				radius = max(radius, ImpulseRadius.GROUP)
 		return radius
 
+	async def circle_size(circle_id):
+		"""The team itself and every membership that goes with it."""
+		_validate_circle_id(circle_id)
+		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		return 1 + len(members or [])
+
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_circles():
 		"""
 		List all circles (teams) the user is a member of
@@ -89,6 +105,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_circle_details(circle_id: str):
 		"""
 		Get detailed information about a specific circle (team)
@@ -100,6 +117,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_circle_members(circle_id: str):
 		"""
 		List all members of a specific circle (team)
@@ -112,6 +130,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_circle(name: str, description: Optional[str] = None, is_personal: bool = False):
 		"""
 		Create a new circle (team)
@@ -131,6 +151,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(new_member_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def add_member_to_circle(circle_id: str, member_id: str, member_type: int = TYPE_USER):
 		"""
 		Add a member to a circle (team)
@@ -151,6 +173,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(removed_member_radius)
 	@destructive
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def remove_member_from_circle(circle_id: str, member_id: str):
 		"""
 		Remove a member from a circle (team)
@@ -164,6 +188,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(circle_radius)
+	# The name and description it replaces are not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_circle(circle_id: str, name: Optional[str] = None, description: Optional[str] = None):
 		"""
 		Update circle (team) information
@@ -182,6 +209,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(circle_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(circle_size)
 	async def delete_circle(circle_id: str):
 		"""
 		Delete a circle (team)
@@ -191,8 +220,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_circle_id(circle_id)
 		await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
 
+	async def shared_tree_count(path=None, count_limit=None):
+		"""Sharing a folder exposes everything in it."""
+		return await count_shared_tree(nc, path, count_limit)
+
 	@tool
 	@impulse(ImpulseRadius.GROUP)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(shared_tree_count)
 	async def share_with_circle(path: str, circle_id: str, permissions: int = 19):
 		"""
 		Share a file or folder with a circle (team)

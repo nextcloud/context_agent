@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.audience import share_type_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -44,6 +44,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return radius
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_bookmarks(page: int = 0, limit: int = 100, folder_id: Optional[int] = None, tags: Optional[list[str]] = None):
 		"""
 		List bookmarks with optional filtering
@@ -70,6 +71,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def search_bookmarks(search_term: str):
 		"""
 		Search for bookmarks by keyword
@@ -84,6 +86,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(folder_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_bookmark(url: str, title: Optional[str] = None, description: Optional[str] = None, tags: Optional[list[str]] = None, folder_id: Optional[int] = None):
 		"""
 		Create a new bookmark
@@ -115,6 +119,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(bookmark_radius)
+	# The description, tags and folders it replaces are not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_bookmark(bookmark_id: int, url: Optional[str] = None, title: Optional[str] = None, description: Optional[str] = None, tags: Optional[list[str]] = None, folders: Optional[list[int]] = None):
 		"""
 		Update an existing bookmark
@@ -147,6 +154,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(bookmark_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def delete_bookmark(bookmark_id: int):
 		"""
 		Delete a bookmark
@@ -161,6 +170,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_bookmark_folders():
 		"""
 		List all bookmark folders
@@ -174,6 +184,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(folder_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_bookmark_folder(title: str, parent_folder_id: Optional[int] = None):
 		"""
 		Create a new bookmark folder
@@ -195,6 +207,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_bookmark_tags():
 		"""
 		List all bookmark tags with usage counts

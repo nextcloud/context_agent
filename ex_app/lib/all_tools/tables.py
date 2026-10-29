@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -31,11 +31,15 @@ async def get_tools(nc: AsyncNextcloudApp):
 				radius = max(radius, ImpulseRadius.EXTERNAL)
 		return radius
 
-	async def table_radius(table_id):
-		"""Look the table up to see whether anyone besides the user can reach it."""
+	async def find_table(table_id):
 		table = next((t for t in await tables_get('/tables') if t.get('id') == int(table_id)), None)
 		if table is None:
 			raise ValueError(f'No table with id {table_id!r}')
+		return table
+
+	async def table_radius(table_id):
+		"""Look the table up to see whether anyone besides the user can reach it."""
+		table = await find_table(table_id)
 		if table.get('isFederated'):
 			return ImpulseRadius.EXTERNAL
 		if table.get('isShared'):
@@ -46,12 +50,29 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return ImpulseRadius.SELF
 		return await table_share_radius(table_id)
 
-	async def column_radius(column_id):
-		"""A column belongs to a table, and reaches whoever that table reaches."""
+	async def column_table_id(column_id):
 		column = await tables_get(f'/columns/{int(column_id)}')
 		if not isinstance(column, dict) or column.get('tableId') is None:
 			raise ValueError(f'Could not resolve column {column_id!r} to a table')
-		return await table_radius(column['tableId'])
+		return column['tableId']
+
+	async def column_radius(column_id):
+		"""A column belongs to a table, and reaches whoever that table reaches."""
+		return await table_radius(await column_table_id(column_id))
+
+	async def table_rows(table_id):
+		rows = (await find_table(table_id)).get('rowsCount')
+		if rows is None:
+			raise ValueError(f'Could not read the row count of table {table_id!r}')
+		return int(rows)
+
+	async def table_size(table_id):
+		"""Deleting a table takes every row with it."""
+		return 1 + await table_rows(table_id)
+
+	async def column_size(column_id):
+		"""Deleting a column empties its cell in every row of the table."""
+		return 1 + await table_rows(await column_table_id(column_id))
 
 	async def row_radius(row_id):
 		"""A row belongs to a table, and reaches whoever that table reaches."""
@@ -64,6 +85,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_tables():
 		"""
 		List all tables available to the current user in the Nextcloud Tables app
@@ -77,6 +99,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_table(title: str, emoji: Optional[str] = None, template: Optional[str] = None):
 		"""
 		Create a new table in the Nextcloud Tables app
@@ -99,6 +123,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(table_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def update_table(table_id: int, title: Optional[str] = None, emoji: Optional[str] = None, archived: Optional[bool] = None):
 		"""
 		Update a table's properties
@@ -125,6 +151,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(table_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(table_size)
 	async def delete_table(table_id: int):
 		"""
 		Delete a table and all its columns and rows
@@ -141,6 +169,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_columns(table_id: int):
 		"""
 		List all columns defined for a table
@@ -155,6 +184,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(table_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_column(
 		table_id: int,
 		title: str,
@@ -265,6 +296,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(column_radius)
+	# Tables resets every usergroup flag left out of the request, with no history.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_column(
 		column_id: int,
 		title: Optional[str] = None,
@@ -324,6 +358,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(column_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(column_size)
 	async def delete_column(column_id: int):
 		"""
 		Delete a column from a table. This also removes all data stored in this column for every row.
@@ -340,6 +376,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_rows(table_id: int, limit: Optional[int] = None, offset: Optional[int] = None):
 		"""
 		List all rows in a table with their data.
@@ -364,6 +401,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(table_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_row(table_id: int, data: str):
 		"""
 		Create a new row in a table.
@@ -396,6 +435,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(row_radius)
+	# The values it overwrites are not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_row(row_id: int, data: str, view_id: Optional[int] = None):
 		"""
 		Update an existing row's data.
@@ -428,6 +470,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(row_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def delete_row(row_id: int):
 		"""
 		Delete a row from a table
