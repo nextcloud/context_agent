@@ -5,6 +5,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
+from ex_app.lib.all_tools.lib.files import count_shared_tree
 from ex_app.lib.all_tools.lib.impulse import (
 	ImpulseRadius,
 	Reversibility,
@@ -219,10 +220,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_circle_id(circle_id)
 		await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
 
+	async def shared_tree_count(path=None, count_limit=None):
+		"""Sharing a folder exposes everything in it."""
+		return await count_shared_tree(nc, path, count_limit)
+
 	@tool
 	@impulse(ImpulseRadius.GROUP)
 	@reversibility(Reversibility.REVERSIBLE)
-	@item_count(1)
+	@item_count(shared_tree_count)
 	async def share_with_circle(path: str, circle_id: str, permissions: int = 19):
 		"""
 		Share a file or folder with a circle (team)
