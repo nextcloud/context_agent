@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
 import re
+from typing import Optional
 from urllib.parse import quote
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
@@ -76,6 +77,37 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: list of collectives with id, name, emoji, slug, and the user's permissions (canEdit, canShare)
 		"""
 		return json.dumps(await nc.ocs('GET', '/ocs/v2.php/apps/collectives/api/v1.0/collectives'))
+
+	@tool
+	@dangerous_tool
+	async def create_collective(name: str, emoji: Optional[str] = None):
+		"""
+		Create a new Collective (wiki-like knowledge base) with the current user as its admin.
+		This also creates a team (circle) of the same name that holds the collective's members;
+		add people, groups or other teams to it with add_member_to_circle using the returned circleId.
+		The collective starts with a landing page; add pages with create_page.
+		Fails if a team with that name already exists - check list_collectives and list_circles
+		and pick another name in that case.
+		:param name: the name for the new collective (also used for its team)
+		:param emoji: optional single emoji character used as the collective's icon (e.g. "📚")
+		:return: the created collective including its id (needed by the page tools) and circleId
+		"""
+		payload = {'name': name}
+		if emoji:
+			payload['emoji'] = emoji
+		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/collectives/api/v1.0/collectives', json=payload))
+
+	@tool
+	@dangerous_tool
+	async def trash_collective(collective_id: int):
+		"""
+		Move a Collective to the Collectives trash. Only admins of the collective's team can do this.
+		The collective, its pages and its team are kept and it can be restored or deleted
+		permanently from the Collectives app.
+		:param collective_id: the id of the collective (obtainable with list_collectives)
+		:return: the trashed collective's metadata
+		"""
+		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}'))
 
 	# --- Pages (read) ---
 
@@ -273,6 +305,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	return [
 		list_collectives,
+		create_collective,
+		trash_collective,
 		list_collective_pages,
 		get_page,
 		get_page_content,
