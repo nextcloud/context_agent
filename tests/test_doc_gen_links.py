@@ -11,8 +11,10 @@ the app_api nextcloud_url endpoint with the dict the real OCS controller
 returns ({'absolute_url': ...}), not a bare string. A fake that answered with
 a bare string could not see the dict-repr mangling these tests guard against.
 The fake also answers the taskprocessing tasktypes endpoint and mirrors
-AsyncNextcloudApp's async capabilities property, which doc_gen's slides
-dispatch preference and availability checks query.
+AsyncNextcloudApp's async capabilities property. doc_gen derives its format
+menu, its runtime guard for unservable formats and its availability from the
+registered task types alone: a capability without a registered task type must
+not advertise the formats of that app.
 """
 import asyncio
 import os
@@ -26,6 +28,17 @@ NEXTCLOUD_URL = 'https://nc.example.test'
 
 MARP_SLIDES_TASK_TYPE = 'marp_slides:slide_deck_generation'
 
+RICHDOCUMENTS_TEXT_TASK_TYPE = 'richdocuments:text_to_text_document'
+RICHDOCUMENTS_SPREADSHEET_TASK_TYPE = 'richdocuments:text_to_spreadsheet_document'
+RICHDOCUMENTS_SLIDES_TASK_TYPE = 'richdocuments:slide_deck_generation'
+
+# A full richdocuments instance: every format the tool knows is servable.
+RICHDOCUMENTS_TASK_TYPES = {
+	RICHDOCUMENTS_TEXT_TASK_TYPE: {},
+	RICHDOCUMENTS_SPREADSHEET_TASK_TYPE: {},
+	RICHDOCUMENTS_SLIDES_TASK_TYPE: {},
+}
+
 
 class _FakeNextcloudApp:
 	"""Records ocs() calls; answers the endpoints the two tools touch."""
@@ -33,7 +46,9 @@ class _FakeNextcloudApp:
 	def __init__(self, task_id=42, file_id=1337, tasktypes=None, capabilities=None):
 		self.task_id = task_id
 		self.file_id = file_id
-		self.tasktypes = dict(tasktypes or {})
+		# Defaults to a full richdocuments instance, so the default fake serves
+		# every format; pass tasktypes explicitly for other instance shapes.
+		self.tasktypes = dict(tasktypes if tasktypes is not None else RICHDOCUMENTS_TASK_TYPES)
 		self._capabilities = dict(capabilities or {})
 		self.ocs_calls = []
 
@@ -70,6 +85,12 @@ def _tool_coroutine(module, nc, name):
 	tools = asyncio.run(module.get_tools(nc))
 	by_name = {tool.name: tool for tool in tools}
 	return by_name[name].coroutine
+
+
+def _tool_description(module, nc, name):
+	tools = asyncio.run(module.get_tools(nc))
+	by_name = {tool.name: tool for tool in tools}
+	return by_name[name].description
 
 
 def _schedule_calls(nc):
@@ -114,7 +135,9 @@ def test_slides_dispatch_marp_task_type_when_registered():
 
 
 def test_slides_fall_back_to_richdocuments_without_marp_task_type():
-	nc = _FakeNextcloudApp(tasktypes={'core:text2text': {}})
+	# Slides must be servable for the fallback to run at all, so the
+	# richdocuments deck task type is registered while marp's is not.
+	nc = _FakeNextcloudApp(tasktypes={'core:text2text': {}, RICHDOCUMENTS_SLIDES_TASK_TYPE: {}})
 	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
 	link = asyncio.run(generate_document(input='Deck brief', format='slides'))
 	((_, _, payload),) = _schedule_calls(nc)
@@ -124,8 +147,17 @@ def test_slides_fall_back_to_richdocuments_without_marp_task_type():
 
 
 def test_is_available_true_with_richdocuments_only():
-	nc = _FakeNextcloudApp(capabilities={'richdocuments': {}})
+	# Availability comes from the registered task types, not from capabilities.
+	nc = _FakeNextcloudApp(tasktypes=RICHDOCUMENTS_TASK_TYPES)
 	assert asyncio.run(doc_gen.is_available(nc)) is True
+
+
+def test_is_available_false_with_capability_but_no_registered_task_types():
+	# Marcel's concern, encoded: the richdocuments capability alone proves
+	# nothing. With none of its task types registered there is nothing the
+	# tool could run, so it must not be offered.
+	nc = _FakeNextcloudApp(capabilities={'richdocuments': {}}, tasktypes={})
+	assert asyncio.run(doc_gen.is_available(nc)) is False
 
 
 def test_is_available_true_with_marp_task_type_only():
@@ -134,13 +166,55 @@ def test_is_available_true_with_marp_task_type_only():
 
 
 def test_is_available_true_with_richdocuments_and_marp():
-	nc = _FakeNextcloudApp(capabilities={'richdocuments': {}}, tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	nc = _FakeNextcloudApp(tasktypes={**RICHDOCUMENTS_TASK_TYPES, MARP_SLIDES_TASK_TYPE: {}})
 	assert asyncio.run(doc_gen.is_available(nc)) is True
 
 
 def test_is_available_false_with_neither():
 	nc = _FakeNextcloudApp(capabilities={}, tasktypes={'core:text2text': {}})
 	assert asyncio.run(doc_gen.is_available(nc)) is False
+
+
+def test_marp_only_instance_offers_only_the_slides_format():
+	nc = _FakeNextcloudApp(tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	description = _tool_description(doc_gen, nc, 'generate_document')
+	assert 'allowed values are "slides"' in description
+	for unservable in ('"text document"', '"pdf"', '"spreadsheet"', '"excel spreadsheet"'):
+		assert unservable not in description
+	# The rest of the contract is untouched by the format filtering.
+	assert ':param input:' in description
+	assert ':return:' in description
+
+
+def test_richdocuments_instance_offers_all_formats():
+	nc = _FakeNextcloudApp()
+	description = _tool_description(doc_gen, nc, 'generate_document')
+	assert 'allowed values are "text document", "pdf", "spreadsheet", "excel spreadsheet" and "slides"' in description
+
+
+def test_marp_only_instance_rejects_spreadsheet_request_softly():
+	nc = _FakeNextcloudApp(tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
+	reply = asyncio.run(generate_document(input='Budget plan', format='spreadsheet'))
+	assert 'not available' in reply
+	# The guard names what the instance can do instead.
+	assert '"slides"' in reply
+	# Nothing was scheduled for a format no provider can handle.
+	assert _schedule_calls(nc) == []
+
+
+def test_unknown_format_request_names_the_available_formats():
+	nc = _FakeNextcloudApp()
+	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
+	reply = asyncio.run(generate_document(input='Budget plan', format='word document'))
+	assert 'not available' in reply
+	assert '"slides"' in reply
+	assert _schedule_calls(nc) == []
+
+
+def test_no_servable_formats_means_no_tools():
+	nc = _FakeNextcloudApp(tasktypes={'core:text2text': {}})
+	assert asyncio.run(doc_gen.get_tools(nc)) == []
 
 
 def test_image_download_link_built_from_bare_absolute_url():
