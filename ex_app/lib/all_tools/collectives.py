@@ -75,11 +75,21 @@ async def get_tools(nc: AsyncNextcloudApp):
 		pages = payload.get('pages') if isinstance(payload, dict) else payload
 		return _subtree_size(pages or [], page_id, count_limit)
 
-	async def trashed_subtree_size(collective_id, page_id, count_limit=None):
-		"""Deleting or restoring a trashed page acts on the subpages trashed with it."""
+	async def trashed_subtree_size(collective_id, page_id):
+		"""Deleting or restoring a trashed page acts on the subpages trashed with it.
+
+		The trash only lists top-level entries: a page with subpages sits there as one
+		folder, listed by its Readme.md, and its subpages are not listed at all. Since
+		they cannot be counted, such a page is an unknown count.
+		"""
 		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages/trash')
 		pages = payload.get('pages') if isinstance(payload, dict) else payload
-		return _subtree_size(pages or [], page_id, count_limit)
+		page = next((p for p in pages or [] if str(p.get('id')) == str(page_id)), None)
+		if page is None:
+			raise ValueError(f'No trashed page with id {page_id!r}')
+		if page.get('fileName') == 'Readme.md':
+			return None
+		return 1
 
 	async def _page_webdav_url(user_id: str, page: dict) -> str:
 		# A page's markdown file lives at:
