@@ -172,7 +172,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.EXTERNAL)
-	@reversibility(Reversibility.REVERSIBLE)
+	# Whoever it reaches can read and copy it right away; revoking it later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(tree_count)
 	async def create_public_sharing_link(path: str):
 		"""

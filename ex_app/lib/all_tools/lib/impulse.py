@@ -39,10 +39,11 @@ nothing while copying onto a taken one replaces a file.
 
 The third dimension is whether a call can be taken back. :func:`reversibility`
 answers it in three steps: ``REVERSIBLE`` when the user (or the agent) can
-simply undo it -- rename it back, revoke the share; ``RECOVERABLE`` when it can
+simply undo it -- rename it back, remove the label; ``RECOVERABLE`` when it can
 only be fished out of a trash bin or a version history, which may expire;
 ``IRREVERSIBLE`` when it is gone for good. That covers disclosure as much as
-deletion: a sent email or a posted message cannot be unsent. Notifications a call
+deletion: a sent email or a posted message cannot be unsent, and a share cannot
+be unseen -- revoking it does not take back what was read. Notifications a call
 sets off along the way do not count -- assigning a card notifies the assignee,
 but unassigning them takes the assignment back all the same.
 
@@ -90,7 +91,7 @@ class Reversibility(IntEnum):
 	"""Whether a tool call can be taken back, ordered by how hard that is."""
 
 	REVERSIBLE = 0
-	"""The user can undo it directly: rename it back, revoke the share."""
+	"""The user can undo it directly: rename it back, remove the label."""
 	RECOVERABLE = 1
 	"""It can only be restored from a trash bin or a version history."""
 	IRREVERSIBLE = 2

@@ -151,7 +151,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(new_member_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	# A new member sees what the team holds right away; removing them later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(1)
 	async def add_member_to_circle(circle_id: str, member_id: str, member_type: int = TYPE_USER):
 		"""
@@ -226,7 +227,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.GROUP)
-	@reversibility(Reversibility.REVERSIBLE)
+	# Whoever it reaches can read and copy it right away; revoking it later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(shared_tree_count)
 	async def share_with_circle(path: str, circle_id: str, permissions: int = 19):
 		"""

@@ -59,7 +59,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.INDIVIDUALS)
-	@reversibility(Reversibility.REVERSIBLE)
+	# Whoever it reaches can read and copy it right away; revoking it later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(path_tree_count)
 	async def share_with_user(path: str, share_with: str, permissions: int = 19):
 		"""
@@ -78,7 +79,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.GROUP)
-	@reversibility(Reversibility.REVERSIBLE)
+	# Whoever it reaches can read and copy it right away; revoking it later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(path_tree_count)
 	async def share_with_group(path: str, share_with: str, permissions: int = 19):
 		"""
