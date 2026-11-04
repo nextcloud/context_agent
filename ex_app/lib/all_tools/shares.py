@@ -99,7 +99,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(existing_share_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	# Whoever it reaches can edit, delete or reshare right away; lowering them later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(existing_share_count)
 	async def update_share_permissions(share_id: int, permissions: int):
 		"""
