@@ -14,7 +14,7 @@ FORMAT_TASK_TYPES = {
     "pdf": ("richdocuments:text_to_text_document",),
     "spreadsheet": ("richdocuments:text_to_spreadsheet_document",),
     "excel spreadsheet": ("richdocuments:text_to_spreadsheet_document",),
-    "slides": ("marp_slides:slide_deck_generation", "richdocuments:slide_deck_generation"),
+	"slides": ("marp_slides:slide_deck_generation", "richdocuments:slide_deck_generation"),
 }
 
 
