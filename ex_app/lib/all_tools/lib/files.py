@@ -4,6 +4,7 @@ import re
 from urllib.parse import urlparse
 
 from nc_py_api import AsyncNextcloudApp
+from nc_py_api._exceptions import NextcloudException
 from nc_py_api.ex_app import LogLvl
 from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
@@ -196,3 +197,55 @@ async def get_file_content_from_int_link(nc: AsyncNextcloudApp, url: str) -> str
 		return await get_file_contents(nc, fsnode)
 	except RuntimeError as e:
 		return f'Failed to download the file/folder: {e}.\nMore info about the node:{format_fs_node(fsnode)}'
+
+
+async def count_file_tree(nc: AsyncNextcloudApp, path: str, count_limit: int) -> int:
+	"""How many files and folders the node at this path holds, itself included.
+
+	Walks the tree one level at a time and stops once ``count_limit`` is reached,
+	so a deletion of a huge folder costs a few listings rather than all of them. A
+	path that does not exist holds nothing.
+	"""
+	files_handle = AsyncFilesAPI(nc._session)
+	try:
+		node = await files_handle.by_path(path)
+	except NextcloudException as e:
+		if e.status_code == 404:
+			return 0
+		raise
+	if node is None:
+		return 0
+	count = 1
+	pending = [node] if node.is_dir else []
+	while pending and count < count_limit:
+		for child in await files_handle.listdir(pending.pop(), depth=1):
+			count += 1
+			if child.is_dir:
+				pending.append(child)
+	return min(count, count_limit)
+
+
+async def count_shared_tree(nc: AsyncNextcloudApp, path: str, count_limit: int) -> int:
+	"""How many files and folders sharing this path exposes: the node itself and,
+	for a folder, everything in it."""
+	if not isinstance(path, str) or any(segment in ('.', '..') for segment in path.split('/')):
+		raise ValueError(f'Invalid path: {path!r}')
+	return await count_file_tree(nc, path, count_limit)
+
+
+async def count_share_tree(nc: AsyncNextcloudApp, share_id, count_limit: int) -> int:
+	"""How many files and folders an existing share exposes. A share whose node
+	cannot be found still counts as the one item it is."""
+	share = await nc.ocs('GET', f'/ocs/v2.php/apps/files_sharing/api/v1/shares/{share_id}')
+	if isinstance(share, list):
+		share = share[0] if share else {}
+	path = share.get('path')
+	if not path:
+		return 1
+	return max(await count_shared_tree(nc, path, count_limit), 1)
+
+
+async def trash_enabled(nc: AsyncNextcloudApp) -> bool:
+	"""Whether deleted files end up in a trash bin they can be restored from."""
+	files_capabilities = (await nc.capabilities).get('files') or {}
+	return bool(files_capabilities.get('undelete'))

@@ -7,7 +7,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
 # Resolving a card to its board costs one request per board the user can see, so
 # the map is kept per user and out here, rather than in the get_tools closure that
@@ -132,6 +132,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_boards():
 		"""
 		List all existing kanban boards available in the Nextcloud Deck app for the current user with their available info
@@ -147,6 +148,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_board_cards(board_id: int, stack_id: Optional[int] = None):
 		"""
 		List all cards in a Deck board with their metadata.
@@ -199,6 +201,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def add_card(board_id: int, stack_id: int, title: str, description: Optional[str] = None, due_date: Optional[str] = None):
 		"""
 		Create a new card in a list of a kanban board in the Nextcloud Deck app.
@@ -230,6 +234,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def add_card_label(board_id: int, stack_id: int, card_id: int, label_id: int):
 		"""
 		Add a label to a card
@@ -250,6 +256,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(assignment_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def assign_card_to_user(board_id: int, stack_id: int, card_id: int, user_id: str):
 		"""
 		Assign a card to a user
@@ -271,6 +279,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(board_radius)
 	@destructive
+	# Deck keeps deleted cards around for undoing the deletion.
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(1)
 	async def delete_card(board_id: int, stack_id: int, card_id: int):
 		"""
 		Delete a card from a board
@@ -290,6 +301,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_card_comments(card_id: int, limit: int = 20, offset: int = 0):
 		"""
 		List all comments on a Deck card
@@ -305,6 +317,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(card_radius)
+	# Whoever sees the board may have read it.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def add_card_comment(card_id: int, message: str, parent_id: Optional[int] = None):
 		"""
 		Add a comment to a Deck card
@@ -321,6 +336,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(card_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_card_comment(card_id: int, comment_id: int, message: str):
 		"""
 		Update an existing comment on a Deck card. Only the comment author can update their own comments.
@@ -337,6 +354,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(card_radius)
 	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def delete_card_comment(card_id: int, comment_id: int):
 		"""
 		Delete a comment from a Deck card. Only the comment author can delete their own comments.

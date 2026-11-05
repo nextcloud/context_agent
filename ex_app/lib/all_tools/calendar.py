@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 import vobject
 
 from ex_app.lib.all_tools.lib.audience import principal_radius
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 from ex_app.lib.all_tools.lib.tz import get_timezone, user_timezone
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
 
@@ -67,6 +67,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 		attendee_radius = ImpulseRadius.INDIVIDUALS if attendees else ImpulseRadius.SELF
 		return max(attendee_radius, await calendar_radius(calendar_name))
 
+	async def event_reversibility(attendees=None):
+		"""Invitations are emails sent to the attendees the moment the event is saved;
+		deleting the event afterwards cannot unsend them."""
+		return Reversibility.IRREVERSIBLE if attendees else Reversibility.REVERSIBLE
+
+	async def event_size(attendees=None):
+		return 1 + len(attendees or [])
+
 	def list_calendars_sync():
 		principal = ncSync.cal.principal()
 		calendars = principal.calendars()
@@ -74,6 +82,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_calendars():
 		"""
 		List all existing calendars by name
@@ -155,6 +164,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(event_radius)
+	@reversibility(event_reversibility)
+	@item_count(event_size)
 	async def schedule_event(calendar_name: str, title: str, description: str, start_date: str, end_date: str, attendees: Optional[list[str]] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, location: Optional[str] = None, timezone: Optional[str] = None):
 		"""
 		Crete a new event or meeting in a calendar. Omit start_time and end_time parameters to create an all-day event.
@@ -240,6 +251,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str]):
 		"""
 		Finds a free time slot where all participants have time
@@ -292,6 +304,8 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def add_task(calendar_name: str, title: str, description: str, due_date: Optional[str] = None, due_time: Optional[str] = None, timezone: Optional[str] = None):
 		"""
 		Crete a new task in a calendar.
@@ -345,6 +359,7 @@ END:VCALENDAR
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_tasks(calendar_name: Optional[str] = None, filter_status: Optional[str] = None):
 		"""
 		List tasks from calendars. Can filter by calendar name and status.
@@ -388,6 +403,8 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def complete_task(calendar_name: str, task_uid: str):
 		"""
 		Mark a task as completed
@@ -444,6 +461,9 @@ END:VCALENDAR
 
 	@tool
 	@impulse(calendar_radius)
+	# Whatever it overwrites is not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_task(calendar_name: str, task_uid: str, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, due_time: Optional[str] = None, priority: Optional[int] = None, timezone: Optional[str] = None):
 		"""
 		Update an existing task
@@ -484,6 +504,9 @@ END:VCALENDAR
 	@tool
 	@impulse(calendar_radius)
 	@destructive
+	# Deleted calendar objects go to the calendar trash bin first.
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(1)
 	async def delete_task(calendar_name: str, task_uid: str):
 		"""
 		Delete a task

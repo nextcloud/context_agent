@@ -6,7 +6,7 @@ import pytz
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 
 
@@ -14,6 +14,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_current_datetime():
 		"""
 		Get the current date and time in the user's timezone

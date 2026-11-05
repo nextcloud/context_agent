@@ -6,7 +6,7 @@ import re
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 
 async def get_tools(nc: AsyncNextcloudApp):
     tools = []
@@ -27,7 +27,7 @@ async def get_tools(nc: AsyncNextcloudApp):
             f"Choose filters from {json.dumps(provider['filters'])}. (The 'person' filter, if available, takes a userID. Use find_person_in_users to obtain it.)"
             'For example: {"term": "hans", ...}\n'
         )
-        tools.append(tool(impulse(ImpulseRadius.SELF)(tool_func)))
+        tools.append(tool(impulse(ImpulseRadius.SELF)(read_only(tool_func))))
 
     return tools
 

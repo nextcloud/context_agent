@@ -6,7 +6,16 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.talk import ConversationType
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, destructive, impulse
+from ex_app.lib.all_tools.lib.files import count_shared_tree
+from ex_app.lib.all_tools.lib.impulse import (
+	ImpulseRadius,
+	Reversibility,
+	destructive,
+	impulse,
+	item_count,
+	read_only,
+	reversibility,
+)
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -36,6 +45,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_talk_conversations():
 		"""
 		List all conversations of the current user in the Nextcloud Talk app.
@@ -52,6 +62,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.EXTERNAL)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_public_conversation(conversation_name: str) -> str:
 		"""
 		Create a new public conversation in the Nextcloud Talk app
@@ -63,6 +75,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def send_message_to_conversation(conversation_name: str, message: str):
 		"""
 		Send a message to a conversation in the Nextcloud Talk app
@@ -78,6 +92,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_messages_in_conversation(conversation_name: str, n_messages: int = 30):
 		"""
 		List messages of a conversation in the Nextcloud Talk app.
@@ -102,6 +117,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def add_reaction(conversation_name: str, message_id: int, reaction: str):
 		"""
 		Add an emoji reaction to a message in a Talk conversation
@@ -118,6 +135,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(conversation_radius)
 	@destructive
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def remove_reaction(conversation_name: str, message_id: int, reaction: str):
 		"""
 		Remove an emoji reaction from a message in a Talk conversation.
@@ -134,6 +153,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_reactions(conversation_name: str, message_id: int, reaction: Optional[str] = None):
 		"""
 		List all reactions on a message in a Talk conversation
@@ -152,6 +172,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def reply_to_message(conversation_name: str, message_id: int, message: str, silent: bool = False):
 		"""
 		Send a message as a reply to another message in a Talk conversation.
@@ -174,6 +196,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def create_poll(conversation_name: str, question: str, options: list[str], result_mode: int = 0, max_votes: int = 0):
 		"""
 		Create a poll in a Talk conversation
@@ -194,6 +218,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_poll(conversation_name: str, poll_id: int):
 		"""
 		Get the current state and results of a poll
@@ -206,6 +231,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def vote_on_poll(conversation_name: str, poll_id: int, option_ids: list[int]):
 		"""
 		Vote on a poll in a Talk conversation.
@@ -222,6 +249,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def close_poll(conversation_name: str, poll_id: int):
 		"""
 		Close a poll so no more votes can be cast. Only the poll creator or a moderator can close a poll.
@@ -235,8 +264,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	# --- File sharing ---
 
+	async def shared_tree_count(file_path=None, count_limit=None):
+		"""Sharing a folder exposes everything in it."""
+		return await count_shared_tree(nc, file_path, count_limit)
+
 	@tool
 	@impulse(conversation_radius)
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(shared_tree_count)
 	async def share_file_to_conversation(conversation_name: str, file_path: str, caption: Optional[str] = None):
 		"""
 		Share a file from Nextcloud Files into a Talk conversation.
@@ -259,6 +294,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_shared_items(conversation_name: str, object_type: str, limit: int = 100):
 		"""
 		List items of a specific type that have been shared in a Talk conversation.
@@ -279,6 +315,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_shared_items_overview(conversation_name: str, limit: int = 7):
 		"""
 		Get an overview of all types of shared items in a Talk conversation (files, media, polls, etc.)

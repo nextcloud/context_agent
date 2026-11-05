@@ -5,12 +5,13 @@ from nc_py_api import AsyncNextcloudApp
 
 from typing import Optional
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, impulse, item_count, read_only, reversibility
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_projects():
 		"""
 		List all projects in OpenProject
@@ -21,6 +22,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_assignees(project_id: int):
 		"""
 		List all available assignees of a project in OpenProject
@@ -32,6 +34,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(ImpulseRadius.GROUP)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_work_package(project_id: int, title: str, description: Optional[str], assignee_id: Optional[int]):
 		"""
 		Create a new work package in a given project in OpenProject

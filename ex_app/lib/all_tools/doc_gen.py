@@ -3,7 +3,7 @@
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 from ex_app.lib.all_tools.lib.task_processing import run_task
 
 # Which registered task type(s) can serve each output format. The taskprocessing
@@ -104,7 +104,7 @@ async def get_tools(nc: AsyncNextcloudApp):
     )
 
     return [
-        tool(impulse(ImpulseRadius.SELF)(generate_document)),
+        tool(impulse(ImpulseRadius.SELF)(read_only(generate_document))),
     ]
 
 
