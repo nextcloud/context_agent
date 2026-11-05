@@ -8,6 +8,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.11.0] - 2026-11-05
+
+### Added
+ * feat(mcp): Allow admin to whitelist MCP tools
+ * feat: Add 'reversibility' and 'item count' to action classification
+ * feat(tools): add slide deck generation tool for the marp_slides
+
+### Fixed
+* fix(nc_model): Do not use a singleton model instance
+* fix: Harden signature verification and serializer
+* fix: Update dependencies
+
 ## [2.10.0] - 2026-10-26
 
 ### Added
