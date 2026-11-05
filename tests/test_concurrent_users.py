@@ -31,6 +31,7 @@ from langchain_core.tools import tool  # noqa: E402
 from nc_py_api import AsyncNextcloudApp  # noqa: E402
 
 from ex_app.lib import agent  # noqa: E402
+from ex_app.lib.all_tools.lib.impulse import ConfirmationPolicy  # noqa: E402
 from ex_app.lib.nc_model import MULTIMODAL_INTERACTION, ChatWithNextcloud, Task  # noqa: E402
 
 
@@ -65,8 +66,8 @@ def test_concurrent_react_keeps_users_apart():
 		await asyncio.sleep(0.01)
 		return TOOLS[nc.test_user]
 
-	async def get_threshold(nc):
-		return 0
+	async def get_confirmation_policy(nc):
+		return ConfirmationPolicy()
 
 	async def user_timezone_async(nc):
 		return None
@@ -83,8 +84,7 @@ def test_concurrent_react_keeps_users_apart():
 
 	patches = [
 		(agent, "get_tools", get_tools),
-		(agent, "get_impulse_threshold", get_threshold),
-		(agent, "get_destructive_threshold", get_threshold),
+		(agent, "get_confirmation_policy", get_confirmation_policy),
 		(agent, "user_timezone_async", user_timezone_async),
 		(ChatWithNextcloud, "_schedule_task", schedule_task),
 	]
