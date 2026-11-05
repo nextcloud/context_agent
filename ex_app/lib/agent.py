@@ -21,10 +21,10 @@ from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.memorysaver import MemorySaver
 from ex_app.lib.nc_model import (
 	MULTIMODAL_INTERACTION,
+	ChatWithNextcloud,
 	build_multimodal_content,
 	extract_file_ids,
 	extract_text_content,
-	model,
 )
 from ex_app.lib.signature import add_signature, load_legacy_key, load_or_create_key, verify_signature
 from ex_app.lib.tools import get_destructive_threshold, get_impulse_threshold, get_tools
@@ -137,8 +137,6 @@ async def react(
 		stream_output: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ):
 	multimodal = task.get('type') == MULTIMODAL_INTERACTION
-	model.bind_nextcloud(nc)
-	model.multimodal = multimodal
 
 	tools = await get_tools(nc)
 	impulse_threshold = await get_impulse_threshold(nc)
@@ -151,9 +149,8 @@ async def react(
 	except Exception:
 		tz_name = user_tz = None
 
-	bound_model = model.bind_tools(
-		tools,
-	)
+	# A model per task, as tasks of different users run concurrently
+	bound_model = ChatWithNextcloud(nc=nc, multimodal=multimodal).bind_tools(tools)
 
 	def tool_enabled(tool_name):
 		for tool in tools:

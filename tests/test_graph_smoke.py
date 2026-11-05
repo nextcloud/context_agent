@@ -42,9 +42,9 @@ def get_weather(city: str) -> str:
 def test_convert_to_openai_tool_replug():
     model = ChatWithNextcloud()
     bound = model.bind_tools([get_weather])
-    assert bound is model
-    assert len(model.tools) == 1
-    converted = model.tools[0]
+    assert bound is not model
+    assert len(bound.tools) == 1
+    converted = bound.tools[0]
     assert converted["type"] == "function"
     assert converted["function"]["name"] == "get_weather"
 
