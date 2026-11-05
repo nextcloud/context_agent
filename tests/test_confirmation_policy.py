@@ -14,18 +14,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from langchain_core.tools import tool  # noqa: E402
 
 from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
+	ALLOWED_CALL,
 	CallClassification,
 	ConfirmationPolicy,
 	ImpulseRadius,
 	Reversibility,
+	always_allow,
 	classify_item_count,
 	classify_reversibility,
 	destructive,
 	impulse,
+	is_always_allowed,
 	item_count,
 	read_only,
 	reversibility,
 )
+from ex_app.lib.all_tools.mcp import parse_always_allow  # noqa: E402
 
 
 @tool
@@ -150,6 +154,33 @@ def test_always_confirm_wins():
 		item_count_threshold=1000,
 	)
 	assert policy.needs_confirmation([_call(always=True)])
+
+
+def test_always_allowed_calls_are_left_out():
+	# even the strictest policy lets a vouched-for call through ...
+	policy = ConfirmationPolicy(impulse_threshold=ImpulseRadius.SELF, item_count_threshold=0)
+	assert not policy.needs_confirmation([ALLOWED_CALL])
+	# ... and judges the rest of the batch without it
+	assert policy.needs_confirmation([ALLOWED_CALL, _call()])
+	assert not ConfirmationPolicy().needs_confirmation([ALLOWED_CALL, _call(count=10)])
+
+
+def test_always_allow_marks_the_tool():
+	@tool
+	async def mcp_like(path: str):
+		"""Like an MCP tool."""
+
+	assert not is_always_allowed(mcp_like)
+	always_allow(mcp_like.coroutine)
+	assert is_always_allowed(mcp_like)
+	assert not is_always_allowed(undecorated)
+
+
+def test_parse_always_allow():
+	assert parse_always_allow('get_forecast, mcp_get_alerts\nother') == {'get_forecast', 'get_alerts', 'other'}
+	assert parse_always_allow('*') == {'*'}
+	assert parse_always_allow('') == set()
+	assert parse_always_allow(None) == set()
 
 
 if __name__ == '__main__':

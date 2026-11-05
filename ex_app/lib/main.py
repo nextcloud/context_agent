@@ -38,6 +38,7 @@ from ex_app.lib.all_tools.lib.impulse import (
     IRREVERSIBLE_FROM_SETTING_ID,
     IRREVERSIBLE_THRESHOLD_SETTING_ID,
     ITEM_COUNT_THRESHOLD_SETTING_ID,
+    MCP_ALWAYS_ALLOW_SETTING_ID,
     RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
     ImpulseRadius,
     Reversibility,
@@ -265,6 +266,18 @@ SETTINGS = SettingsForm(
             type=SettingsFieldType.TEXT,
             default="",
             placeholder="{\"weather\": {\"url\": \"https://weather.internet/mcp\",\"transport\": \"streamable_http\"}}",
+        ),
+        SettingsField(
+            id=MCP_ALWAYS_ALLOW_SETTING_ID,
+            title=_("MCP tools that never need confirmation"),
+            description=_(
+                "Context Agent cannot tell what an MCP tool does, so it asks the user to confirm every"
+                " call to one. List the names of MCP tools you trust, separated by commas, to let them"
+                " run without asking, or enter * to allow all MCP tools."
+            ),
+            type=SettingsFieldType.TEXT,
+            default="",
+            placeholder="get_forecast, get_alerts",
         ),
         ]
 )

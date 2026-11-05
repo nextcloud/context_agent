@@ -63,7 +63,8 @@ thresholds are set.
 
 Every tool is expected to answer all of these. A tool that does not -- MCP tools
 cannot be decorated -- or whose hook fails is assumed to be as bad as it can be:
-the widest radius, irreversible, and an unknown number of items.
+the widest radius, irreversible, and an unknown number of items. The admin can
+vouch for individual MCP tools instead, which marks them :func:`always_allow`.
 
 All of them feed a :class:`ConfirmationPolicy`, which compares them against
 their admin-configured thresholds and honours :func:`always_confirm`
@@ -136,11 +137,16 @@ DEFAULT_ITEM_COUNT_THRESHOLD = 10
 
 ITEM_COUNT_THRESHOLD_SETTING_ID = 'item_count_threshold'
 
+# MCP tools the admin vouches for, so they are never confirmed: a comma or newline
+# separated list of tool names, or '*' for all of them.
+MCP_ALWAYS_ALLOW_SETTING_ID = 'mcp_always_allow'
+
 _ATTR = 'impulse_hook'
 _DESTRUCTIVE_ATTR = 'impulse_destructive'
 _ALWAYS_CONFIRM_ATTR = 'impulse_always_confirm'
 _REVERSIBILITY_ATTR = 'impulse_reversibility'
 _ITEM_COUNT_ATTR = 'impulse_item_count'
+_ALWAYS_ALLOW_ATTR = 'impulse_always_allow'
 
 # The parameter an item count hook declares to be told how far to count.
 COUNT_LIMIT_PARAM = 'count_limit'
@@ -348,6 +354,26 @@ def read_only(tool_func):
 	return tool_func
 
 
+def always_allow(tool_func):
+	"""Mark a tool as never needing confirmation whatever the thresholds are set to.
+
+	Not for built-in tools, which say honestly what they do. This is for tools
+	nobody can classify -- MCP tools -- that the admin has vouched for. Their calls
+	are not classified at all, add nothing to a batch's item count, and are left
+	out of every gate, even an impulse threshold that confirms everything.
+	"""
+	setattr(tool_func, _ALWAYS_ALLOW_ATTR, True)
+	return tool_func
+
+
+def is_always_allowed(tool) -> bool:
+	"""Whether this tool is never confirmed, whatever its classification."""
+	tool_action = _tool_action(tool)
+	if tool_action is None:
+		return False
+	return bool(getattr(tool_action, _ALWAYS_ALLOW_ATTR, False))
+
+
 def _tool_action(tool):
 	return getattr(tool, 'coroutine', None) or getattr(tool, 'func', None)
 
@@ -475,6 +501,12 @@ class CallClassification:
 	item_count: int | None
 	"""How many items it touches, capped at the policy's count limit; None if unknown."""
 	always: bool = False
+	allowed: bool = False
+	"""Vouched for by the admin with :func:`always_allow`: no gate looks at it."""
+
+
+# What an always allowed call is recorded as; its hooks are never run.
+ALLOWED_CALL = CallClassification(ImpulseRadius.SELF, False, Reversibility.REVERSIBLE, 0, allowed=True)
 
 
 @dataclass(frozen=True)
@@ -492,6 +524,8 @@ class ConfirmationPolicy:
 	- more items than :attr:`item_count_threshold`, all calls of the batch together,
 	  since the user confirms them together
 	- a call marked :func:`always_confirm`
+
+	Calls the admin marked :func:`always_allow` are left out before any of this.
 	"""
 
 	impulse_threshold: ImpulseRadius = DEFAULT_IMPULSE_THRESHOLD
@@ -516,6 +550,7 @@ class ConfirmationPolicy:
 		when it can run right away.
 		"""
 		reasons = []
+		calls = [call for call in calls if not call.allowed]
 		if any(call.always for call in calls):
 			reasons.append('a call is always confirmed')
 		radius = max((call.radius for call in calls), default=None)

@@ -13,12 +13,14 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict, Annotated
 
 from ex_app.lib.all_tools.lib.impulse import (
+	ALLOWED_CALL,
 	CallClassification,
 	ConfirmationPolicy,
 	classify_destructive,
 	classify_item_count,
 	classify_reversibility,
 	classify_tool_call,
+	is_always_allowed,
 	is_always_confirmed,
 )
 
@@ -148,6 +150,8 @@ async def get_graph(
 			# Asking the user to confirm it would be asking about something that
 			# cannot happen, so it is left out of the reckoning entirely.
 			return None
+		if is_always_allowed(tool):
+			return ALLOWED_CALL
 		call_args = tool_call.get("args") or {}
 		radius, destroys, reversibility, item_count = await asyncio.gather(
 			classify_tool_call(tool, call_args),
@@ -176,7 +180,8 @@ async def get_graph(
 			print(f"Tool call: {tool_call['name']} -> impulse radius {classification.radius.name}"
 			      f", {classification.reversibility.name.lower()}, {item_count} items"
 			      f"{', destroys something' if classification.destroys else ''}"
-			      f"{', always confirmed' if classification.always else ''}")
+			      f"{', always confirmed' if classification.always else ''}"
+			      f"{', always allowed' if classification.allowed else ''}")
 			classifications.record(tool_call, classification)
 			calls.append(classification)
 		return calls
