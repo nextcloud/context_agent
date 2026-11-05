@@ -50,6 +50,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return ImpulseRadius.SELF
 		return await table_share_radius(table_id)
 
+	async def table_update_reversibility(title=None, emoji=None):
+		"""The title and emoji it replaces are not kept anywhere; archiving can simply be toggled back."""
+		return Reversibility.IRREVERSIBLE if title is not None or emoji is not None else Reversibility.REVERSIBLE
+
 	async def column_table_id(column_id):
 		column = await tables_get(f'/columns/{int(column_id)}')
 		if not isinstance(column, dict) or column.get('tableId') is None:
@@ -123,7 +127,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(table_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	@reversibility(table_update_reversibility)
 	@item_count(1)
 	async def update_table(table_id: int, title: Optional[str] = None, emoji: Optional[str] = None, archived: Optional[bool] = None):
 		"""

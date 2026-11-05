@@ -23,6 +23,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 			radius = max(radius, share_type_radius(share.get('shareType')))
 		return radius
 
+	async def form_settings_reversibility(expires=None):
+		"""The expiry date it replaces is not kept anywhere; the other settings are toggles."""
+		return Reversibility.IRREVERSIBLE if expires is not None else Reversibility.REVERSIBLE
+
 	async def form_size(form_id):
 		"""Deleting a form takes every submission it collected along with it."""
 		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/forms/api/v3/forms/{form_id}/submissions')
@@ -137,7 +141,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(form_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	@reversibility(form_settings_reversibility)
 	@item_count(1)
 	async def update_form_settings(form_id: int, is_anonymous: Optional[bool] = None, submit_multiple: Optional[bool] = None, show_expiration: Optional[bool] = None, expires: Optional[int] = None):
 		"""

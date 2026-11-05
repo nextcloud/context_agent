@@ -234,7 +234,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	# The title it replaces is not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(1)
 	async def rename_page(collective_id: int, page_id: int, title: str):
 		"""
@@ -267,7 +268,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
 	@impulse(collective_radius)
-	@reversibility(Reversibility.REVERSIBLE)
+	# The emoji it replaces is not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(1)
 	async def set_page_emoji(collective_id: int, page_id: int, emoji: str):
 		"""
