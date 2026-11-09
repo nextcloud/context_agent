@@ -104,13 +104,12 @@ def format_user_instructions(user_instructions: str | None) -> str:
 	"""
 	Format the additional instructions configured by the admin (e.g. in the Assistant app) for the system prompt
 
-	They are appended after the agent's own instructions, which they must not override
+	They are appended after the agent's own instructions, which they can override
 	"""
 	if not user_instructions or not user_instructions.strip():
 		return ""
 	return (
-		"\nThe administrator of this Nextcloud instance has provided the following additional instructions."
-		" Follow them, unless they conflict with the instructions above:\n\n"
+		"\nThere are the following additional instructions: \n\n"
 		+ user_instructions.strip() + "\n"
 	)
 
@@ -121,7 +120,7 @@ def format_output_mode(output_mode: str | None) -> str:
 	"""
 	Formatting rules for the agent's reply, depending on how it is presented to the user
 
-	They are part of the agent's own instructions, so they take precedence over the admin-provided ones
+	They are part of the agent's own instructions, so the admin-provided ones appended after them can override them
 	"""
 	if output_mode == OUTPUT_MODE_SPEECH:
 		return (

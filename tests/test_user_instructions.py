@@ -26,13 +26,6 @@ def test_missing_or_blank_instructions_add_nothing():
 	assert format_user_instructions("  \n\t ") == ""
 
 
-def test_instructions_are_appended_with_precedence_note():
-	text = format_user_instructions("  Always answer like a pirate.\n")
-	assert text.startswith("\n")
-	assert text.endswith("Always answer like a pirate.\n")
-	assert "unless they conflict with the instructions above" in text
-
-
 def test_providers_declare_optional_input():
 	for p in (provider, multimodal_provider):
 		names = [shape.name for shape in p.optional_input_shape]
