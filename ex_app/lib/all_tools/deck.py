@@ -3,11 +3,12 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, destructive_if, impulse, item_count, read_only, reversibility
 
 # Resolving a card to its board costs one request per board the user can see, so
 # the map is kept per user and out here, rather than in the get_tools closure that
@@ -20,6 +21,8 @@ CARD_BOARD_TTL = 60
 # otherwise walk every board again on every call that mentions it.
 CARD_BOARD_MISS_INTERVAL = 10
 _card_radii: dict[str, dict] = {}
+# IComment::MAX_MESSAGE_LENGTH on the Nextcloud side.
+COMMENT_MAX_LENGTH = 1000
 
 
 def _forget_stale_card_radii(now: float) -> None:
@@ -49,9 +52,22 @@ async def get_tools(nc: AsyncNextcloudApp):
 	DECK_API = f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0"
 	DECK_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
 
-	async def deck_get(path):
-		response = await nc._session._create_adapter().request('GET', f"{DECK_API}{path}", headers=DECK_HEADERS)
+	async def deck_request(method, path, payload=None):
+		response = await nc._session._create_adapter().request(method, f"{DECK_API}{path}", headers=DECK_HEADERS, json=payload)
+		if response.status_code >= 400:
+			# Deck explains what went wrong in a JSON body; pass that on rather than
+			# letting the caller trip over an error object where it expected a card.
+			try:
+				body = response.json()
+			except ValueError:
+				body = None
+			message = body.get('message') if isinstance(body, dict) else None
+			raise ValueError(f'Deck {method} {path} failed with HTTP {response.status_code}: {message or response.reason_phrase}')
 		return response.json()
+
+	async def list_live_boards(query=''):
+		"""The boards of the user, without the deleted ones Deck still lists for undoing the deletion."""
+		return [board for board in await deck_request('GET', f'/boards{query}') if not board.get('deletedAt')]
 
 	async def board_acl_radius(board):
 		"""Who a board is shared with, read off its access control list."""
@@ -64,7 +80,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def board_radius(board_id):
 		"""Look the board up to see who can already see what is on it."""
 		# The board list carries the full access control list, no details=true needed.
-		for board in await deck_get('/boards'):
+		for board in await list_live_boards():
 			if board.get('id') == int(board_id):
 				return await board_acl_radius(board)
 		raise ValueError(f'No board with id {board_id!r}')
@@ -83,9 +99,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		try:
 			radii = {}
-			for board in await deck_get('/boards'):
+			for board in await list_live_boards():
 				radius = await board_acl_radius(board)
-				for stack in await deck_get(f"/boards/{board['id']}/stacks"):
+				for stack in await deck_request('GET', f"/boards/{board['id']}/stacks"):
 					for card in stack.get('cards') or []:
 						radii[card['id']] = radius
 			cache['cards'] = radii
@@ -130,6 +146,29 @@ async def get_tools(nc: AsyncNextcloudApp):
 			raise ValueError(f'No board holds a card with id {card_id!r}')
 		return radius
 
+	async def stack_size(board_id, stack_id):
+		"""Deleting a stack takes every card on it along with it, archived ones included."""
+		count = 1
+		for path in (f'/boards/{int(board_id)}/stacks', f'/boards/{int(board_id)}/stacks/archived'):
+			for stack in await deck_request('GET', path):
+				if stack.get('id') == int(stack_id):
+					count += len(stack.get('cards') or [])
+		return count
+
+	def check_comment_length(message):
+		"""Deck rejects comments over 1000 characters, on update with a bare HTTP 500."""
+		if len(message) > COMMENT_MAX_LENGTH:
+			raise ValueError(f'The comment is {len(message) - COMMENT_MAX_LENGTH} characters too long, including the note about the AI Assistant')
+
+	async def card_update_overwrites(title=None, description=None, due_date=None):
+		"""The title, description and due date it replaces are not kept anywhere; done can simply be toggled back."""
+		return title is not None or description is not None or due_date is not None
+
+	async def card_update_reversibility(title=None, description=None, due_date=None):
+		if await card_update_overwrites(title, description, due_date):
+			return Reversibility.IRREVERSIBLE
+		return Reversibility.REVERSIBLE
+
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
@@ -138,32 +177,24 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all existing kanban boards available in the Nextcloud Deck app for the current user with their available info
 		:return: a dictionary with all decks of the user
 		"""
-
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards?details=true", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		})
-
-		return json.dumps(response.json())
+		return json.dumps(await list_live_boards('?details=true'))
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
-	async def list_board_cards(board_id: int, stack_id: Optional[int] = None):
+	async def list_board_cards(board_id: int, stack_id: Optional[int] = None, archived: bool = False):
 		"""
 		List all cards in a Deck board with their metadata.
-		Each card includes its id (needed for add_card_comment, add_card_label, assign_card_to_user, delete_card),
+		Each card includes its id and stack_id (needed for the other card tools, e.g. update_card, move_card, add_card_comment),
 		title, description, stack, labels, assignees, due date, archived status, and done status.
 		Use this tool to find cards when the agent only knows a card by name or context, not by id.
+		Archived cards are only listed when archived is true.
 		:param board_id: the id of the board (obtainable with list_boards)
 		:param stack_id: optional - filter to cards in this specific stack only (obtainable with list_boards)
+		:param archived: optional - true to list the archived cards instead of the active ones (default false)
 		:return: list of cards with id, title, description, stack_id, stack_title, labels, assignees, due_date, archived, done, comments_count
 		"""
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		})
-		stacks = response.json()
+		stacks = await deck_request('GET', f"/boards/{board_id}/stacks/archived" if archived else f"/boards/{board_id}/stacks")
 
 		cards = []
 		for stack in stacks:
@@ -225,12 +256,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if due_date:
 			payload['duedate'] = due_date
 
-		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		}, json=payload)
-
-		return json.dumps(response.json())
+		return json.dumps(await deck_request('POST', f'/boards/{board_id}/stacks/{stack_id}/cards', payload))
 
 	@tool
 	@impulse(board_radius)
@@ -245,14 +271,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param label_id: the id of the label to add (obtainable with list_boards - labels are listed in board details)
 		:return: success confirmation
 		"""
-		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignLabel", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		}, json={
-			'labelId': label_id
-		})
-
-		return json.dumps(response.json())
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignLabel', {
+			'labelId': label_id,
+		}))
 
 	@tool
 	@impulse(assignment_radius)
@@ -267,14 +288,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param user_id: the user id to assign the card to
 		:return: success confirmation
 		"""
-		response = await nc._session._create_adapter().request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignUser", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		}, json={
-			'userId': user_id
-		})
-
-		return json.dumps(response.json())
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/assignUser', {
+			'userId': user_id,
+		}))
 
 	@tool
 	@impulse(board_radius)
@@ -290,12 +306,206 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param card_id: the id of the card to delete (obtainable with list_board_cards)
 		:return: success confirmation
 		"""
-		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		})
+		return json.dumps(await deck_request('DELETE', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}'))
 
-		return json.dumps(response.json())
+	@tool
+	@impulse(board_radius)
+	@destructive_if(card_update_overwrites)
+	@reversibility(card_update_reversibility)
+	@item_count(1)
+	async def update_card(board_id: int, stack_id: int, card_id: int, title: Optional[str] = None, description: Optional[str] = None, due_date: Optional[str] = None, done: Optional[bool] = None):
+		"""
+		Update the title, description, due date or done status of a card. Fields that are left out stay as they are.
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack the card is currently in (obtainable with list_board_cards)
+		:param card_id: the id of the card (obtainable with list_board_cards)
+		:param title: optional new title of the card
+		:param description: optional new description of the card, replacing the current one
+		:param due_date: optional new due date in ISO format (YYYY-MM-DD or a full ISO datetime); pass an empty string to remove the due date
+		:param done: optional - true to mark the card as done, false to mark it as not done
+		:return: the updated card
+		"""
+		path = f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}'
+		card = await deck_request('GET', path)
+		# Deck reads the card by its id alone and then files it under the stack in the
+		# path, so a stack_id that is off would move the card there, even onto another board.
+		if card.get('stackId') != stack_id:
+			raise ValueError(f'Card {card_id} is not in stack {stack_id} but in stack {card.get("stackId")}')
+		# Deck restores a deleted card on any update.
+		if card.get('deletedAt'):
+			raise ValueError(f'Card {card_id} has been deleted')
+		owner = card.get('owner')
+		if isinstance(owner, dict):
+			owner = owner.get('uid')
+
+		current_done = card.get('done')
+		if done is None:
+			new_done = current_done
+		elif done:
+			# Keep the moment it was first marked done rather than moving it to now.
+			new_done = current_done or datetime.now(timezone.utc).isoformat()
+		else:
+			new_done = None
+
+		payload = {
+			'title': title if title is not None else card['title'],
+			'type': card.get('type') or 'plain',
+			'owner': owner,
+			'description': description if description is not None else (card.get('description') or ''),
+			'order': card.get('order') or 0,
+			'duedate': (due_date or None) if due_date is not None else card.get('duedate'),
+			# Deck clears the done status of a card whenever an update leaves it out.
+			'done': new_done,
+		}
+		return json.dumps(await deck_request('PUT', path, payload))
+
+	@tool
+	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def move_card(board_id: int, stack_id: int, card_id: int, target_stack_id: int):
+		"""
+		Move a card to another stack of the same board. The card is placed at the bottom of the target stack.
+		Archived cards cannot be moved; unarchive them first.
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack the card is currently in (obtainable with list_board_cards)
+		:param card_id: the id of the card to move (obtainable with list_board_cards)
+		:param target_stack_id: the id of the stack to move the card to, on the same board (obtainable with list_boards)
+		:return: the cards of the target stack in their new order
+		"""
+		# Deck would move the card onto another board's stack just the same, past the
+		# board this call was classified against and without carrying its labels over.
+		if not any(stack.get('id') == target_stack_id for stack in await deck_request('GET', f'/boards/{board_id}/stacks')):
+			raise ValueError(f'Board {board_id} has no stack with id {target_stack_id}')
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/reorder', {
+			'stackId': target_stack_id,
+			'order': 999,
+		}))
+
+	@tool
+	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def archive_card(board_id: int, stack_id: int, card_id: int):
+		"""
+		Archive a card. Archived cards are hidden from the board but can be unarchived again.
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack (obtainable with list_board_cards)
+		:param card_id: the id of the card to archive (obtainable with list_board_cards)
+		:return: the archived card
+		"""
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/archive'))
+
+	@tool
+	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def unarchive_card(board_id: int, stack_id: int, card_id: int):
+		"""
+		Unarchive a previously archived card, making it visible on the board again.
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack (obtainable with list_board_cards)
+		:param card_id: the id of the card to unarchive (obtainable with list_board_cards)
+		:return: the unarchived card
+		"""
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/unarchive'))
+
+	@tool
+	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def remove_card_label(board_id: int, stack_id: int, card_id: int, label_id: int):
+		"""
+		Remove a label from a card
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack (obtainable with list_board_cards)
+		:param card_id: the id of the card (obtainable with list_board_cards)
+		:param label_id: the id of the label to remove (obtainable with list_board_cards)
+		:return: success confirmation
+		"""
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/removeLabel', {
+			'labelId': label_id,
+		}))
+
+	@tool
+	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def unassign_user_from_card(board_id: int, stack_id: int, card_id: int, user_id: str):
+		"""
+		Remove a user's assignment from a card
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack (obtainable with list_board_cards)
+		:param card_id: the id of the card (obtainable with list_board_cards)
+		:param user_id: the user id of the assignee to remove (obtainable with list_board_cards)
+		:return: success confirmation
+		"""
+		return json.dumps(await deck_request('PUT', f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/unassignUser', {
+			'userId': user_id,
+		}))
+
+	# --- Stacks ---
+
+	@tool
+	@impulse(board_radius)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def create_stack(board_id: int, title: str):
+		"""
+		Create a new stack (list/column) on a board. The stack is added after the existing stacks.
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param title: the title of the stack
+		:return: the created stack with its id
+		"""
+		stacks = await deck_request('GET', f'/boards/{board_id}/stacks')
+		order = max((stack.get('order') or 0 for stack in stacks), default=-1) + 1
+		return json.dumps(await deck_request('POST', f'/boards/{board_id}/stacks', {
+			'title': title,
+			'order': order,
+		}))
+
+	@tool
+	@impulse(board_radius)
+	# The title it replaces is not kept anywhere.
+	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
+	async def rename_stack(board_id: int, stack_id: int, title: str):
+		"""
+		Rename a stack (list/column) on a board
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack (obtainable with list_boards)
+		:param title: the new title of the stack
+		:return: the updated stack
+		"""
+		path = f'/boards/{board_id}/stacks/{stack_id}'
+		stack = await deck_request('GET', path)
+		# Deck reads the stack by its id alone and then files it under the board in the
+		# path, so a board_id that is off would move the whole stack onto that board.
+		if stack.get('boardId') != board_id:
+			raise ValueError(f'Stack {stack_id} is not on board {board_id} but on board {stack.get("boardId")}')
+		# Deck restores a deleted stack on any update.
+		if stack.get('deletedAt'):
+			raise ValueError(f'Stack {stack_id} has been deleted')
+		return json.dumps(await deck_request('PUT', path, {
+			'title': title,
+			'order': stack.get('order') or 0,
+		}))
+
+	@tool
+	@impulse(board_radius)
+	@destructive
+	# Deck keeps deleted stacks around for undoing the deletion.
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(stack_size)
+	async def delete_stack(board_id: int, stack_id: int):
+		"""
+		Delete a stack (list/column) from a board, together with all cards on it
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param stack_id: the id of the stack to delete (obtainable with list_boards)
+		:return: the deleted stack
+		"""
+		return json.dumps(await deck_request('DELETE', f'/boards/{board_id}/stacks/{stack_id}'))
 
 	# --- Card Comments (OCS API) ---
 
@@ -324,11 +534,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Add a comment to a Deck card
 		:param card_id: the id of the card (obtainable with list_board_cards)
-		:param message: the comment text (max 1000 characters)
+		:param message: the comment text (max 965 characters)
 		:param parent_id: optional id of a parent comment for threaded replies (obtainable with list_card_comments)
 		:return: the created comment
 		"""
 		message_with_ai_note = f"{message}\n\nPosted by Nextcloud AI Assistant."
+		check_comment_length(message_with_ai_note)
 		payload = {'message': message_with_ai_note}
 		if parent_id is not None:
 			payload['parentId'] = parent_id
@@ -343,10 +554,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Update an existing comment on a Deck card. Only the comment author can update their own comments.
 		:param card_id: the id of the card (obtainable with list_board_cards)
 		:param comment_id: the id of the comment to update (obtainable with list_card_comments)
-		:param message: the new comment text (max 1000 characters)
+		:param message: the new comment text (max 965 characters)
 		:return: the updated comment
 		"""
 		message_with_ai_note = f"{message}\n\nEdited by Nextcloud AI Assistant."
+		check_comment_length(message_with_ai_note)
 		return json.dumps(await nc.ocs('PUT', f'/ocs/v2.php/apps/deck/api/v1.0/cards/{card_id}/comments/{comment_id}', json={
 			'message': message_with_ai_note,
 		}))
@@ -372,6 +584,15 @@ async def get_tools(nc: AsyncNextcloudApp):
 		add_card_label,
 		assign_card_to_user,
 		delete_card,
+		update_card,
+		move_card,
+		archive_card,
+		unarchive_card,
+		remove_card_label,
+		unassign_user_from_card,
+		create_stack,
+		rename_stack,
+		delete_stack,
 		list_card_comments,
 		add_card_comment,
 		update_card_comment,
