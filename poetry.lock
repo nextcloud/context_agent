@@ -4479,28 +4479,29 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 
 [[package]]
 name = "urllib3-future"
-version = "2.24.900"
+version = "2.25.906"
 description = "urllib3.future is a powerful HTTP 1.1, 2, and 3 client with both sync and async interfaces"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "urllib3_future-2.24.900-py3-none-any.whl", hash = "sha256:a4fe06b59b0c3ce2fffa821c3de72eaf59b1e61619becc255dee18919ee25260"},
-    {file = "urllib3_future-2.24.900.tar.gz", hash = "sha256:05c2e9d09293ab29a154fed8f5b60644c7cdaffe4ae2587a07b1c7f00f23a7fb"},
+    {file = "urllib3_future-2.25.906-py3-none-any.whl", hash = "sha256:8b68780cd6dc526aa30b1aa6a0eb0ec2eb01a91c07bfe49554c8901f23db984f"},
+    {file = "urllib3_future-2.25.906.tar.gz", hash = "sha256:cc8d4e1151c8cf71d184696e358acd339d6a6092b1d23bcd73d3b8e3a6cc26e4"},
 ]
 
 [package.dependencies]
 h11 = ">=0.11.0,<1.0.0"
 jh2 = ">=5.0.3,<6.0.0"
-qh3 = {version = ">=1.5.4,<2.0.0", markers = "(platform_python_implementation != \"CPython\" or python_full_version > \"3.7.10\") and (platform_system == \"Darwin\" or platform_system == \"Windows\" or platform_system == \"Linux\") and (platform_machine == \"x86_64\" or platform_machine == \"s390x\" or platform_machine == \"armv7l\" or platform_machine == \"ppc64le\" or platform_machine == \"ppc64\" or platform_machine == \"AMD64\" or platform_machine == \"aarch64\" or platform_machine == \"arm64\" or platform_machine == \"ARM64\" or platform_machine == \"x86\" or platform_machine == \"i686\" or platform_machine == \"riscv64\" or platform_machine == \"riscv64gc\") and (platform_python_implementation == \"CPython\" or platform_python_implementation == \"PyPy\" and python_version < \"3.12\")"}
+qh3 = {version = ">=1.5.4,<3.0.0", markers = "(platform_python_implementation != \"CPython\" or python_full_version > \"3.7.10\") and (platform_system == \"Darwin\" or platform_system == \"Windows\" or platform_system == \"Linux\") and (platform_machine == \"x86_64\" or platform_machine == \"s390x\" or platform_machine == \"armv7l\" or platform_machine == \"ppc64le\" or platform_machine == \"ppc64\" or platform_machine == \"AMD64\" or platform_machine == \"aarch64\" or platform_machine == \"arm64\" or platform_machine == \"ARM64\" or platform_machine == \"x86\" or platform_machine == \"i686\" or platform_machine == \"riscv64\" or platform_machine == \"riscv64gc\") and (platform_python_implementation == \"CPython\" or platform_python_implementation == \"PyPy\" and python_version < \"3.12\")"}
 
 [package.extras]
 brotli = ["brotli (>=1.0.9) ; platform_python_implementation == \"CPython\"", "brotlicffi (>=0.8.0) ; platform_python_implementation != \"CPython\""]
-qh3 = ["qh3 (>=1.5.4,<2.0.0)"]
-rtls = ["rtls ; platform_python_implementation == \"CPython\""]
+qh3 = ["qh3 (>=1.5.4,<3.0.0)"]
+rtls = ["rtls (>=2026.9.21) ; platform_python_implementation == \"CPython\""]
 socks = ["python-socks (>=2,<=2.8.1)"]
-utls = ["brotli (>=1.0.9) ; platform_python_implementation == \"CPython\"", "utls ; platform_python_implementation == \"CPython\"", "zstandard (>=0.18.0) ; python_version < \"3.14\" and platform_python_implementation == \"CPython\""]
+utls = ["brotli (>=1.0.9) ; platform_python_implementation == \"CPython\"", "utls (>=2026.9.21) ; platform_python_implementation == \"CPython\"", "zstandard (>=0.18.0) ; python_version < \"3.14\" and platform_python_implementation == \"CPython\""]
 ws = ["wsproto (>=1.2,<2)"]
+ws-fast = ["websockets (>=15.0.1,<18) ; python_version >= \"3.9\""]
 zstd = ["zstandard (>=0.18.0) ; python_version < \"3.14\""]
 
 [[package]]
