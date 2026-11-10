@@ -155,6 +155,25 @@ async def get_tools(nc: AsyncNextcloudApp):
 					count += len(stack.get('cards') or [])
 		return count
 
+	async def board_size(board_id):
+		"""Sharing a board exposes every card on it, archived ones included."""
+		count = 1
+		for path in (f'/boards/{int(board_id)}/stacks', f'/boards/{int(board_id)}/stacks/archived'):
+			for stack in await deck_request('GET', path):
+				count += len(stack.get('cards') or [])
+		return count
+
+	async def find_user_acl(board_id, user_id):
+		"""The entry of a board's access control list that shares it with the user, if any."""
+		for board in await list_live_boards():
+			if board.get('id') == int(board_id):
+				for entry in board.get('acl') or []:
+					participant = entry.get('participant') or {}
+					if entry.get('type') == 0 and participant.get('uid') == user_id:
+						return entry
+				return None
+		raise ValueError(f'No board with id {board_id!r}')
+
 	def check_comment_length(message):
 		"""Deck rejects comments over 1000 characters, on update with a bare HTTP 500."""
 		if len(message) > COMMENT_MAX_LENGTH:
@@ -198,6 +217,50 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'title': title,
 			'color': color,
 		}))
+
+	@tool
+	@impulse(assignment_radius)
+	# Whoever it reaches can read and copy the board right away; unsharing it later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(board_size)
+	async def share_board(board_id: int, user_id: str, can_edit: bool = True, can_share: bool = False, can_manage: bool = False):
+		"""
+		Share a Deck board with a user account
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param user_id: the user id of the account to share the board with
+		:param can_edit: optional - whether the user may edit the board's cards and stacks (default true)
+		:param can_share: optional - whether the user may share the board with others (default false)
+		:param can_manage: optional - whether the user may manage the board's settings, e.g. its title and labels (default false)
+		:return: the created share
+		"""
+		# Sharing again is not a way to change the permissions of somebody who already has the board.
+		if await find_user_acl(board_id, user_id) is not None:
+			raise ValueError(f'Board {board_id} is already shared with {user_id!r}')
+		return json.dumps(await deck_request('POST', f'/boards/{board_id}/acl', {
+			'type': 0,
+			'participant': user_id,
+			'permissionEdit': can_edit,
+			'permissionShare': can_share,
+			'permissionManage': can_manage,
+		}))
+
+	@tool
+	@impulse(board_radius)
+	@destructive
+	# The share can be made again just like it was.
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(board_size)
+	async def unshare_board(board_id: int, user_id: str):
+		"""
+		Stop sharing a Deck board with a user account
+		:param board_id: the id of the board (obtainable with list_boards)
+		:param user_id: the user id of the account to unshare the board from (obtainable with list_boards - shares are listed in the board's acl)
+		:return: the removed share
+		"""
+		acl = await find_user_acl(board_id, user_id)
+		if acl is None:
+			raise ValueError(f'Board {board_id} is not shared with {user_id!r}')
+		return json.dumps(await deck_request('DELETE', f'/boards/{board_id}/acl/{acl["id"]}'))
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
@@ -600,6 +663,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	return [
 		list_boards,
 		create_board,
+		share_board,
+		unshare_board,
 		list_board_cards,
 		add_card,
 		add_card_label,
