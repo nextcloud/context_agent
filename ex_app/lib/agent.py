@@ -16,6 +16,7 @@ import pytz
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
+from ex_app.lib.attachments import current_input_attachments, task_input_attachments
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.memorysaver import MemorySaver
@@ -136,6 +137,11 @@ async def react(
 		stream_output: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ):
 	multimodal = task.get('type') == MULTIMODAL_INTERACTION
+	# The conversation's attachments belong to the tool runtime, not the
+	# model context: the model gets pixels or nothing, tools need file ids.
+	# Tools called from this task read them from here, at call time.
+	# (Model binding happens later, in ChatWithNextcloud construction.)
+	current_input_attachments.set(task_input_attachments(task))
 
 	tools = await get_tools(nc)
 	policy = await get_confirmation_policy(nc)
