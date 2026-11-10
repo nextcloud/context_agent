@@ -1,11 +1,8 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
-import os
-import random
-import string
 from collections.abc import Awaitable, Callable
-from datetime import date
+from datetime import date, datetime
 from time import monotonic
 from typing import Any, cast
 
@@ -14,36 +11,35 @@ from langchain_core.runnables import RunnableConfig
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import persistent_storage
 
+import pytz
+
+from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
-from ex_app.lib.graph import AgentState, get_graph
+from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.memorysaver import MemorySaver
 from ex_app.lib.nc_model import (
 	MULTIMODAL_INTERACTION,
+	ChatWithNextcloud,
 	build_multimodal_content,
 	extract_file_ids,
 	extract_text_content,
-	model,
 )
-from ex_app.lib.signature import add_signature, verify_signature
-from ex_app.lib.tools import get_tools
+from ex_app.lib.signature import add_signature, load_legacy_key, load_or_create_key, verify_signature
+from ex_app.lib.tools import get_confirmation_policy, get_tools
 
-# Dummy thread id as we return the whole state
-thread = {"configurable": {"thread_id": "thread-1"}}
+graph_config = {
+	# Dummy thread id as we return the whole state
+	"configurable": {"thread_id": "thread-1"},
+	# Maximum amount of recursions
+	"recursion_limit": 256 # allows ~128 tool calls per conversation step
+}
 
-key_file_path = persistent_storage() + '/secret_key.txt'
-
-if not os.path.exists(key_file_path):
-	with open(key_file_path, "w") as file:
-		# generate random string of 256 chars
-		random_string = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=256))
-		file.write(random_string)
-	print(f"The file '{key_file_path}' has been created.")
-
-with open(key_file_path, "r") as file:
-	print(f"Reading file '{key_file_path}'.")
-	key = file.read()
+# The key that conversation tokens are signed with
+key = load_or_create_key(persistent_storage() + '/conversation_token_key.txt')
+# The key that releases up to 2.10.0 signed conversation tokens with, only used to verify those
+legacy_key = load_legacy_key(persistent_storage() + '/secret_key.txt')
 
 def load_conversation_old(conversation_token: str):
 	"""
@@ -51,14 +47,15 @@ def load_conversation_old(conversation_token: str):
 
 	This is the old way which is only used as a fallback anymore
 	"""
-	checkpointer = MemorySaver()
+	checkpointer = MemorySaver(serde=JsonPlusSerializer())
 	if conversation_token == '' or conversation_token == '{}':
 		# return an empty checkpointer
 		return checkpointer
 	# Verify whether this conversation token was signed by this instance of context_agent
-	serialized_checkpointer = verify_signature(conversation_token, key)
+	serialized_checkpointer = verify_signature(conversation_token, key, legacy_key)
 	# Deserialize the checkpointer storage
-	checkpointer.storage = checkpointer.serde.loads(serialized_checkpointer.encode())
+	# langgraph's own serializer has no loads() anymore since langgraph-checkpoint 3.0, the vendored one still does
+	checkpointer.storage = JsonPlusSerializer().loads(serialized_checkpointer.encode())
 	# return the prepared checkpointer
 	return checkpointer
 
@@ -68,13 +65,13 @@ def load_conversation(conversation_token: str):
 
 	This is the new way which only restores that last checkpoint of the checkpointer instead of the whole checkpointer history
 	"""
-	checkpointer = MemorySaver()
+	checkpointer = MemorySaver(serde=JsonPlusSerializer())
 	if conversation_token == '' or conversation_token == '{}':
 		# return an empty checkpointer
 		return checkpointer
 
 	# Verify whether this was signed by this instance of context_agent
-	serialized_state = verify_signature(conversation_token, key)
+	serialized_state = verify_signature(conversation_token, key, legacy_key)
 	# Deserialize the saved state
 	conversation = JsonPlusSerializer().loads(serialized_state.encode())
 	# Get the last checkpoint state
@@ -103,22 +100,55 @@ def export_conversation(checkpointer):
 	conversation_token = add_signature(serialized_state.decode('utf-8'), key)
 	return conversation_token
 
+def format_user_instructions(user_instructions: str | None) -> str:
+	"""
+	Format the additional instructions configured by the admin (e.g. in the Assistant app) for the system prompt
+
+	They are appended after the agent's own instructions, which they can override
+	"""
+	if not user_instructions or not user_instructions.strip():
+		return ""
+	return (
+		"\nThere are the following additional instructions: \n\n"
+		+ user_instructions.strip() + "\n"
+	)
+
+# Value of the optional "output_mode" input when the agent's reply is converted to speech
+OUTPUT_MODE_SPEECH = "speech"
+
+def format_output_mode(output_mode: str | None) -> str:
+	"""
+	Formatting rules for the agent's reply, depending on how it is presented to the user
+
+	They are part of the agent's own instructions, so the admin-provided ones appended after them can override them
+	"""
+	if output_mode == OUTPUT_MODE_SPEECH:
+		return (
+			"Your reply will be converted to speech and read out loud to the user."
+			" Answer in plain spoken text only: do not use Markdown or any other formatting"
+			" (no headings, bullet or numbered lists, tables, bold or italic text, code blocks or emojis).\n"
+		)
+	return ""
+
 async def react(
 		task,
 		nc: AsyncNextcloudApp,
 		stream_output: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ):
 	multimodal = task.get('type') == MULTIMODAL_INTERACTION
-	model.bind_nextcloud(nc)
-	model.multimodal = multimodal
 
-	safe_tools, dangerous_tools = await get_tools(nc)
+	tools = await get_tools(nc)
+	policy = await get_confirmation_policy(nc)
+	tz_name = user_tz = None
+	try:
+		tz_name = await user_timezone_async(nc)
+		if tz_name:
+			user_tz = pytz.timezone(tz_name)
+	except Exception:
+		tz_name = user_tz = None
 
-	tools = dangerous_tools + safe_tools
-
-	bound_model = model.bind_tools(
-		tools,
-	)
+	# A model per task, as tasks of different users run concurrently
+	bound_model = ChatWithNextcloud(nc=nc, multimodal=multimodal).bind_tools(tools)
 
 	def tool_enabled(tool_name):
 		for tool in tools:
@@ -130,12 +160,19 @@ async def react(
 			state: AgentState,
 			config: RunnableConfig,
 	):
-		current_date = date.today().strftime("%Y-%m-%d")
+		if user_tz is not None:
+			current_date = datetime.now(user_tz).strftime("%Y-%m-%d")
+			date_suffix = (
+				f" The user's timezone is {tz_name}; use it for the timezone parameter of calendar and task tools."
+			)
+		else:
+			current_date = date.today().strftime("%Y-%m-%d")
+			date_suffix = ""
 
 		system_prompt_text = """
 You are a helpful AI assistant with access to tools, please respond to the user's query to the best of your ability, using the provided tools if necessary. If no tool is needed to provide a correct answer, do not use one. If you used a tool, you still need to convey its output to the user.
 Use the same language for your answers as the user used in their message.
-Today is {CURRENT_DATE}.
+Today is {CURRENT_DATE}.{DATE_SUFFIX}
 Intuit the language the user is using (there is no tool for this, you will need to guess). Reply in the language intuited. Do not output the language you intuited.
 Only use tools if you cannot answer the user without them.
 If you get a link as a tool output, always add the link to your response.
@@ -152,8 +189,10 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Use the find_person_in_contacts tool to find a person's email address and location.\n"
 		if tool_enabled("find_person_in_users"):
 			system_prompt_text += "Use the find_person_in_users tool to find a person's userId and user details.\n"
-		if tool_enabled("find_details_of_current_user"):
+		if tz_name is None and tool_enabled("find_details_of_current_user"):
 			system_prompt_text += "Use the find_details_of_current_user tool to find the current user's location and timezone.\n"
+		if tool_enabled("get_current_datetime"):
+			system_prompt_text += "Use the get_current_datetime tool when the user asks for the current date or time.\n"
 		if tool_enabled("list_mails"):
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 		if tool_enabled("web_fetch"):
@@ -187,9 +226,12 @@ At the end of each message to the user, if you have carried out a task or answer
 					" or when they describe a clearly reusable procedure that should be remembered.\n"
 				)
 
+		system_prompt_text += format_output_mode(task['input'].get('output_mode'))
+
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
-			system_prompt_text.replace("{CURRENT_DATE}", current_date)
+			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
+			+ format_user_instructions(task['input'].get('user_instructions'))
 		)
 
 		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
@@ -204,12 +246,12 @@ At the end of each message to the user, if you have carried out a task or answer
 		# if this fails, we fail the whole task
 		checkpointer = load_conversation_old(task['input']['conversation_token'])
 
-	graph = await get_graph(call_model, safe_tools, dangerous_tools, checkpointer)
+	graph, classifications = await get_graph(call_model, tools, checkpointer, policy)
 
-	state_snapshot = graph.get_state(thread)
+	state_snapshot = graph.get_state(graph_config)
 
 	## if the next step is a tool call
-	if state_snapshot.next == ('dangerous_tools', ):
+	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
 		if task['input']['confirmation'] == 0:
 			new_input = {
 				"messages": [
@@ -259,7 +301,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		last_stream_update = now
 		last_reported_stream_state = stream_state
 
-	async for event in graph.astream(new_input, thread, stream_mode=stream_mode):
+	async for event in graph.astream(new_input, graph_config, stream_mode=stream_mode):
 		if isinstance(event, tuple):
 			mode, payload = event
 		else:
@@ -288,10 +330,13 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	await report_stream_state(force=True)
 
-	state_snapshot = graph.get_state(thread)
+	state_snapshot = graph.get_state(graph_config)
 	actions = ''
-	if state_snapshot.next == ('dangerous_tools', ):
-		actions = json.dumps(last_message.tool_calls)
+	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
+		# Each call carries the impulse radius it reaches, whether it destroys
+		# something, whether it can be taken back and how many items it touches, so
+		# a consumer can word its confirmation dialog per action.
+		actions = json.dumps(classifications.annotate(last_message.tool_calls))
 
 	result = {
 		'output': extract_text_content(last_message.content),

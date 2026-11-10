@@ -5,7 +5,16 @@ from typing import Optional
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.decorator import safe_tool, dangerous_tool
+from ex_app.lib.all_tools.lib.files import count_shared_tree
+from ex_app.lib.all_tools.lib.impulse import (
+	ImpulseRadius,
+	Reversibility,
+	destructive,
+	impulse,
+	item_count,
+	read_only,
+	reversibility,
+)
 
 # Nextcloud Circles member type constants
 TYPE_USER = 1
@@ -29,8 +38,64 @@ def _validate_member_id(member_id: str) -> str:
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+
+	def new_member_radius(member_type=TYPE_USER):
+		"""Adding a group or another team to a team pulls in everyone in it, not just one person."""
+		if member_type in (TYPE_GROUP, TYPE_CIRCLE):
+			return ImpulseRadius.GROUP
+		if member_type == TYPE_MAIL:
+			return ImpulseRadius.EXTERNAL
+		return ImpulseRadius.INDIVIDUALS
+
+	async def removed_member_radius(circle_id, member_id):
+		"""What a member loses when they are taken out of a team.
+
+		Nobody gains anything, but the access being withdrawn is exactly as wide as
+		adding that member was: a single account loses a team, a group or a nested
+		team loses it for everybody in it.
+		"""
+		_validate_circle_id(circle_id)
+		_validate_member_id(member_id)
+		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		for member in members or []:
+			if member_id in (member.get('id'), member.get('singleId')):
+				return new_member_radius(member.get('userType'))
+		raise ValueError(f'No member {member_id!r} in team {circle_id!r}')
+
+	async def circle_radius(circle_id):
+		"""Who a team already reaches, read off the members it already has.
+
+		Changing a team's name or description changes what every member of it sees,
+		so the audience of the change is the membership -- which is nobody at all
+		while the user is still the only one in it. Deleting the team is the same
+		membership on the other side of the ledger: everyone in it loses it at once,
+		which is why the reach of a deletion is read off the members too rather than
+		being called SELF because nobody gains anything.
+		"""
+		_validate_circle_id(circle_id)
+		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		user_id = await nc.user
+		radius = ImpulseRadius.SELF
+		for member in members or []:
+			member_type = member.get('userType')
+			if member_type in (TYPE_GROUP, TYPE_CIRCLE, TYPE_MAIL):
+				# A group, a nested team or a mail address: reuse the reach that adding
+				# such a member would have had.
+				radius = max(radius, new_member_radius(member_type))
+			elif member.get('userId') != user_id:
+				# Anyone else in the team makes this a team rather than a private note.
+				radius = max(radius, ImpulseRadius.GROUP)
+		return radius
+
+	async def circle_size(circle_id):
+		"""The team itself and every membership that goes with it."""
+		_validate_circle_id(circle_id)
+		members = await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members')
+		return 1 + len(members or [])
+
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_circles():
 		"""
 		List all circles (teams) the user is a member of
@@ -39,7 +104,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', '/ocs/v2.php/apps/circles/circles'))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def get_circle_details(circle_id: str):
 		"""
 		Get detailed information about a specific circle (team)
@@ -50,7 +116,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', f'/ocs/v2.php/apps/circles/circles/{circle_id}'))
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def list_circle_members(circle_id: str):
 		"""
 		List all members of a specific circle (team)
@@ -62,7 +129,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(circle_members)
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_circle(name: str, description: Optional[str] = None, is_personal: bool = False):
 		"""
 		Create a new circle (team)
@@ -81,7 +150,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/circles/circles', json=payload))
 
 	@tool
-	@dangerous_tool
+	@impulse(new_member_radius)
+	# A new member sees what the team holds right away; removing them later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def add_member_to_circle(circle_id: str, member_id: str, member_type: int = TYPE_USER):
 		"""
 		Add a member to a circle (team)
@@ -100,7 +172,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/multi', json=payload))
 
 	@tool
-	@dangerous_tool
+	@impulse(removed_member_radius)
+	@destructive
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def remove_member_from_circle(circle_id: str, member_id: str):
 		"""
 		Remove a member from a circle (team)
@@ -113,7 +188,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}/members/{member_id}'))
 
 	@tool
-	@dangerous_tool
+	@impulse(circle_radius)
+	# The name and description it replaces are not kept anywhere.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(1)
 	async def update_circle(circle_id: str, name: Optional[str] = None, description: Optional[str] = None):
 		"""
 		Update circle (team) information
@@ -130,7 +208,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return
 
 	@tool
-	@dangerous_tool
+	@impulse(circle_radius)
+	@destructive
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(circle_size)
 	async def delete_circle(circle_id: str):
 		"""
 		Delete a circle (team)
@@ -140,8 +221,15 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_circle_id(circle_id)
 		await nc.ocs('DELETE', f'/ocs/v2.php/apps/circles/circles/{circle_id}')
 
+	async def shared_tree_count(path=None, count_limit=None):
+		"""Sharing a folder exposes everything in it."""
+		return await count_shared_tree(nc, path, count_limit)
+
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.GROUP)
+	# Whoever it reaches can read and copy it right away; revoking it later does not take that back.
+	@reversibility(Reversibility.IRREVERSIBLE)
+	@item_count(shared_tree_count)
 	async def share_with_circle(path: str, circle_id: str, permissions: int = 19):
 		"""
 		Share a file or folder with a circle (team)

@@ -9,7 +9,8 @@ from nc_py_api import AsyncNextcloudApp
 from nc_py_api._exceptions import NextcloudExceptionNotFound
 from packaging.version import Version
 
-from ex_app.lib.all_tools.lib.decorator import dangerous_tool, safe_tool, timed_memoize
+from ex_app.lib.all_tools.lib.decorator import timed_memoize
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, impulse, item_count, read_only, reversibility
 from ex_app.lib.logger import log
 
 # Skills follow the agentskills.io spec: each skill is a folder under
@@ -81,8 +82,14 @@ async def list_skills_metadata(nc: AsyncNextcloudApp) -> list[dict[str, str]]:
 
 
 async def get_tools(nc: AsyncNextcloudApp):
+	async def store_reversibility(skill_name):
+		"""A new skill is undone by deleting it, an overwritten one only from its versions."""
+		existing = {skill['name'] for skill in await list_skills_metadata(nc)}
+		return Reversibility.RECOVERABLE if skill_name in existing else Reversibility.REVERSIBLE
+
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def load_skill(skill_name: str):
 		"""
 		Load the full content of a skill (frontmatter + markdown body) by name.
@@ -113,7 +120,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return res['content']
 
 	@tool
-	@dangerous_tool
+	@impulse(ImpulseRadius.SELF)
+	@reversibility(store_reversibility)
+	@item_count(1)
 	async def store_skill(skill_name: str, description: str, content: str):
 		"""
 		Create or overwrite a skill. A skill is a reusable, self-contained markdown

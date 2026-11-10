@@ -17,7 +17,7 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from nc_py_api import AsyncNextcloudApp, NextcloudException
 from nc_py_api.ex_app import LogLvl
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -93,7 +93,8 @@ class Response(BaseModel):
 
 # Custom formatting for chat inputs
 class ChatWithNextcloud(BaseChatModel):
-	nc: AsyncNextcloudApp = AsyncNextcloudApp()
+	# Create one instance per task: the client is scoped to the task's user
+	nc: AsyncNextcloudApp = Field(default_factory=AsyncNextcloudApp)
 	tools: Sequence[
 		Union[typing.Dict[str, Any], type, Callable, BaseTool]] = []
 	TIMEOUT: int = 60 * 30 # 30 minutes
@@ -448,14 +449,7 @@ class ChatWithNextcloud(BaseChatModel):
 			],
 			**kwargs: Any,
 	) -> Runnable[LanguageModelInput, BaseMessage]:
-		self.tools = [convert_to_openai_tool(tool) for tool in tools]
-		return self
-
-	def bind_nextcloud(self,
-					   nc: AsyncNextcloudApp):
-		self.nc = nc
+		return self.model_copy(update={"tools": [convert_to_openai_tool(tool) for tool in tools]})
 
 	def _llm_type(self) -> str:
 		return "nextcloud-context-agent"
-
-model = ChatWithNextcloud()

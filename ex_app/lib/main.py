@@ -23,9 +23,26 @@ from nc_py_api.ex_app import (
 
 from ex_app.lib.agent import react
 from ex_app.lib.errors import UserFacingError
-from ex_app.lib.logger import log
+from ex_app.lib.logger import format_exception_with_ocs_body, log, logger
 from ex_app.lib.mcp_server import UserAuthMiddleware, ToolListMiddleware
 from ex_app.lib.provider import provider, multimodal_provider
+from ex_app.lib.all_tools.lib.impulse import (
+    DEFAULT_DESTRUCTIVE_THRESHOLD,
+    DEFAULT_IMPULSE_THRESHOLD,
+    DEFAULT_IRREVERSIBLE_FROM,
+    DEFAULT_IRREVERSIBLE_THRESHOLD,
+    DEFAULT_ITEM_COUNT_THRESHOLD,
+    DEFAULT_RELAX_REVERSIBLE_DELETIONS,
+    DESTRUCTIVE_THRESHOLD_SETTING_ID,
+    IMPULSE_THRESHOLD_SETTING_ID,
+    IRREVERSIBLE_FROM_SETTING_ID,
+    IRREVERSIBLE_THRESHOLD_SETTING_ID,
+    ITEM_COUNT_THRESHOLD_SETTING_ID,
+    MCP_ALWAYS_ALLOW_SETTING_ID,
+    RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
+    ImpulseRadius,
+    Reversibility,
+)
 from ex_app.lib.tools import get_categories
 
 PROVIDERS = [provider, multimodal_provider]
@@ -140,6 +157,101 @@ SETTINGS = SettingsForm(
             options={v: k for k, v in categories.items()},
         ),
         SettingsField(
+            id=IMPULSE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm an action from this impulse radius on"),
+            description=_(
+                "Before Context Agent carries out an action it works out its impulse radius: who gains"
+                " access to the item the action touches. Actions that reach at least this far have to be"
+                " confirmed by the user, everything below is carried out right away."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_IMPULSE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every action, including read-only ones"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm when named people gain access, e.g. a share with a user"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm when a group, team or conversation gains access"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only when something leaves the instance, e.g. an email"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=DESTRUCTIVE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm losing content from this impulse radius on"),
+            description=_(
+                "Deleting something takes it away without giving anyone access to it, and overwriting it"
+                " loses it just the same, so both are judged on their own bar. Pick how far the content"
+                " being lost has to reach before Context Agent asks."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_DESTRUCTIVE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every deletion or overwrite"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm losing what named people can see"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm losing what a group, team or conversation can see"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only losing what left the instance"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=RELAX_REVERSIBLE_DELETIONS_SETTING_ID,
+            title=_("Do not ask about deletions that can be undone directly"),
+            description=_(
+                "Some deletions can simply be undone, for example removing a share with a user or"
+                " group, which can be made again just like it was. When this is checked they are not"
+                " judged on the deletion bar above. Content that has to be restored from a trash bin"
+                " or from older versions still counts as lost."
+            ),
+            type=SettingsFieldType.CHECKBOX,
+            default=DEFAULT_RELAX_REVERSIBLE_DELETIONS,
+        ),
+        SettingsField(
+            id=IRREVERSIBLE_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm actions that cannot be undone from this impulse radius on"),
+            description=_(
+                "Some actions cannot be taken back: a sent email or message cannot be unsent, a"
+                " permanently deleted file is gone. Pick how far such an action has to reach before"
+                " Context Agent asks."
+            ),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_IRREVERSIBLE_THRESHOLD.name.lower(),
+            options={
+                _("Only me - confirm every action that cannot be undone"): ImpulseRadius.SELF.name.lower(),
+                _("Individual people - confirm when it reaches named people"):
+                    ImpulseRadius.INDIVIDUALS.name.lower(),
+                _("A group - confirm when it reaches a group, team or conversation"):
+                    ImpulseRadius.GROUP.name.lower(),
+                _("Outside this Nextcloud - confirm only when it reaches outside the instance"):
+                    ImpulseRadius.EXTERNAL.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=IRREVERSIBLE_FROM_SETTING_ID,
+            title=_("Treat as impossible to undo"),
+            description=_("Which actions the bar above applies to."),
+            type=SettingsFieldType.RADIO,
+            default=DEFAULT_IRREVERSIBLE_FROM.name.lower(),
+            options={
+                _("Only actions that are gone for good"): Reversibility.IRREVERSIBLE.name.lower(),
+                _("Also actions that can only be restored from a trash bin or a version history"):
+                    Reversibility.RECOVERABLE.name.lower(),
+            },
+        ),
+        SettingsField(
+            id=ITEM_COUNT_THRESHOLD_SETTING_ID,
+            title=_("Ask the user to confirm when an action changes more than this many items"),
+            description=_(
+                "Counts everything that is created, changed, deleted or sent to, including the"
+                " contents of folders, across all actions Context Agent wants to carry out at once."
+                " Reading does not count."
+            ),
+            type=SettingsFieldType.NUMBER,
+            default=DEFAULT_ITEM_COUNT_THRESHOLD,
+        ),
+        SettingsField(
             id="here_api",
             title=_("API Key HERE"),
             description=_("Set the API key for the HERE public transport routing"),
@@ -154,6 +266,18 @@ SETTINGS = SettingsForm(
             type=SettingsFieldType.TEXT,
             default="",
             placeholder="{\"weather\": {\"url\": \"https://weather.internet/mcp\",\"transport\": \"streamable_http\"}}",
+        ),
+        SettingsField(
+            id=MCP_ALWAYS_ALLOW_SETTING_ID,
+            title=_("MCP tools that never need confirmation"),
+            description=_(
+                "Context Agent cannot tell what an MCP tool does, so it asks the user to confirm every"
+                " call to one. List the names of MCP tools you trust, separated by commas, to let them"
+                " run without asking, or enter * to allow all MCP tools."
+            ),
+            type=SettingsFieldType.TEXT,
+            default="",
+            placeholder="get_forecast, get_alerts",
         ),
         ]
 )
@@ -187,32 +311,39 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
 
 async def background_thread_task():
     nc = AsyncNextcloudApp()
+    await log(nc, LogLvl.INFO, "Task polling started")
 
-    async with asyncio.TaskGroup() as tg:
-        while True:
-            if not app_enabled.is_set():
-                await asyncio.sleep(5)
+    while True:
+        if not app_enabled.is_set():
+            await asyncio.sleep(5)
+            continue
+
+        try:
+            response = await nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES)
+            if not response or not 'task' in response:
+                async with NUM_RUNNING_TASKS_LOCK:
+                    no_tasks_running = NUM_RUNNING_TASKS == 0
+                if no_tasks_running:
+                    # if there are no running tasks we will get a trigger
+                    await wait_for_task()
+                else:
+                    # otherwise, wait with fast frequency
+                    await asyncio.sleep(2)
                 continue
+        except (NextcloudException, RequestException, JSONDecodeError) as e:
+            tb_str = await format_exception_with_ocs_body(e)
+            await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
+            await wait_for_task(5)
+            continue
+        except Exception as e:  # noqa
+            # Anything unexpected must not end the polling loop, or no task would be picked up anymore
+            tb_str = await format_exception_with_ocs_body(e)
+            await log(nc, LogLvl.ERROR, "Unexpected error fetching the next task " + tb_str)
+            await wait_for_task(5)
+            continue
 
-            try:
-                response = await nc.providers.task_processing.next_task(PROVIDER_IDS, TASK_TYPES)
-                if not response or not 'task' in response:
-                    async with NUM_RUNNING_TASKS_LOCK:
-                        no_tasks_running = NUM_RUNNING_TASKS == 0
-                    if no_tasks_running:
-                        # if there are no running tasks we will get a trigger
-                        await wait_for_task()
-                    else:
-                        # otherwise, wait with fast frequency
-                        await asyncio.sleep(2)
-                    continue
-            except (NextcloudException, RequestException, JSONDecodeError) as e:
-                tb_str = ''.join(traceback.format_exception(e))
-                await log(nc, LogLvl.WARNING, "Error fetching the next task " + tb_str)
-                await wait_for_task(5)
-                continue
-
-            task = response["task"]
+        task = response["task"]
+        try:
             await log(nc, LogLvl.INFO, 'New Task incoming')
             await log(nc, LogLvl.DEBUG, str(task))
             await log(nc, LogLvl.INFO, str({
@@ -221,9 +352,21 @@ async def background_thread_task():
                 'confirmation': task['input']['confirmation'],
                 'conversation_token': '<skipped>',
                 'memories': task['input'].get('memories', None),
+                'user_instructions': task['input'].get('user_instructions', None),
+                'output_mode': task['input'].get('output_mode', None),
                 'input_attachments': task['input'].get('input_attachments', None),
             }))
-            tg.create_task(handle_task(task, nc))
+        except Exception as e:  # noqa
+            tb_str = await format_exception_with_ocs_body(e)
+            await log(nc, LogLvl.WARNING, "Error logging the incoming task " + tb_str)
+        # Tasks are not run in a TaskGroup: one failing task would cancel the group and stop the polling loop
+        running_task = asyncio.create_task(handle_task(task, nc))
+        RUNNING_TASKS.add(running_task)
+        running_task.add_done_callback(RUNNING_TASKS.discard)
+
+# Keep strong references to running tasks, the event loop only holds weak ones
+RUNNING_TASKS: set[asyncio.Task] = set()
+BG_TASK: asyncio.Task | None = None
 
 NUM_RUNNING_TASKS_LOCK = asyncio.Lock()
 NUM_RUNNING_TASKS = 0
@@ -240,9 +383,24 @@ async def report_error(nc: AsyncNextcloudApp, task_id: int, e: Exception):
 
 async def handle_task(task, nc: AsyncNextcloudApp):
     global NUM_RUNNING_TASKS
+    async with NUM_RUNNING_TASKS_LOCK:
+        NUM_RUNNING_TASKS += 1
     try:
+        await _handle_task(task, nc)
+    except Exception as e:  # noqa
+        # Last resort, _handle_task should already have reported everything
+        try:
+            tb_str = await format_exception_with_ocs_body(e)
+            await log(nc, LogLvl.ERROR, "Unhandled error while processing a task: " + tb_str)
+        except Exception:
+            pass
+    finally:
         async with NUM_RUNNING_TASKS_LOCK:
-            NUM_RUNNING_TASKS += 1
+            NUM_RUNNING_TASKS -= 1
+
+
+async def _handle_task(task, nc: AsyncNextcloudApp):
+    try:
         nextcloud = AsyncNextcloudApp()
         if task['userId']:
             await nextcloud.set_user(task['userId'])
@@ -262,21 +420,18 @@ async def handle_task(task, nc: AsyncNextcloudApp):
                 )
             except (NextcloudException, RequestException) as stream_err:
                 stream_update_failed = True
-                tb_str = ''.join(traceback.format_exception(stream_err))
+                tb_str = await format_exception_with_ocs_body(stream_err)
                 await log(nc, LogLvl.WARNING, "Error streaming intermediate task result: " + tb_str)
 
         output = await react(task, nextcloud, stream_output=stream_output if stream_updates_enabled else None)
     except Exception as e:  # noqa
         try:
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.ERROR, "Error: " + tb_str)
             await report_error(nc, task["id"], e)
-        except (NextcloudException, RequestException) as net_err:
-            tb_str = ''.join(traceback.format_exception(net_err))
-            await log(nc, LogLvl.WARNING, "Network error in reporting the error: " + tb_str)
-        finally:
-            async with NUM_RUNNING_TASKS_LOCK:
-                NUM_RUNNING_TASKS -= 1
+        except Exception as report_err:  # noqa
+            tb_str = await format_exception_with_ocs_body(report_err)
+            await log(nc, LogLvl.WARNING, "Error in reporting the error: " + tb_str)
         return
     try:
         await nc.providers.task_processing.report_result(
@@ -285,19 +440,31 @@ async def handle_task(task, nc: AsyncNextcloudApp):
         )
     except Exception as e:
         try:
-            tb_str = ''.join(traceback.format_exception(e))
+            tb_str = await format_exception_with_ocs_body(e)
             await log(nc, LogLvl.ERROR, "Error trying to report the task result: " + tb_str)
         except Exception:
             pass
-    finally:
-        async with NUM_RUNNING_TASKS_LOCK:
-            NUM_RUNNING_TASKS -= 1
 
 
 
 def start_bg_task():
-    loop = asyncio.get_event_loop()
-    loop.create_task(background_thread_task())
+    global BG_TASK
+    BG_TASK = asyncio.get_event_loop().create_task(background_thread_task())
+    BG_TASK.add_done_callback(_restart_bg_task)
+
+
+def _restart_bg_task(task: asyncio.Task):
+    # The polling loop never returns on its own, so if it ended, restart it to keep picking up tasks
+    if task.cancelled():
+        # cancelled on shutdown
+        return
+    exc = task.exception()
+    if exc is not None:
+        tb_str = ''.join(traceback.format_exception(exc))
+    else:
+        tb_str = "returned without an error"
+    logger.error("Task polling stopped unexpectedly, restarting it: " + tb_str)
+    asyncio.get_event_loop().call_later(5, start_bg_task)
 
 # Trigger event is available starting with nextcloud v33
 async def trigger_handler(providerId: str):

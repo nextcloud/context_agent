@@ -69,7 +69,7 @@ jobs:
           ref: ${{ matrix.server-versions }}
 
       - name: Set up php ${{ matrix.php-versions }}
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.40.0
         with:
           php-version: ${{ matrix.php-versions }}
           tools: phpunit
@@ -139,10 +139,10 @@ jobs:
         run: |
           ./occ app_api:daemon:register --net host manual_install "Manual Install" manual-install http localhost http://localhost:8080
 
-      - name: Setup python 3.11
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 #v7.0.0
+      - name: Setup python 3.13
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 #v7.1.0
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install llm2 app
         working-directory: llm2
@@ -155,7 +155,7 @@ jobs:
           # pyproject.toml pins xllamacpp to the cu128 wheel, which needs libcuda.so.1 at import
           # time. The CI runner has no NVIDIA driver, so we swap in the PyPI CPU build for tests.
           # see https://github.com/nextcloud/llm2/blob/d1c5604d75d008359937fcb16f1d82e1f421a87c/.github/workflows/integration_test.yml#L133-L135
-          poetry run pip install --force-reinstall --no-deps xllamacpp
+          poetry run pip install --force-reinstall --no-deps xllamacpp==2026.9.10809
 
       - name: Cache llm2 models
         uses: actions/cache/restore@v6

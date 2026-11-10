@@ -1,40 +1,59 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-FROM python:3.11-slim-bookworm
 
-ENV DEBIAN_FRONTEND noninteractive
+# Builder stage: carries the full toolchain (build-essential, git, pipx/poetry,
+# curl) and builds the application virtualenv; none of it reaches the runtime.
+FROM python:3.13-slim-trixie AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV POETRY_VIRTUALENVS_IN_PROJECT=1
 
 RUN apt-get update && \
-  apt-get install -y curl && \
-  apt-get -y clean && \
-  apt-get install -y pipx build-essential git vim && \
+  apt-get install -y --no-install-recommends curl pipx build-essential git && \
   rm -rf /var/lib/apt/lists/*
 
-# Download and install FRP client into /usr/local/bin.
+# Download and install FRP client into /usr/local/bin, verifying the
+# tarball against the release's published SHA256 checksums.
+ARG FRP_VERSION=0.71.0
 RUN set -ex; \
-    ARCH=$(uname -m); \
-    if [ "$ARCH" = "aarch64" ]; then \
-      FRP_URL="https://raw.githubusercontent.com/nextcloud/HaRP/main/exapps_dev/frp_0.61.1_linux_arm64.tar.gz"; \
-    else \
-      FRP_URL="https://raw.githubusercontent.com/nextcloud/HaRP/main/exapps_dev/frp_0.61.1_linux_amd64.tar.gz"; \
-    fi; \
-    echo "Downloading FRP client from $FRP_URL"; \
-    curl -L "$FRP_URL" -o /tmp/frp.tar.gz; \
-    tar -C /tmp -xzf /tmp/frp.tar.gz; \
-    mv /tmp/frp_0.61.1_linux_* /tmp/frp; \
-    cp /tmp/frp/frpc /usr/local/bin/frpc; \
+    case "$(uname -m)" in \
+      aarch64) FRP_ARCH="arm64" ;; \
+      *) FRP_ARCH="amd64" ;; \
+    esac; \
+    FRP_TGZ="frp_${FRP_VERSION}_linux_${FRP_ARCH}.tar.gz"; \
+    FRP_BASE="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}"; \
+    echo "Downloading FRP client from $FRP_BASE/$FRP_TGZ"; \
+    curl -fsSL "$FRP_BASE/$FRP_TGZ" -o "/tmp/$FRP_TGZ"; \
+    curl -fsSL "$FRP_BASE/frp_sha256_checksums.txt" -o /tmp/frp_sha256_checksums.txt; \
+    awk -v f="$FRP_TGZ" '$2 == f' /tmp/frp_sha256_checksums.txt > /tmp/frp.checksum; \
+    test -s /tmp/frp.checksum; \
+    (cd /tmp && sha256sum -c frp.checksum); \
+    tar -C /tmp -xzf "/tmp/$FRP_TGZ"; \
+    cp "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}/frpc" /usr/local/bin/frpc; \
     chmod +x /usr/local/bin/frpc; \
-    rm -rf /tmp/frp /tmp/frp.tar.gz
-
+    rm -rf "/tmp/frp_${FRP_VERSION}_linux_${FRP_ARCH}" "/tmp/$FRP_TGZ" /tmp/frp_sha256_checksums.txt /tmp/frp.checksum
 
 RUN pipx install poetry
-
-# Install requirements
-
-COPY pyproject.toml .
-COPY poetry.lock .
 ENV PATH="/root/.local/bin:${PATH}"
-RUN poetry install
+ENV VIRTUAL_ENV=/opt/app/.venv PATH="/opt/app/.venv/bin:${PATH}"
+
+# Install requirements into /opt/app/.venv
+WORKDIR /opt/app
+COPY pyproject.toml poetry.lock ./
+RUN poetry install && \
+    (/opt/app/.venv/bin/python -m pip uninstall -y pip setuptools wheel || true)
+
+# Runtime stage: interpreter + app venv + frpc only — no build toolchain,
+# no vim, no git, no curl, no pipx/poetry.
+FROM python:3.13-slim-trixie
+
+# procps provides pgrep, required by healthcheck.sh.
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends procps && \
+  rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/frpc /usr/local/bin/frpc
+COPY --from=builder /opt/app/.venv /opt/app/.venv
 
 ADD /ex_app/cs[s] /ex_app/css
 ADD /ex_app/im[g] /ex_app/img
@@ -47,5 +66,5 @@ COPY --chmod=775 start.sh /
 
 WORKDIR /ex_app/lib
 ENV PYTHONPATH="/"
-ENTRYPOINT ["/start.sh", "poetry", "run", "python3", "main.py"]
+ENTRYPOINT ["/start.sh", "/opt/app/.venv/bin/python", "main.py"]
 HEALTHCHECK --interval=2s --timeout=2s --retries=300 CMD /healthcheck.sh

@@ -4,13 +4,14 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.task_processing import run_task
-from ex_app.lib.all_tools.lib.decorator import safe_tool
+from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 
 
 async def get_tools(nc: AsyncNextcloudApp):
 
 	@tool
-	@safe_tool
+	@impulse(ImpulseRadius.SELF)
+	@read_only
 	async def generate_image(input: str) -> str:
 		"""
 		Generate an image using AI from a text description input
@@ -23,7 +24,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'numberOfImages': 1,
 		}
 		task = await run_task(nc,  tasktype, task_input)
-		url = await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'})
+		url = (await nc.ocs('GET', '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute', json={'url': 'ocs/v2.php/apps/assistant/api/v1/task'}))["absolute_url"]
 		return f"{url}/{task.id}/output-file/{task.output['images'][0]}/download"
 
 	return [
