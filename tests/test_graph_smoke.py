@@ -65,7 +65,7 @@ def test_build_task_input_and_task_to_message():
     assert task_input["input"] == "and tomorrow?"
     assert len(task_input["history"]) == 3
 
-    message = model._task_to_message(
+    message = asyncio.run(model._task_to_message(
         Response.model_validate(
             {
                 "task": {
@@ -78,10 +78,56 @@ def test_build_task_input_and_task_to_message():
                 }
             }
         ).task
-    )
+    ))
     assert isinstance(message, AIMessage)
     assert message.content == "it is sunny"
     assert message.tool_calls[0]["name"] == "get_weather"
+
+
+class _FakeNc:
+    """Answers the Assistant app's save endpoint, failing for the given file ids."""
+
+    def __init__(self, failing_file_ids=()):
+        self.failing_file_ids = set(failing_file_ids)
+        self.calls = []
+
+    async def ocs(self, method, path, **kwargs):
+        self.calls.append((method, path))
+        file_id = int(path.split("/file/")[1].split("/")[0])
+        if file_id in self.failing_file_ids:
+            raise Exception("Not found")
+        return {"fileId": file_id + 1000, "path": f"/Assistant/{file_id}.png", "mime": "image/png"}
+
+
+def _task_with_attachments(file_ids):
+    return Response.model_validate(
+        {"task": {"id": 7, "status": "STATUS_SUCCESSFUL", "output": {"output": "here", "output_attachments": file_ids}}}
+    ).task
+
+
+def test_task_to_message_saves_output_attachments_to_assistant_folder():
+    nc = _FakeNc()
+    model = ChatWithNextcloud.model_construct(nc=nc)
+    message = asyncio.run(model._task_to_message(_task_with_attachments([1, 2])))
+    assert nc.calls == [
+        ("POST", "/ocs/v2.php/apps/assistant/api/v1/task/7/file/1/save"),
+        ("POST", "/ocs/v2.php/apps/assistant/api/v1/task/7/file/2/save"),
+    ]
+    assert message.content == [
+        {"type": "file", "file_id": 1001},
+        {"type": "file", "file_id": 1002},
+        {"type": "text", "text": "here"},
+    ]
+
+
+def test_task_to_message_keeps_task_reference_when_saving_fails():
+    model = ChatWithNextcloud.model_construct(nc=_FakeNc(failing_file_ids={2}))
+    message = asyncio.run(model._task_to_message(_task_with_attachments([1, 2])))
+    assert message.content == [
+        {"type": "file", "file_id": 1001},
+        {"type": "file", "file_id": 2, "ocp_task_id": 7},
+        {"type": "text", "text": "here"},
+    ]
 
 
 def test_serializer_roundtrip_token_shape():
