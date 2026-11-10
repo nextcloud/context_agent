@@ -9,6 +9,11 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 
+# Nextcloud Circles member types (same values as in circles.py)
+TYPE_GROUP = 2
+TYPE_MAIL = 4
+TYPE_CIRCLE = 16
+
 # Unlike the other write tools, which append their AI note to a value they create,
 # update_page_content replaces a whole page the agent usually read back first - so the
 # note has to be stripped before it is re-appended, or it stacks once per edit.
@@ -75,6 +80,38 @@ async def get_tools(nc: AsyncNextcloudApp):
 		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages')
 		pages = payload.get('pages') if isinstance(payload, dict) else payload
 		return _subtree_size(pages or [], page_id, count_limit)
+	
+	async def collective_page_count(collective_id):
+		"""Trashing a collective takes every page in it along."""
+		payload = await nc.ocs('GET', f'/ocs/v2.php/apps/collectives/api/v1.0/collectives/{collective_id}/pages')
+		pages = payload.get('pages') if isinstance(payload, dict) else payload
+		return len(pages or [])
+
+	async def new_collective_radius(name):
+		"""Who a new collective reaches.
+
+		Usually it starts a fresh team with only the user in it. But when a team of that
+		name already exists and the user administers it, Collectives builds the collective
+		on that team instead, and everyone already in it gets access. So an existing team,
+		if there is one, decides the reach.
+		"""
+		# Collectives matches on the sanitised name, ignoring case.
+		wanted = re.sub(r'[*|\\:"<>?]', '', (name or '').replace('/', '-')).strip(' .').lower()
+		circles = await nc.ocs('GET', '/ocs/v2.php/apps/circles/circles')
+		circle = next((c for c in circles or [] if wanted in (
+			str(c.get('name') or '').lower(), str(c.get('sanitizedName') or '').lower())), None)
+		if circle is None:
+			return ImpulseRadius.SELF
+		members = await nc.ocs('GET', f"/ocs/v2.php/apps/circles/circles/{circle.get('id') or circle.get('singleId')}/members")
+		user_id = await nc.user
+		radius = ImpulseRadius.SELF
+		for member in members or []:
+			member_type = member.get('userType')
+			if member_type == TYPE_MAIL:
+				radius = max(radius, ImpulseRadius.EXTERNAL)
+			elif member_type in (TYPE_GROUP, TYPE_CIRCLE) or member.get('userId') != user_id:
+				radius = max(radius, ImpulseRadius.GROUP)
+		return radius
 
 	async def trashed_subtree_size(collective_id, page_id):
 		"""Deleting or restoring a trashed page acts on the subpages trashed with it.
@@ -115,18 +152,20 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('GET', '/ocs/v2.php/apps/collectives/api/v1.0/collectives'))
 
 	@tool
-	@dangerous_tool
+	@impulse(new_collective_radius)
+	# Trashing it again undoes the collective itself.
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
 	async def create_collective(name: str, emoji: Optional[str] = None):
 		"""
 		Create a new Collective (wiki-like knowledge base) with the current user as its admin.
 		This also creates a team (circle) of the same name that holds the collective's members;
 		add people, groups or other teams to it with add_member_to_circle using the returned circleId.
 		The collective starts with a landing page; add pages with create_page.
-		Fails if a team with that name already exists - check list_collectives and list_circles
-		and pick another name in that case.
-		:param name: the name for the new collective (also used for its team)
-		:param emoji: optional single emoji character used as the collective's icon (e.g. "📚")
-		:return: the created collective including its id (needed by the page tools) and circleId
+		If a team with that name already exists and the current user administers it, the collective
+		is created for that existing team and everyone in it gets access; if the user does not
+		administer it, creation fails. Check list_circles first and pick another name unless
+		reusing the team is intended.
 		"""
 		payload = {'name': name}
 		if emoji:
@@ -134,7 +173,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await nc.ocs('POST', '/ocs/v2.php/apps/collectives/api/v1.0/collectives', json=payload))
 
 	@tool
-	@dangerous_tool
+	@impulse(collective_radius)
+	@destructive
+	# It stays in the Collectives trash until someone restores or deletes it there.
+	@reversibility(Reversibility.RECOVERABLE)
+	@item_count(collective_page_count)
 	async def trash_collective(collective_id: int):
 		"""
 		Move a Collective to the Collectives trash. Only admins of the collective's team can do this.
