@@ -180,6 +180,26 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps(await list_live_boards('?details=true'))
 
 	@tool
+	# A new board is shared with nobody yet.
+	@impulse(ImpulseRadius.SELF)
+	@reversibility(Reversibility.REVERSIBLE)
+	@item_count(1)
+	async def create_board(title: str, color: str = '0082c9'):
+		"""
+		Create a new kanban board in the Nextcloud Deck app. The board starts out without any stacks; add them with create_stack.
+		:param title: the title of the board
+		:param color: optional color of the board as a hex code, e.g. 0082c9 (default)
+		:return: the created board with its id
+		"""
+		color = color.lstrip('#')
+		if len(color) != 6 or any(c not in '0123456789abcdefABCDEF' for c in color):
+			raise ValueError(f'The color {color!r} is not a six-digit hex code')
+		return json.dumps(await deck_request('POST', '/boards', {
+			'title': title,
+			'color': color,
+		}))
+
+	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
 	async def list_board_cards(board_id: int, stack_id: Optional[int] = None, archived: bool = False):
@@ -579,6 +599,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 	return [
 		list_boards,
+		create_board,
 		list_board_cards,
 		add_card,
 		add_card_label,
