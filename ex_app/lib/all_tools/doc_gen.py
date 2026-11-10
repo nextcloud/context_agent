@@ -14,8 +14,16 @@ FORMAT_TASK_TYPES = {
     "pdf": ("richdocuments:text_to_text_document",),
     "spreadsheet": ("richdocuments:text_to_spreadsheet_document",),
     "excel spreadsheet": ("richdocuments:text_to_spreadsheet_document",),
-	"slides": ("marp_slides:slide_deck_generation", "richdocuments:slide_deck_generation"),
+	"slides": ("slideprepper:slide_deck_generation", "richdocuments:slide_deck_generation"),
 }
+
+# The slideprepper deck task answers with one file id per selected output
+# format under the "slide_decks" output key, in generation order: the default
+# "all" delivers PowerPoint, HTML and PDF. The links are labeled in that
+# documented order; a file beyond the known formats gets the plain
+# fallback label instead of a guessed one.
+DECK_OUTPUT_LABELS = ("PowerPoint (pptx)", "HTML", "PDF")
+DECK_FALLBACK_LABEL = "Slide deck"
 
 
 def servable_formats(tasktypes):
@@ -32,6 +40,28 @@ def quoted_formats(formats):
     if len(formats) < 2:
         return f'"{formats[0]}"' if formats else ""
     return ", ".join(f'"{name}"' for name in formats[:-1]) + f' and "{formats[-1]}"'
+
+
+def deck_reply(url, task_id, deck_file_ids) -> str:
+    """A relay instruction line first, then one labeled download link per deck file."""
+    # A missing or empty "slide_decks" leaves nothing to link, so fail
+    # loudly like the task_processing output gate instead of replying "".
+    if not deck_file_ids:
+        raise Exception(
+            'Expected "slide_decks" in the slideprepper:slide_deck_generation task result'
+        )
+    # The model relays this result into its reply and compresses it freely,
+    # so what a compressed reply must not lose comes first: an explicit
+    # instruction to keep every link.
+    lines = ["The deck was generated. Include every link below in your reply."]
+    for index, file_id in enumerate(deck_file_ids):
+        label = (
+            DECK_OUTPUT_LABELS[index]
+            if index < len(DECK_OUTPUT_LABELS)
+            else DECK_FALLBACK_LABEL
+        )
+        lines.append(f"{label}: {url}/{task_id}/output-file/{file_id}/download")
+    return "\n".join(lines)
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -76,13 +106,18 @@ async def get_tools(nc: AsyncNextcloudApp):
             case "slides":
                 # Prefer the slides ExApp's deck task when its type is registered
                 # server-side, fall back to richdocuments' deck task otherwise.
-                # Both answer with the "slide_deck" output key.
+                # The two speak different payload shapes: the slideprepper task
+                # takes an "input" slot and answers with one file per output
+                # format under "slide_decks", richdocuments takes "text" and
+                # answers a single "slide_deck".
                 tasktypes = (await nc.ocs("GET", "/ocs/v2.php/taskprocessing/tasktypes"))["types"].keys()
-                if "marp_slides:slide_deck_generation" in tasktypes:
-                    tasktype = "marp_slides:slide_deck_generation"
+                if "slideprepper:slide_deck_generation" in tasktypes:
+                    tasktype = "slideprepper:slide_deck_generation"
                     task_input = {
-                        "prompt": input,
+                        "input": input,
                     }
+                    task = await run_task(nc, tasktype, task_input)
+                    return deck_reply(url, task.id, task.output.get("slide_decks"))
                 else:
                     tasktype = "richdocuments:slide_deck_generation"
                     task_input = {
