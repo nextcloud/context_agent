@@ -131,7 +131,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			  obtained from the file-related tools or unified search.
 			- For scope_type "provider": a list of provider keys in the format "<appId>__<providerId>"
 			  (e.g., "files__default" for files, "mail__messages" for mail).
-		:param limit: The max no. of documents to return, default 30.
+		:param limit: The max no. of documents to return, default 30, max 200.
 		:return: the answer from context chat
 		"""
 
@@ -146,7 +146,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"scopeType": scope_type,
 			"scopeList": scope_list or [],
 			"scopeListMeta": "",
-			"limit": limit,
+			"limit": min(200, max(1, limit)),
 		}
 		task_output = (await run_task(nc, CONTEXT_CHAT_SEARCH_TASK_TYPE, task_input)).output
 		return task_output["sources"]
