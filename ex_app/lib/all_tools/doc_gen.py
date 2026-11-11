@@ -22,8 +22,8 @@ FORMAT_TASK_TYPES = {
 # "all" delivers PowerPoint, HTML and PDF. The links are labeled in that
 # documented order; a file beyond the known formats gets the plain
 # fallback label instead of a guessed one.
-DECK_OUTPUT_LABELS = ("PowerPoint (pptx)", "HTML", "PDF")
-DECK_FALLBACK_LABEL = "Slide deck"
+SLIDEPREPPER_OUTPUT_LABELS = ("PowerPoint (pptx)", "HTML", "PDF")
+SLIDEPREPPER_FALLBACK_LABEL = "Slide deck"
 
 
 def servable_formats(tasktypes):
@@ -42,7 +42,7 @@ def quoted_formats(formats):
     return ", ".join(f'"{name}"' for name in formats[:-1]) + f' and "{formats[-1]}"'
 
 
-def deck_reply(url, task_id, deck_file_ids) -> str:
+def slideprepper_reply(url, task_id, deck_file_ids) -> str:
     """A relay instruction line first, then one labeled download link per deck file."""
     # A missing or empty "slide_decks" leaves nothing to link, so fail
     # loudly like the task_processing output gate instead of replying "".
@@ -56,9 +56,9 @@ def deck_reply(url, task_id, deck_file_ids) -> str:
     lines = ["The deck was generated. Include every link below in your reply."]
     for index, file_id in enumerate(deck_file_ids):
         label = (
-            DECK_OUTPUT_LABELS[index]
-            if index < len(DECK_OUTPUT_LABELS)
-            else DECK_FALLBACK_LABEL
+            SLIDEPREPPER_OUTPUT_LABELS[index]
+            if index < len(SLIDEPREPPER_OUTPUT_LABELS)
+            else SLIDEPREPPER_FALLBACK_LABEL
         )
         lines.append(f"{label}: {url}/{task_id}/output-file/{file_id}/download")
     return "\n".join(lines)
@@ -117,7 +117,7 @@ async def get_tools(nc: AsyncNextcloudApp):
                         "input": input,
                     }
                     task = await run_task(nc, tasktype, task_input)
-                    return deck_reply(url, task.id, task.output.get("slide_decks"))
+                    return slideprepper_reply(url, task.id, task.output.get("slide_decks"))
                 else:
                     tasktype = "richdocuments:slide_deck_generation"
                     task_input = {
