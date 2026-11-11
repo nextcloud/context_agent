@@ -74,6 +74,11 @@ def round_to_nearest_half_hour(dt=None):
 	return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
 
 
+def _local_midnight(date, tz):
+	# normalize, so a midnight skipped by a DST change becomes the first wall time that exists that day
+	return tz.normalize(tz.localize(date))
+
+
 def freebusy_range(start_date, end_date, tz, now=None):
 	"""
 	Resolves the range to search for free slots in. Dates are interpreted in `tz`; the end date is inclusive.
@@ -83,19 +88,24 @@ def freebusy_range(start_date, end_date, tz, now=None):
 	:param tz: A pytz timezone
 	:param now: The current time, timezone-aware (default: datetime.now(tz))
 	:return: (start, end) timezone-aware datetimes
+	:raises ValueError: if the range ends before it starts or lies entirely in the past
 	"""
 	earliest = tz.normalize(round_to_nearest_half_hour(now or datetime.now(tz)))
-	if start_date is None:
+	# compare parsed dates, not strings: strptime also accepts unpadded dates like '2026-11-5'
+	start_day = datetime.strptime(start_date, "%Y-%m-%d") if start_date is not None else None
+	end_day = datetime.strptime(end_date, "%Y-%m-%d") if end_date is not None else None
+	if start_day is None:
 		start_time = earliest
 	else:
 		# slots in the past are of no use
-		start_time = max(tz.localize(datetime.strptime(start_date, "%Y-%m-%d")), earliest)
-	# add days in wall-clock time, so a DST change in between does not shift the end by an hour
-	default_end = tz.localize(start_time.replace(tzinfo=None) + timedelta(days=7))
-	if end_date is None:
-		return start_time, default_end
+		start_time = max(_local_midnight(start_day, tz), earliest)
+	if end_day is None:
+		# add days in wall-clock time, so a DST change in between does not shift the end by an hour
+		return start_time, tz.normalize(tz.localize(start_time.replace(tzinfo=None) + timedelta(days=7)))
 	# end at midnight after the end date, so the end date itself is included
-	end_time = tz.localize(datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
+	end_time = _local_midnight(end_day + timedelta(days=1), tz)
+	if start_day is not None and end_day < start_day:
+		raise ValueError(f"The end date {end_date} is before the start date {start_date}")
 	if start_time >= end_time:
-		end_time = default_end
+		raise ValueError(f"The range ending on {end_date} lies entirely in the past; free slots can only be found from now on")
 	return start_time, end_time

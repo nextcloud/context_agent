@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import asyncio
+import re
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -19,6 +20,9 @@ from ex_app.lib.all_tools.lib.audience import principal_radius
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 from ex_app.lib.all_tools.lib.tz import get_timezone, user_timezone
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, freebusy_range
+
+
+EMAIL_ADDRESS = re.compile(r'[^\s@:;,<>"]+@[^\s@:;,<>"]+')
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -191,14 +195,25 @@ async def get_tools(nc: AsyncNextcloudApp):
 			me = ncSync.ocs('GET', '/ocs/v2.php/cloud/user')
 			if not me.get('email'):
 				raise Exception('Cannot look up free time slots: the current user has no email address set in their Nextcloud profile')
+			if not EMAIL_ADDRESS.fullmatch(me['email']):
+				raise Exception('Cannot look up free time slots: the email address in the current user\'s Nextcloud profile is not a plain email address')
+
+			# the addresses go verbatim into the iCalendar body, so anything that could break out of the property is rejected
+			for attendee in participants:
+				if not EMAIL_ADDRESS.fullmatch(attendee):
+					raise ValueError(f"Invalid participant '{attendee}': participants must be plain email addresses")
+			if slot_duration is None:
+				slot_duration = 1
+			if slot_duration <= 0:
+				raise ValueError("slot_duration must be a positive number of hours")
 
 			attendees = 'ORGANIZER:mailto:' + me['email'] + '\n'
 			attendees += 'ATTENDEE:mailto:' + me['email'] + '\n'
 			for attendee in participants:
 				attendees += f"ATTENDEE:mailto:{attendee}\n"
 
-			# dates are interpreted in the user's timezone (falls back to UTC if the profile has none)
-			tz = pytz.timezone(get_timezone(timezone or me.get('timezone') or 'UTC'))
+			# dates are interpreted in the user's timezone
+			tz = pytz.timezone(get_timezone(timezone or me.get('timezone')))
 			start_time, end_time = freebusy_range(start_time, end_time, tz)
 
 			dtstart = start_time.astimezone(pytz.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -225,25 +240,39 @@ END:VCALENDAR
 																		   "Content-Type": "text/calendar; charset=utf-8",
 																		   "Depth": "0",
 																	   }, data=freebusyRequest)
-			print(freebusyRequest)
-			print(response.text)
+			if response.status_code != 200:
+				raise Exception(f"Free/busy lookup failed (HTTP {response.status_code})")
 
-			# Parse the XML response to extract vCard data
-			namespace = {"CAL": "urn:ietf:params:xml:ns:caldav"}  # Define the namespace
+			# Parse the XML schedule-response, which has one response per recipient
+			namespace = {"CAL": "urn:ietf:params:xml:ns:caldav", "D": "DAV:"}
 			root = ET.fromstring(response.text)
-			vcal_elements = root.findall(".//CAL:calendar-data", namespace)
-			# Parse vcal strings into dictionaries
 			busy_times = []
-			for vcal_element in vcal_elements:
+			# the server answers 200 even when it cannot resolve a recipient (e.g. someone outside this Nextcloud),
+			# so a failed recipient must not be mistaken for one without busy times
+			unknown_availability = []
+			for recipient_response in root.findall(".//CAL:response", namespace):
+				recipient = (recipient_response.findtext("CAL:recipient/D:href", "", namespace) or "").strip()
+				if recipient.lower().startswith("mailto:"):
+					recipient = recipient[len("mailto:"):]
+				status = (recipient_response.findtext("CAL:request-status", "", namespace) or "").strip()
+				vcal_element = recipient_response.find("CAL:calendar-data", namespace)
+				if not status.startswith("2.") or vcal_element is None or not (vcal_element.text or "").strip():
+					unknown_availability.append(f"{recipient} ({status or 'no free/busy data'})")
+					continue
 				vcal_text = vcal_element.text.strip()
 				vcal = vobject.readOne(vcal_text)
+				# one FREEBUSY property can list several comma-separated periods
 				for fb in vcal.vfreebusy.contents.get("freebusy", []):
-					busy_times.append(fb.value[0])
-			if slot_duration is None:
-				slot_duration = 1
+					for busy_start, busy_end in fb.value:
+						if isinstance(busy_end, timedelta):
+							busy_end = busy_start + busy_end
+						busy_times.append((busy_start, busy_end))
 			available_slots = find_available_slots(start_time, end_time, busy_times, timedelta(hours=slot_duration))
-			# return the slots in the user's timezone, so they are not presented as UTC times
-			return [(start.astimezone(tz).isoformat(), end.astimezone(tz).isoformat()) for start, end in available_slots]
+			return {
+				# the slots are in the user's timezone, so they are not presented as UTC times
+				"slots": [(start.astimezone(tz).isoformat(), end.astimezone(tz).isoformat()) for start, end in available_slots],
+				"availability_unknown_for": unknown_availability,
+			}
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
@@ -256,7 +285,7 @@ END:VCALENDAR
 		:param start_time: the start time of the range within which to check for free slots (by default this will be now; use the following format: 2025-01-31)
 		:param end_time: the end time of the range within which to check for free slots (inclusive; by default this will be 7 days after start_time; use the following format: 2025-01-31)
 		:param timezone: Timezone in which start_time and end_time are interpreted and the slots are returned (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
-		:return: a list of (start, end) ISO 8601 timestamps in the given timezone
+		:return: "slots": a list of (start, end) ISO 8601 timestamps in the given timezone; "availability_unknown_for": participants whose calendars could not be checked (e.g. because they are not on this Nextcloud), so the slots may not suit them
 		"""
 		available_slots = await asyncio.to_thread(find_free_time_slot_in_calendar_sync, participants, slot_duration, start_time, end_time, timezone)
 		return available_slots

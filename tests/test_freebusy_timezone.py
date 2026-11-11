@@ -37,9 +37,38 @@ def test_default_end_keeps_wall_clock_across_dst():
 	assert end.utcoffset() == timedelta(hours=1), end
 
 
-def test_end_before_start_falls_back_to_seven_days():
-	start, end = freebusy_range("2026-11-12", "2026-11-10", BERLIN, now=NOW)
-	assert end.replace(tzinfo=None) == datetime(2026, 11, 19), end
+def _raises_value_error(fn):
+	try:
+		fn()
+	except ValueError:
+		return True
+	return False
+
+
+def test_end_before_start_is_rejected():
+	assert _raises_value_error(lambda: freebusy_range("2026-11-12", "2026-11-10", BERLIN, now=NOW))
+
+
+def test_unpadded_dates_are_compared_as_dates():
+	start, end = freebusy_range("2026-11-5", "2026-11-10", BERLIN, now=NOW)
+	assert start.replace(tzinfo=None) == datetime(2026, 11, 5), start
+	assert end.replace(tzinfo=None) == datetime(2026, 11, 11), end
+
+
+def test_range_in_the_past_is_rejected():
+	assert _raises_value_error(lambda: freebusy_range("2026-09-01", "2026-09-05", BERLIN, now=NOW))
+	assert _raises_value_error(lambda: freebusy_range(None, "2026-09-05", BERLIN, now=NOW))
+
+
+def test_midnight_skipped_by_dst_is_normalized():
+	# DST starts in Santiago at midnight on 2026-09-06, so 00:00 does not exist that day
+	santiago = pytz.timezone("America/Santiago")
+	now = santiago.localize(datetime(2026, 8, 1, 10, 0))
+	start, _ = freebusy_range("2026-09-06", "2026-09-06", santiago, now=now)
+	assert start.replace(tzinfo=None) == datetime(2026, 9, 6, 1, 0), start
+	assert start.utcoffset() == timedelta(hours=-3), start
+	_, end = freebusy_range("2026-09-01", "2026-09-05", santiago, now=now)
+	assert end.replace(tzinfo=None) == datetime(2026, 9, 6, 1, 0), end
 
 
 def test_single_day_covers_whole_day():
