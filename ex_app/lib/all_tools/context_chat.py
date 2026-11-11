@@ -25,17 +25,21 @@ class CcProvider(pydantic.BaseModel):
 
 
 @timed_memoize(CC_PROVIDERS_TTL)
-async def get_context_chat_providers(nc: AsyncNextcloudApp, pretty: bool = False) -> list[CcProvider] | list[str]:
+async def _fetch_context_chat_providers(nc: AsyncNextcloudApp) -> list[CcProvider]:
 	response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
 		"Content-Type": "application/json",
 		"OCS-APIREQUEST": "true",
 	})
 
 	try:
-		result: list[CcProvider] = pydantic.TypeAdapter(list[CcProvider]).validate_python(response.json())
+		return pydantic.TypeAdapter(list[CcProvider]).validate_python(response.json())
 	except Exception as e:
 		LOGGER.warning(f"Validation of context_chat providers response failed: {e}", exc_info=e)
 		return []
+
+
+async def get_context_chat_providers(nc: AsyncNextcloudApp, pretty: bool = False) -> list[CcProvider] | list[str]:
+	result = await _fetch_context_chat_providers(nc)
 
 	if not pretty:
 		return result
@@ -61,7 +65,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		Refreshes the content providers list available to context chat (e.g., files, mail).
 		:return: list of available providers
 		"""
-		await get_context_chat_providers.cache_invalidate(nc)
+		await _fetch_context_chat_providers.cache_invalidate(nc)
 		return await get_context_chat_providers(nc, True)
 
 	@tool
