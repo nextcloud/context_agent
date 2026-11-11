@@ -74,24 +74,28 @@ def round_to_nearest_half_hour(dt=None):
 	return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
 
 
-def freebusy_range(start_date, end_date, tz):
+def freebusy_range(start_date, end_date, tz, now=None):
 	"""
-	Resolves the range to search for free slots in. Dates are interpreted as midnight in `tz`.
+	Resolves the range to search for free slots in. Dates are interpreted in `tz`; the end date is inclusive.
 
-	:param start_date: Start date as 'YYYY-MM-DD' (default: now, rounded to the nearest half-hour)
-	:param end_date: End date as 'YYYY-MM-DD' (default: 7 days after the start)
+	:param start_date: Start date as 'YYYY-MM-DD' (default: now, rounded to the nearest half-hour). Never earlier than now.
+	:param end_date: End date as 'YYYY-MM-DD', inclusive (default: 7 days after the start)
 	:param tz: A pytz timezone
+	:param now: The current time, timezone-aware (default: datetime.now(tz))
 	:return: (start, end) timezone-aware datetimes
 	"""
+	earliest = tz.normalize(round_to_nearest_half_hour(now or datetime.now(tz)))
 	if start_date is None:
-		start_time = tz.normalize(round_to_nearest_half_hour(datetime.now(tz)))
+		start_time = earliest
 	else:
-		start_time = tz.localize(datetime.strptime(start_date, "%Y-%m-%d"))
-	# add the 7 days in wall-clock time, so a DST change in between does not shift the end by an hour
+		# slots in the past are of no use
+		start_time = max(tz.localize(datetime.strptime(start_date, "%Y-%m-%d")), earliest)
+	# add days in wall-clock time, so a DST change in between does not shift the end by an hour
 	default_end = tz.localize(start_time.replace(tzinfo=None) + timedelta(days=7))
 	if end_date is None:
 		return start_time, default_end
-	end_time = tz.localize(datetime.strptime(end_date, "%Y-%m-%d"))
+	# end at midnight after the end date, so the end date itself is included
+	end_time = tz.localize(datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
 	if start_time >= end_time:
 		end_time = default_end
 	return start_time, end_time

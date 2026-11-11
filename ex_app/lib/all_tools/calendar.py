@@ -186,8 +186,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		return True
 
-	def find_free_time_slot_in_calendar_sync(participants: list[str], slot_duration: Optional[float],
-												  start_time: Optional[str], end_time: Optional[str], timezone: Optional[str] = None):
+	def find_free_time_slot_in_calendar_sync(participants: list[str], slot_duration: Optional[float] = None,
+												  start_time: Optional[str] = None, end_time: Optional[str] = None, timezone: Optional[str] = None):
 			me = ncSync.ocs('GET', '/ocs/v2.php/cloud/user')
 			if not me.get('email'):
 				raise Exception('Cannot look up free time slots: the current user has no email address set in their Nextcloud profile')
@@ -248,13 +248,13 @@ END:VCALENDAR
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
-	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str], timezone: Optional[str] = None):
+	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, timezone: Optional[str] = None):
 		"""
 		Finds a free time slot where all participants have time
 		:param participants: The list of participants to find a free slot for (These should be email addresses. If possible use the email addresses from contacts)
 		:param slot_duration: How long the time slot should be in hours, defaults to one hour
 		:param start_time: the start time of the range within which to check for free slots (by default this will be now; use the following format: 2025-01-31)
-		:param end_time: the end time of the range within which to check for free slots (by default this will be 7 days after start_time; use the following format: 2025-01-31)
+		:param end_time: the end time of the range within which to check for free slots (inclusive; by default this will be 7 days after start_time; use the following format: 2025-01-31)
 		:param timezone: Timezone in which start_time and end_time are interpreted and the slots are returned (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
 		:return: a list of (start, end) ISO 8601 timestamps in the given timezone
 		"""
