@@ -1,30 +1,47 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+import logging
 from typing import Literal
+
+import pydantic
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
-from ex_app.lib.all_tools.lib.task_processing import run_task
+from ex_app.lib.all_tools.lib.decorator import timed_memoize
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
+from ex_app.lib.all_tools.lib.task_processing import run_task
+
+LOGGER = logging.getLogger(__name__)
+CC_PROVIDERS_TTL = 10 * 60  # 10 mins
+
+
+class CcProvider(pydantic.BaseModel):
+	id: str
+	label: str
+	icon: str
+
+
+@timed_memoize(CC_PROVIDERS_TTL)
+async def get_context_chat_providers(nc: AsyncNextcloudApp, pretty: bool = False) -> list[CcProvider] | list[str]:
+	response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
+		"Content-Type": "application/json",
+		"OCS-APIREQUEST": "true",
+	})
+
+	try:
+		result: list[CcProvider] = pydantic.TypeAdapter(list[CcProvider]).validate_python(response)
+	except Exception as e:
+		LOGGER.warning(f"Validation of context_chat providers response failed: {e}", exc_info=e)
+		return []
+
+	if not pretty:
+		return result
+
+	return [f"{p.label}({p.id})" for p in result]
 
 
 async def get_tools(nc: AsyncNextcloudApp):
-
-	@tool
-	@impulse(ImpulseRadius.SELF)
-	@read_only
-	async def list_context_chat_providers() -> str:
-		"""
-		List the content providers available to context chat (e.g., files, mail).
-		Use this to discover valid provider keys for ask_context_chat's scope_list when scope_type is "provider". Note that the files__default provider is always available. 
-		:return: JSON array of available providers
-		"""
-		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
-			"Content-Type": "application/json",
-			"OCS-APIREQUEST": "true",
-		})
-		return json.dumps(response.json())
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
@@ -51,18 +68,28 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: the answer from context chat
 		"""
 
+		if scope_type != "none" and not scope_list:
+			raise RuntimeError("A set scope requires at least one item in the scope list")
+
+		if scope_type == "provider":
+			available_providers = await get_context_chat_providers(nc)
+			# ignore None's
+			provider_keys = {p.get("id") for p in available_providers}
+			for scope in scope_list:
+				if scope not in provider_keys:
+					raise RuntimeError(f"Provider {scope} is not an available provider. Available providers: {provider_keys}")
+
 		task_input = {
-			'prompt': question,
-			'scopeType': scope_type,
-			'scopeList': scope_list or [],
-			'scopeListMeta': '',
+			"prompt": question,
+			"scopeType": scope_type,
+			"scopeList": scope_list or [],
+			"scopeListMeta": "",
 		}
 		task_output = (await run_task(nc,  "context_chat:context_chat", task_input)).output
-		return task_output['output']
+		return task_output["output"]
 
 	return [
 		ask_context_chat,
-		list_context_chat_providers,
 	]
 
 def get_category_name():
