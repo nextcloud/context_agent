@@ -18,7 +18,7 @@ import vobject
 from ex_app.lib.all_tools.lib.audience import principal_radius
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 from ex_app.lib.all_tools.lib.tz import get_timezone, user_timezone
-from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, round_to_nearest_half_hour
+from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, freebusy_range
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -187,29 +187,22 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return True
 
 	def find_free_time_slot_in_calendar_sync(participants: list[str], slot_duration: Optional[float],
-												  start_time: Optional[str], end_time: Optional[str]):
+												  start_time: Optional[str], end_time: Optional[str], timezone: Optional[str] = None):
 			me = ncSync.ocs('GET', '/ocs/v2.php/cloud/user')
+			if not me.get('email'):
+				raise Exception('Cannot look up free time slots: the current user has no email address set in their Nextcloud profile')
 
 			attendees = 'ORGANIZER:mailto:' + me['email'] + '\n'
 			attendees += 'ATTENDEE:mailto:' + me['email'] + '\n'
 			for attendee in participants:
 				attendees += f"ATTENDEE:mailto:{attendee}\n"
 
-			if start_time is None:
-				start_time = round_to_nearest_half_hour(datetime.now(timezone.utc))
-			else:
-				start_time = datetime.combine(datetime.strptime(start_time, "%Y-%m-%d").date(), datetime.min.time(),
-											  timezone.utc)
-			if end_time is None:
-				end_time = start_time + timedelta(days=7)
-			else:
-				end_time = datetime.combine(datetime.strptime(end_time, "%Y-%m-%d").date(), datetime.min.time(),
-											timezone.utc)
-				if start_time >= end_time:
-					end_time = start_time + timedelta(days=7)
+			# dates are interpreted in the user's timezone (falls back to UTC if the profile has none)
+			tz = pytz.timezone(get_timezone(timezone or me.get('timezone') or 'UTC'))
+			start_time, end_time = freebusy_range(start_time, end_time, tz)
 
-			dtstart = start_time.strftime("%Y%m%dT%H%M%SZ")
-			dtend = end_time.strftime("%Y%m%dT%H%M%SZ")
+			dtstart = start_time.astimezone(pytz.UTC).strftime("%Y%m%dT%H%M%SZ")
+			dtend = end_time.astimezone(pytz.UTC).strftime("%Y%m%dT%H%M%SZ")
 
 			freebusyRequest = """
 BEGIN:VCALENDAR
@@ -246,22 +239,26 @@ END:VCALENDAR
 				vcal = vobject.readOne(vcal_text)
 				for fb in vcal.vfreebusy.contents.get("freebusy", []):
 					busy_times.append(fb.value[0])
+			if slot_duration is None:
+				slot_duration = 1
 			available_slots = find_available_slots(start_time, end_time, busy_times, timedelta(hours=slot_duration))
-			return available_slots
+			# return the slots in the user's timezone, so they are not presented as UTC times
+			return [(start.astimezone(tz).isoformat(), end.astimezone(tz).isoformat()) for start, end in available_slots]
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
-	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str]):
+	async def find_free_time_slot_in_calendar(participants: list[str], slot_duration: Optional[float], start_time: Optional[str], end_time: Optional[str], timezone: Optional[str] = None):
 		"""
 		Finds a free time slot where all participants have time
 		:param participants: The list of participants to find a free slot for (These should be email addresses. If possible use the email addresses from contacts)
 		:param slot_duration: How long the time slot should be in hours, defaults to one hour
 		:param start_time: the start time of the range within which to check for free slots (by default this will be now; use the following format: 2025-01-31)
 		:param end_time: the end time of the range within which to check for free slots (by default this will be 7 days after start_time; use the following format: 2025-01-31)
-		:return:
+		:param timezone: Timezone in which start_time and end_time are interpreted and the slots are returned (e.g., 'America/New_York'). Defaults to the user's profile timezone. Must be a valid IANA timezone name.
+		:return: a list of (start, end) ISO 8601 timestamps in the given timezone
 		"""
-		available_slots = await asyncio.to_thread(find_free_time_slot_in_calendar_sync, participants, slot_duration, start_time, end_time)
+		available_slots = await asyncio.to_thread(find_free_time_slot_in_calendar_sync, participants, slot_duration, start_time, end_time, timezone)
 		return available_slots
 
 	def add_task_sync(calendar_name: str, title: str, description: str, due_date: Optional[str] = None,

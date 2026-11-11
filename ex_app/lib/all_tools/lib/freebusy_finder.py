@@ -72,3 +72,26 @@ def round_to_nearest_half_hour(dt=None):
 		dt += timedelta(hours=1)  # Round up to next hour if > 45 min
 
 	return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
+
+
+def freebusy_range(start_date, end_date, tz):
+	"""
+	Resolves the range to search for free slots in. Dates are interpreted as midnight in `tz`.
+
+	:param start_date: Start date as 'YYYY-MM-DD' (default: now, rounded to the nearest half-hour)
+	:param end_date: End date as 'YYYY-MM-DD' (default: 7 days after the start)
+	:param tz: A pytz timezone
+	:return: (start, end) timezone-aware datetimes
+	"""
+	if start_date is None:
+		start_time = tz.normalize(round_to_nearest_half_hour(datetime.now(tz)))
+	else:
+		start_time = tz.localize(datetime.strptime(start_date, "%Y-%m-%d"))
+	# add the 7 days in wall-clock time, so a DST change in between does not shift the end by an hour
+	default_end = tz.localize(start_time.replace(tzinfo=None) + timedelta(days=7))
+	if end_date is None:
+		return start_time, default_end
+	end_time = tz.localize(datetime.strptime(end_date, "%Y-%m-%d"))
+	if start_time >= end_time:
+		end_time = default_end
+	return start_time, end_time
