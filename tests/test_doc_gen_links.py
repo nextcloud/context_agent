@@ -11,14 +11,19 @@ the app_api nextcloud_url endpoint with the dict the real OCS controller
 returns ({'absolute_url': ...}), not a bare string. A fake that answered with
 a bare string could not see the dict-repr mangling these tests guard against.
 The fake also answers the taskprocessing tasktypes endpoint and mirrors
-AsyncNextcloudApp's async capabilities property. doc_gen derives its format
+AsyncNextcloudApp's async capabilities property. For the marp deck task the
+fake speaks the real output shape: one file id per selected format under
+'slide_decks', in generation order, plus the deck source file. doc_gen derives its format
 menu, its runtime guard for unservable formats and its availability from the
 registered task types alone: a capability without a registered task type must
-not advertise the formats of that app.
+not advertise the formats of that app. The deck reply leads with a relay
+instruction so a compressing reply still keeps every link; the labeled links
+follow as the remaining lines.
 """
 import asyncio
 import os
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -26,7 +31,7 @@ from ex_app.lib.all_tools import doc_gen, image_gen  # noqa: E402
 
 NEXTCLOUD_URL = 'https://nc.example.test'
 
-MARP_SLIDES_TASK_TYPE = 'marp_slides:slide_deck_generation'
+SLIDEPREPPER_TASK_TYPE = 'slideprepper:slide_deck_generation'
 
 RICHDOCUMENTS_TEXT_TASK_TYPE = 'richdocuments:text_to_text_document'
 RICHDOCUMENTS_SPREADSHEET_TASK_TYPE = 'richdocuments:text_to_spreadsheet_document'
@@ -43,9 +48,19 @@ RICHDOCUMENTS_TASK_TYPES = {
 class _FakeNextcloudApp:
 	"""Records ocs() calls; answers the endpoints the two tools touch."""
 
-	def __init__(self, task_id=42, file_id=1337, tasktypes=None, capabilities=None):
+	def __init__(
+		self,
+		task_id=42,
+		file_id=1337,
+		deck_file_ids=(1337, 1338, 1339),
+		source_file_id=1340,
+		tasktypes=None,
+		capabilities=None,
+	):
 		self.task_id = task_id
 		self.file_id = file_id
+		self.deck_file_ids = None if deck_file_ids is None else tuple(deck_file_ids)
+		self.source_file_id = source_file_id
 		# Defaults to a full richdocuments instance, so the default fake serves
 		# every format; pass tasktypes explicitly for other instance shapes.
 		self.tasktypes = dict(tasktypes if tasktypes is not None else RICHDOCUMENTS_TASK_TYPES)
@@ -69,9 +84,19 @@ class _FakeNextcloudApp:
 			# The real endpoint (app_api OCSApiController) answers with a dict, not a bare string
 			return {'absolute_url': NEXTCLOUD_URL}
 		if endpoint == '/ocs/v1.php/taskprocessing/schedule':
+			# The marp deck task answers with one file id per selected output
+			# format under 'slide_decks', in generation order pptx, html, pdf,
+			# plus the markdown source under 'slide_deck_source'; deck_file_ids
+			# None answers without the 'slide_decks' key, like a task that
+			# broke its contract. Every other type answers with the single
+			# output key it is mapped to.
+			if json['type'] == SLIDEPREPPER_TASK_TYPE:
+				output = {'slide_deck_source': self.source_file_id}
+				if self.deck_file_ids is not None:
+					output['slide_decks'] = list(self.deck_file_ids)
+				return {'task': {'id': self.task_id, 'status': 'STATUS_SUCCESSFUL', 'output': output}}
 			output_keys_by_type = {
 				'richdocuments:slide_deck_generation': 'slide_deck',
-				MARP_SLIDES_TASK_TYPE: 'slide_deck',
 				'core:text2image': 'images',
 			}
 			output_key = output_keys_by_type.get(json['type'], 'file')
@@ -120,18 +145,25 @@ def test_slides_download_link_built_from_bare_absolute_url():
 
 
 def test_slides_dispatch_marp_task_type_when_registered():
-	nc = _FakeNextcloudApp(task_id=3, file_id=77, tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	nc = _FakeNextcloudApp(task_id=3, deck_file_ids=(77, 78, 79), tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
 	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
-	link = asyncio.run(generate_document(input='Deck brief', format='slides'))
+	reply = asyncio.run(generate_document(input='Deck brief', format='slides'))
 	((method, endpoint, payload),) = _schedule_calls(nc)
 	assert method == 'POST'
 	assert endpoint == '/ocs/v1.php/taskprocessing/schedule'
 	assert payload['appId'] == 'context_agent'
-	assert payload['type'] == MARP_SLIDES_TASK_TYPE
-	assert payload['input'] == {'prompt': 'Deck brief'}
+	assert payload['type'] == SLIDEPREPPER_TASK_TYPE
+	assert payload['input'] == {'input': 'Deck brief'}
 	# The task type's default output format applies, so none is sent
 	assert 'output_format' not in payload['input']
-	_assert_clean_link(link, f'{NEXTCLOUD_URL}/3/output-file/77/download')
+	# The relay instruction leads; then one labeled link per generated file,
+	# in the task's generation order. No attachments means no image note.
+	assert reply == '\n'.join([
+		'The deck was generated. Include every link below in your reply.',
+		f'PowerPoint (pptx): {NEXTCLOUD_URL}/3/output-file/77/download',
+		f'HTML: {NEXTCLOUD_URL}/3/output-file/78/download',
+		f'PDF: {NEXTCLOUD_URL}/3/output-file/79/download',
+	])
 
 
 def test_slides_fall_back_to_richdocuments_without_marp_task_type():
@@ -161,12 +193,12 @@ def test_is_available_false_with_capability_but_no_registered_task_types():
 
 
 def test_is_available_true_with_marp_task_type_only():
-	nc = _FakeNextcloudApp(tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	nc = _FakeNextcloudApp(tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
 	assert asyncio.run(doc_gen.is_available(nc)) is True
 
 
 def test_is_available_true_with_richdocuments_and_marp():
-	nc = _FakeNextcloudApp(tasktypes={**RICHDOCUMENTS_TASK_TYPES, MARP_SLIDES_TASK_TYPE: {}})
+	nc = _FakeNextcloudApp(tasktypes={**RICHDOCUMENTS_TASK_TYPES, SLIDEPREPPER_TASK_TYPE: {}})
 	assert asyncio.run(doc_gen.is_available(nc)) is True
 
 
@@ -176,7 +208,7 @@ def test_is_available_false_with_neither():
 
 
 def test_marp_only_instance_offers_only_the_slides_format():
-	nc = _FakeNextcloudApp(tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	nc = _FakeNextcloudApp(tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
 	description = _tool_description(doc_gen, nc, 'generate_document')
 	assert 'allowed values are "slides"' in description
 	for unservable in ('"text document"', '"pdf"', '"spreadsheet"', '"excel spreadsheet"'):
@@ -193,7 +225,7 @@ def test_richdocuments_instance_offers_all_formats():
 
 
 def test_marp_only_instance_rejects_spreadsheet_request_softly():
-	nc = _FakeNextcloudApp(tasktypes={MARP_SLIDES_TASK_TYPE: {}})
+	nc = _FakeNextcloudApp(tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
 	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
 	reply = asyncio.run(generate_document(input='Budget plan', format='spreadsheet'))
 	assert 'not available' in reply
@@ -215,6 +247,32 @@ def test_unknown_format_request_names_the_available_formats():
 def test_no_servable_formats_means_no_tools():
 	nc = _FakeNextcloudApp(tasktypes={'core:text2text': {}})
 	assert asyncio.run(doc_gen.get_tools(nc)) == []
+
+
+def test_slides_fourth_deck_file_gets_the_fallback_label():
+	# A fourth file is beyond the task's documented output formats, so its
+	# link gets the plain label instead of a guessed format name; the links
+	# start on line two, behind the relay instruction line.
+	nc = _FakeNextcloudApp(task_id=3, deck_file_ids=(77, 78, 79, 80), tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
+	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
+	reply = asyncio.run(generate_document(input='Deck brief', format='slides'))
+	assert reply.splitlines()[0] == 'The deck was generated. Include every link below in your reply.'
+	assert reply.splitlines()[1] == f'PowerPoint (pptx): {NEXTCLOUD_URL}/3/output-file/77/download'
+	assert reply.splitlines()[4] == f'Slide deck: {NEXTCLOUD_URL}/3/output-file/80/download'
+
+
+def test_slides_missing_deck_output_key_raises_a_clear_error():
+	# A marp task result without 'slide_decks' must fail loudly, naming the
+	# key and the task type, instead of collapsing into an empty reply.
+	nc = _FakeNextcloudApp(task_id=3, deck_file_ids=None, tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
+	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
+	try:
+		asyncio.run(generate_document(input='Deck brief', format='slides'))
+	except Exception as e:
+		assert 'slide_decks' in str(e), str(e)
+		assert SLIDEPREPPER_TASK_TYPE in str(e), str(e)
+	else:
+		raise AssertionError('missing slide_decks output key did not raise')
 
 
 def test_image_download_link_built_from_bare_absolute_url():
