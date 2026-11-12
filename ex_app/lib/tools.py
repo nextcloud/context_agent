@@ -28,6 +28,7 @@ from ex_app.lib.all_tools.lib.impulse import (
 	parse_impulse_radius,
 	parse_reversibility,
 )
+from ex_app.lib.context_window import CONTEXT_BUDGET_SETTING_ID, DEFAULT_CONTEXT_BUDGET, MIN_CONTEXT_BUDGET
 
 
 async def _get_threshold(nc: AsyncNextcloudApp, setting_id: str, default: ImpulseRadius) -> ImpulseRadius:
@@ -48,6 +49,12 @@ async def _get_count(nc: AsyncNextcloudApp, setting_id: str, default: int) -> in
 		return max(int(str(configured).strip()), 0)
 	except ValueError:
 		return default
+
+
+@timed_memoize(1*60)
+async def get_context_budget(nc: AsyncNextcloudApp) -> int:
+	"""The configured size of the conversation sent to the model, in tokens"""
+	return max(await _get_count(nc, CONTEXT_BUDGET_SETTING_ID, DEFAULT_CONTEXT_BUDGET), MIN_CONTEXT_BUDGET)
 
 
 # Cached like get_tools below, and for the same reason: every turn reads these, an

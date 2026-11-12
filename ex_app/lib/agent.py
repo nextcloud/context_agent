@@ -6,18 +6,22 @@ from datetime import date, datetime
 from time import monotonic
 from typing import Any, cast
 
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.constants import TAG_NOSTREAM
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from nc_py_api import AsyncNextcloudApp
-from nc_py_api.ex_app import persistent_storage
+from nc_py_api.ex_app import LogLvl, persistent_storage
 
 import pytz
 
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
+from ex_app.lib.context_window import CHARS_PER_TOKEN, render_transcript, select_context
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
+from ex_app.lib.logger import log
 from ex_app.lib.memorysaver import MemorySaver
 from ex_app.lib.nc_model import (
 	MULTIMODAL_INTERACTION,
@@ -27,7 +31,7 @@ from ex_app.lib.nc_model import (
 	extract_text_content,
 )
 from ex_app.lib.signature import add_signature, load_legacy_key, load_or_create_key, verify_signature
-from ex_app.lib.tools import get_confirmation_policy, get_tools
+from ex_app.lib.tools import get_confirmation_policy, get_context_budget, get_tools
 
 graph_config = {
 	# Dummy thread id as we return the whole state
@@ -113,6 +117,23 @@ def format_user_instructions(user_instructions: str | None) -> str:
 		+ user_instructions.strip() + "\n"
 	)
 
+# Instructions for summarizing the turns that no longer fit into the context window
+SUMMARY_PROMPT = (
+	"You summarize a conversation between a user and an AI assistant that uses tools, so the assistant"
+	" can continue the conversation without seeing these messages anymore."
+	" Keep what the user wants to achieve, their preferences, the decisions made, the open tasks"
+	" and the facts learned from tool results, including names, ids, file paths, links, dates and numbers"
+	" the assistant may need again. Leave out small talk and details that will not matter anymore."
+	" If a summary of the conversation so far is given, fold the new messages into it."
+	" Write in the language of the conversation, in under 400 words, and reply with the summary only.\n"
+)
+
+# Precedes the summary in the message that stands in for the summarized turns
+SUMMARY_MESSAGE_PREFIX = (
+	"[The earlier part of this conversation is no longer shown in full. This is an automatically generated"
+	" summary of it, not a new message of the user.]\n\n"
+)
+
 # Value of the optional "output_mode" input when the agent's reply is converted to speech
 OUTPUT_MODE_SPEECH = "speech"
 
@@ -139,6 +160,7 @@ async def react(
 
 	tools = await get_tools(nc)
 	policy = await get_confirmation_policy(nc)
+	context_budget = await get_context_budget(nc)
 	tz_name = user_tz = None
 	try:
 		tz_name = await user_timezone_async(nc)
@@ -155,6 +177,23 @@ async def react(
 			if tool.name == tool_name:
 				return True
 		return False
+
+	async def summarize(previous_summary: str, messages: list[BaseMessage]) -> str:
+		"""Fold the turns that no longer fit into the context window into the summary"""
+		content = ''
+		if previous_summary:
+			content += "Summary of the conversation so far:\n\n" + previous_summary + "\n\n"
+		content += "The conversation continued as follows:\n\n" + render_transcript(messages, context_budget * CHARS_PER_TOKEN)
+		summarizer = ChatWithNextcloud(nc=nc)
+		# The summary is no reply to the user, so it is not streamed to them
+		response = await summarizer.ainvoke(
+			[SystemMessage(SUMMARY_PROMPT), HumanMessage(content=content)],
+			{"tags": [TAG_NOSTREAM]},
+		)
+		summary = extract_text_content(response.content).strip()
+		if not summary:
+			raise ValueError("The language model returned an empty summary")
+		return summary
 
 	async def call_model(
 			state: AgentState,
@@ -228,15 +267,34 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		system_prompt_text += format_output_mode(task['input'].get('output_mode'))
 
+		selection = select_context(state["messages"], context_budget)
+		summary = state.get("summary") or ""
+		update: dict[str, Any] = {"messages": []}
+		if selection.dropped:
+			try:
+				summary = await summarize(summary, selection.dropped)
+				update["summary"] = summary
+				# Replace the conversation with the turns that are still sent in full
+				update["messages"] = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *selection.kept]
+			except Exception as e:
+				# Keep the dropped turns in the state, so summarizing them is tried again on the next step
+				await log(nc, LogLvl.WARNING, f"Failed to summarize the earlier part of the conversation: {e}")
+		model_messages = selection.model_messages
+		if summary:
+			# The summary is made from what users and tools wrote, so it is sent as the first message of
+			# the conversation and not as a part of the instructions. It is not kept in the state.
+			model_messages = [HumanMessage(content=SUMMARY_MESSAGE_PREFIX + summary)] + model_messages
+
 		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
 		system_prompt = SystemMessage(
 			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
 			+ format_user_instructions(task['input'].get('user_instructions'))
 		)
 
-		response = await bound_model.ainvoke([system_prompt] + state["messages"], config)
+		response = await bound_model.ainvoke([system_prompt] + model_messages, config)
 		# We return a list, because this will get added to the existing list
-		return {"messages": [response]}
+		update["messages"].append(response)
+		return update
 
 	try:
 		# Try to load state using the new conversation_token type
@@ -277,7 +335,8 @@ At the end of each message to the user, if you have carried out a task or answer
 	last_message: AIMessage = AIMessage("")
 	if len(snapshot_messages) > 0:
 		last_message = cast(AIMessage, snapshot_messages[-1])
-	previous_message_count = len(snapshot_messages)
+	# The earlier messages can be replaced by a summary during the run, so new messages are told apart by id
+	previous_message_ids = {message.id for message in snapshot_messages}
 	source_list: list[str] = []
 	known_sources: set[str] = set()
 	streamed_output = ''
@@ -319,7 +378,9 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		event = payload
 		last_message = event['messages'][-1]
-		for message in event['messages'][previous_message_count:]:
+		for message in event['messages']:
+			if message.id in previous_message_ids:
+				continue
 			if isinstance(message, AIMessage) and message.tool_calls:
 					for tool_call in message.tool_calls:
 						tool_name = tool_call['name']

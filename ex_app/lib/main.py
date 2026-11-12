@@ -43,6 +43,7 @@ from ex_app.lib.all_tools.lib.impulse import (
     ImpulseRadius,
     Reversibility,
 )
+from ex_app.lib.context_window import CONTEXT_BUDGET_SETTING_ID, DEFAULT_CONTEXT_BUDGET
 from ex_app.lib.tools import get_categories
 
 PROVIDERS = [provider, multimodal_provider]
@@ -250,6 +251,18 @@ SETTINGS = SettingsForm(
             ),
             type=SettingsFieldType.NUMBER,
             default=DEFAULT_ITEM_COUNT_THRESHOLD,
+        ),
+        SettingsField(
+            id=CONTEXT_BUDGET_SETTING_ID,
+            title=_("Maximum length of the conversation sent to the language model, in tokens"),
+            description=_(
+                "When a conversation grows longer, the oldest messages are replaced by a summary and"
+                " long tool results are shortened. Set this well below the context window of your"
+                " language model, as the instructions and the tool descriptions come on top."
+                " Roughly four characters make one token."
+            ),
+            type=SettingsFieldType.NUMBER,
+            default=DEFAULT_CONTEXT_BUDGET,
         ),
         SettingsField(
             id="here_api",

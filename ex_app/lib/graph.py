@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
-from typing_extensions import TypedDict, Annotated
+from typing_extensions import TypedDict, Annotated, NotRequired
 
 from ex_app.lib.all_tools.lib.impulse import (
 	ALLOWED_CALL,
@@ -39,6 +39,8 @@ class AgentState(TypedDict):
 	# add_messages is a reducer
 	# See https://langchain-ai.github.io/langgraph/concepts/low_level/#reducers
 	messages: Annotated[Sequence[BaseMessage], add_messages]
+	# Summary of the earlier turns that no longer fit into the context window, see context_window.py
+	summary: NotRequired[str]
 
 
 class CallClassifications:
