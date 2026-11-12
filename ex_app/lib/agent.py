@@ -253,11 +253,15 @@ At the end of each message to the user, if you have carried out a task or answer
 	## if the next step is a tool call
 	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
 		if task['input']['confirmation'] == 0:
+			if task['input']['input'] != '':
+				rejection_message = f"The user denied the tool call. The user said: '{task['input']['input']}'. Continue assisting and adapt the tool call to follow the user's instructions."
+			else:
+				rejection_message = "The user denied the tool call. Continue assisting but do not use the tool call for now."
 			new_input = {
 				"messages": [
 					ToolMessage(
 						tool_call_id=tool_call["id"],
-						content=f"API call denied by user. Reasoning: '{task['input']['input']}'. Continue assisting, accounting for the user's input. If the user gave additional instructrions, adapt the tool call.",
+						content=rejection_message,
 					)
 					for tool_call in state_snapshot.values['messages'][-1].tool_calls
 				]
