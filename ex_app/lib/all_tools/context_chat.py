@@ -26,10 +26,14 @@ class CcProvider(pydantic.BaseModel):
 
 @timed_memoize(CC_PROVIDERS_TTL)
 async def _fetch_context_chat_providers(nc: AsyncNextcloudApp) -> list[CcProvider]:
-	response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
-		"Content-Type": "application/json",
-		"OCS-APIREQUEST": "true",
-	})
+	try:
+		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
+			"Content-Type": "application/json",
+			"OCS-APIREQUEST": "true",
+		})
+	except Exception as e:
+		LOGGER.warning(f"Network failure in fetching context chat content providers: {e}", exc_info=e)
+		return []
 
 	try:
 		return pydantic.TypeAdapter(list[CcProvider]).validate_python(response.json())
@@ -75,7 +79,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		question: str,
 		scope_type: Literal['none', 'source', 'provider'] = 'none',
 		scope_list: list[str] | None = None,
-	) -> str:
+	) -> dict[str, str | list[str]]:
 		"""
 		Ask the context chat oracle a question about the user's documents. It knows the contents of all of the users documents.
 		This is often easier than searching for documents and then fetching their contents when trying to answer questions.
@@ -90,7 +94,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			  obtained from the file-related tools or unified search.
 			- For scope_type "provider": a list of provider keys in the format "<appId>__<providerId>"
 			  (e.g., "files__default" for files, "mail__messages" for mail).
-		:return: the answer from context chat
+		:return: the answer from context chat along with the sources used to get to it. Source icons can be displayed in the UI if presented as markdown images.
 		"""
 
 		if scope_type != "none" and not scope_list:
@@ -106,7 +110,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			"scopeListMeta": "",
 		}
 		task_output = (await run_task(nc, CONTEXT_CHAT_TASK_TYPE, task_input)).output
-		return task_output["output"]
+		return task_output
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
@@ -116,7 +120,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		scope_type: Literal['none', 'source', 'provider'] = 'none',
 		scope_list: list[str] | None = None,
 		limit: int = 30,
-	) -> str:
+	) -> list[str]:
 		"""
 		Search the context chat database for the user's documents. It uses semantic search to find similar documents.
 		This is for only searching the documents without an LLM explanation.
@@ -132,7 +136,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			- For scope_type "provider": a list of provider keys in the format "<appId>__<providerId>"
 			  (e.g., "files__default" for files, "mail__messages" for mail).
 		:param limit: The max no. of documents to return, default 30, max 200.
-		:return: the answer from context chat
+		:return: A list of JSON strings of sources containing the id, label, icon and an absolute URL to the source documents.
+			Icons can be displayed in the UI if presented as markdown images.
 		"""
 
 		if scope_type != "none" and not scope_list:

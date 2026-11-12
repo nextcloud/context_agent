@@ -199,7 +199,8 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Use the web_fetch tool to fetch web content. You can fetch the complete page content of a duckduckgo search result using web_fetch as well.\n"
 		if tool_enabled("ask_context_chat"):
 			cc_providers = await get_context_chat_providers(nc, True)
-			system_prompt_text += f"Available providers in Context Chat are: {cc_providers}. Use these in the Context Chat tools to scope the search to specific types of documents. It is passed in the scope_list when scope_type is \"provider\"."
+			if len(cc_providers) > 0:
+				system_prompt_text += f"Available providers in Context Chat are: {cc_providers}. Use these in the Context Chat tools to scope the search to specific types of documents. It is passed in the scope_list when scope_type is \"provider\"."
 		if tool_enabled("parse_nextcloud_url"):
 			# app_cfg.endpoint can be an instance-internal address, so it is only a last resort
 			base_url = await get_absolute_base_url(nc) or nc.app_cfg.endpoint.rstrip('/')
