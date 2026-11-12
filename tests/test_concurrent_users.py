@@ -32,6 +32,7 @@ from nc_py_api import AsyncNextcloudApp  # noqa: E402
 
 from ex_app.lib import agent  # noqa: E402
 from ex_app.lib.all_tools.lib.impulse import ConfirmationPolicy  # noqa: E402
+from ex_app.lib.context_window import DEFAULT_CONTEXT_BUDGET  # noqa: E402
 from ex_app.lib.nc_model import MULTIMODAL_INTERACTION, ChatWithNextcloud, Task  # noqa: E402
 
 
@@ -69,6 +70,9 @@ def test_concurrent_react_keeps_users_apart():
 	async def get_confirmation_policy(nc):
 		return ConfirmationPolicy()
 
+	async def get_context_budget(nc):
+		return DEFAULT_CONTEXT_BUDGET
+
 	async def user_timezone_async(nc):
 		return None
 
@@ -85,6 +89,7 @@ def test_concurrent_react_keeps_users_apart():
 	patches = [
 		(agent, "get_tools", get_tools),
 		(agent, "get_confirmation_policy", get_confirmation_policy),
+		(agent, "get_context_budget", get_context_budget),
 		(agent, "user_timezone_async", user_timezone_async),
 		(ChatWithNextcloud, "_schedule_task", schedule_task),
 	]
