@@ -72,3 +72,40 @@ def round_to_nearest_half_hour(dt=None):
 		dt += timedelta(hours=1)  # Round up to next hour if > 45 min
 
 	return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
+
+
+def _local_midnight(date, tz):
+	# normalize, so a midnight skipped by a DST change becomes the first wall time that exists that day
+	return tz.normalize(tz.localize(date))
+
+
+def freebusy_range(start_date, end_date, tz, now=None):
+	"""
+	Resolves the range to search for free slots in. Dates are interpreted in `tz`; the end date is inclusive.
+
+	:param start_date: Start date as 'YYYY-MM-DD' (default: now, rounded to the nearest half-hour). Never earlier than now.
+	:param end_date: End date as 'YYYY-MM-DD', inclusive (default: 7 days after the start)
+	:param tz: A pytz timezone
+	:param now: The current time, timezone-aware (default: datetime.now(tz))
+	:return: (start, end) timezone-aware datetimes
+	:raises ValueError: if the range ends before it starts or lies entirely in the past
+	"""
+	earliest = tz.normalize(round_to_nearest_half_hour(now or datetime.now(tz)))
+	# compare parsed dates, not strings: strptime also accepts unpadded dates like '2026-11-5'
+	start_day = datetime.strptime(start_date, "%Y-%m-%d") if start_date is not None else None
+	end_day = datetime.strptime(end_date, "%Y-%m-%d") if end_date is not None else None
+	if start_day is None:
+		start_time = earliest
+	else:
+		# slots in the past are of no use
+		start_time = max(_local_midnight(start_day, tz), earliest)
+	if end_day is None:
+		# add days in wall-clock time, so a DST change in between does not shift the end by an hour
+		return start_time, tz.normalize(tz.localize(start_time.replace(tzinfo=None) + timedelta(days=7)))
+	# end at midnight after the end date, so the end date itself is included
+	end_time = _local_midnight(end_day + timedelta(days=1), tz)
+	if start_day is not None and end_day < start_day:
+		raise ValueError(f"The end date {end_date} is before the start date {start_date}")
+	if start_time >= end_time:
+		raise ValueError(f"The range ending on {end_date} lies entirely in the past; free slots can only be found from now on")
+	return start_time, end_time
