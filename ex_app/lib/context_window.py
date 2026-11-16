@@ -15,7 +15,8 @@ with every request, so they come off the budget first. The conversation gets the
   are its earlier tool results shortened and the budget is shared out among the tool
   results the model has not answered yet. If that is not enough, tool results are left
   out, oldest first, as a request over the budget is likely to fail altogether.
-- Tool results of earlier turns are shortened, keeping their beginning and their end.
+- If the conversation does not fit, tool results of earlier turns are shortened, keeping
+  their beginning and their end, oldest turn first, until it does.
 - If the conversation still does not fit, whole turns are dropped, oldest first, so a
   tool call is never separated from its result. The caller summarizes them.
 """
@@ -40,7 +41,7 @@ MIN_CONTEXT_BUDGET = 2000
 # is not summarized again on every turn.
 TRIM_TARGET = 0.6
 
-# Tool results of earlier turns are shortened to this many characters
+# Tool results of earlier turns are shortened to this many characters, once the conversation does not fit
 OLD_TOOL_OUTPUT_MAX_LENGTH = 2000
 
 # Room reserved for the marker that replaces the omitted part
@@ -258,11 +259,19 @@ def select_context(messages: list[BaseMessage], budget_tokens: int, reserved_cha
 		return ContextSelection([], [], [])
 
 	older, current = turns[:-1], turns[-1]
-	older_compacted = [_compact_old_turn(turn) for turn in older]
+	older_compacted = list(older)
 	current_compacted = _compact_current_turn(current, budget_chars)
 
-	sizes = [_turn_size(turn) for turn in older_compacted]
+	sizes = [_turn_size(turn) for turn in older]
 	total = sum(sizes) + _turn_size(current_compacted)
+	# The tool results of the latest turns are the ones most likely to be needed again, so the oldest are shortened first
+	for i, turn in enumerate(older):
+		if total <= budget_chars:
+			break
+		older_compacted[i] = _compact_old_turn(turn)
+		total -= sizes[i]
+		sizes[i] = _turn_size(older_compacted[i])
+		total += sizes[i]
 	first_kept = 0
 	if total > budget_chars:
 		while first_kept < len(older) and total > budget_chars * TRIM_TARGET:

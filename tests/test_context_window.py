@@ -83,14 +83,36 @@ def test_split_turns():
 def test_current_turn_tool_outputs_are_not_truncated():
     # Many parallel calls: the first results are far more than 10 messages from the end
     big = "x" * (OLD_TOOL_OUTPUT_MAX_LENGTH * 3)
-    messages = tool_turn(1, big) + tool_turn(2, big, calls=12)
-    selection = select_context(messages, 100_000)
+    messages = tool_turn(1, big * 5) + tool_turn(2, big, calls=12)
+    # Room for the current turn, but not for the old result as well
+    selection = select_context(messages, len(big) * 14 // CHARS_PER_TOKEN)
     assert selection.dropped == []
     assert selection.kept == messages
     old_tool, *current_tools = [m for m in selection.model_messages if m.type == "tool"]
-    assert len(old_tool.content) < len(big)
+    assert len(old_tool.content) <= OLD_TOOL_OUTPUT_MAX_LENGTH
     assert "omitted" in old_tool.content
     assert all(m.content == big for m in current_tools)
+
+
+def test_old_tool_outputs_are_not_truncated_while_the_conversation_fits():
+    big = "x" * (OLD_TOOL_OUTPUT_MAX_LENGTH * 3)
+    messages = tool_turn(1, big) + tool_turn(2, big) + [HumanMessage(content="latest", id="latest")]
+    selection = select_context(messages, 100_000)
+    assert selection.dropped == []
+    assert selection.model_messages == messages
+
+
+def test_old_tool_outputs_are_truncated_oldest_first():
+    big = "x" * (MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN // 3)
+    messages = tool_turn(1, big) + tool_turn(2, big) + tool_turn(3, big) + [HumanMessage(content="latest", id="latest")]
+    # Room for two of the three results
+    selection = select_context(messages, MIN_CONTEXT_BUDGET)
+    assert selection.dropped == []
+    assert selection.kept == messages
+    oldest, *later = [m for m in selection.model_messages if m.type == "tool"]
+    assert "omitted" in oldest.content
+    assert all(m.content == big for m in later)
+    assert sum(message_size(m) for m in selection.model_messages) <= MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN
 
 
 def test_old_turns_are_dropped_whole_when_over_budget():
