@@ -451,11 +451,22 @@ async def get_tools(nc: AsyncNextcloudApp):
 		else:
 			new_done = None
 
+		current_description = card.get('description') or ''
+		ai_note = 'Edited by Nextcloud AI Assistant.'
+		if description is None or description == current_description:
+			# Handing the description back as it is does not make it the assistant's.
+			new_description = current_description
+		elif ai_note in description:
+			# The model tends to hand the note of an earlier edit back along with the rest.
+			new_description = description
+		else:
+			new_description = f"{description}\n\n{ai_note}"
+
 		payload = {
 			'title': title if title is not None else card['title'],
 			'type': card.get('type') or 'plain',
 			'owner': owner,
-			'description': description if description is not None else (card.get('description') or ''),
+			'description': new_description,
 			'order': card.get('order') or 0,
 			'duedate': (due_date or None) if due_date is not None else card.get('duedate'),
 			# Deck clears the done status of a card whenever an update leaves it out.
