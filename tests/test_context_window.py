@@ -390,7 +390,8 @@ def test_react_counts_instructions_and_tools_towards_the_budget():
 
     async def schedule_task(self, task_input, prefer_streaming=False):
         scheduled.append(task_input)
-        output = "SUMMARY-TEXT" if task_input["system_prompt"].startswith("You summarize") else "final answer"
+        # The summarizer ignores the length it is asked for
+        output = "S" * (budget * CHARS_PER_TOKEN) if task_input["system_prompt"].startswith("You summarize") else "final answer"
         return Task(id=len(scheduled), status="STATUS_SUCCESSFUL", output={"output": output})
 
     async def answer(state, config):
@@ -440,6 +441,8 @@ def test_react_counts_instructions_and_tools_towards_the_budget():
 
     assert len(run([big_tool])) == 1
     request = scheduled[-1]
+    # The new summary is sent along and counts as well
+    assert json.loads(request["history"][0])["content"].startswith(agent.SUMMARY_MESSAGE_PREFIX + "S")
     size = len(request["system_prompt"]) + len(request["tools"]) + sum(len(entry) for entry in request["history"]) + len(request["input"])
     assert size <= budget * CHARS_PER_TOKEN
     assert not any("context budget" in line for line in logged)

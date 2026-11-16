@@ -18,7 +18,7 @@ from ex_app.lib.all_tools.context_chat import get_context_chat_providers
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
-from ex_app.lib.context_window import CHARS_PER_TOKEN, MIN_CONTEXT_BUDGET, conversation_budget, render_transcript, select_context
+from ex_app.lib.context_window import CHARS_PER_TOKEN, MIN_CONTEXT_BUDGET, conversation_budget, render_transcript, select_context, truncate_text
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.logger import log
@@ -128,6 +128,9 @@ SUMMARY_PROMPT = (
 	" Write in the language of the conversation, in under 400 words, and reply with the summary only.\n"
 )
 
+# In characters. The model is asked for less, but nothing makes it comply, so longer summaries are cut.
+SUMMARY_MAX_LENGTH = 4000
+
 # Precedes the summary in the message that stands in for the summarized turns
 SUMMARY_MESSAGE_PREFIX = (
 	"[The earlier part of this conversation is no longer shown in full. This is an automatically generated"
@@ -198,7 +201,7 @@ async def react(
 		summary = extract_text_content(response.content).strip()
 		if not summary:
 			raise ValueError("The language model returned an empty summary")
-		return summary
+		return truncate_text(summary, SUMMARY_MAX_LENGTH)
 
 	async def call_model(
 			state: AgentState,
@@ -286,8 +289,8 @@ At the end of each message to the user, if you have carried out a task or answer
 		summary = state.get("summary") or ""
 		# What is sent along with the conversation comes off the budget
 		reserved = len(system_prompt.content) + tools_size
-		if summary:
-			reserved += len(SUMMARY_MESSAGE_PREFIX) + len(summary)
+		summary_size = len(SUMMARY_MESSAGE_PREFIX) + len(summary) if summary else 0
+		reserved += summary_size
 		if context_budget * CHARS_PER_TOKEN - reserved < MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN:
 			await log(
 				nc, LogLvl.WARNING,
@@ -298,6 +301,9 @@ At the end of each message to the user, if you have carried out a task or answer
 		selection = select_context(state["messages"], context_budget, reserved)
 		update: dict[str, Any] = {"messages": []}
 		if selection.dropped:
+			# The summary the dropped turns are folded into is not written yet, so room is made for the longest it can get
+			reserved += len(SUMMARY_MESSAGE_PREFIX) + SUMMARY_MAX_LENGTH - summary_size
+			selection = select_context(state["messages"], context_budget, reserved)
 			try:
 				summary = await summarize(summary, selection.dropped)
 				update["summary"] = summary
