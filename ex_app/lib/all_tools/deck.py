@@ -146,22 +146,28 @@ async def get_tools(nc: AsyncNextcloudApp):
 			raise ValueError(f'No board holds a card with id {card_id!r}')
 		return radius
 
-	async def stack_size(board_id, stack_id):
-		"""Deleting a stack takes every card on it along with it, archived ones included."""
+	async def count_cards(board_id, count_limit, stack_id=None):
+		"""The board or stack itself plus its cards, archived ones included.
+
+		The archived cards cost a request of their own, which is skipped once the
+		active ones have already reached the limit.
+		"""
 		count = 1
 		for path in (f'/boards/{int(board_id)}/stacks', f'/boards/{int(board_id)}/stacks/archived'):
+			if count_limit is not None and count >= count_limit:
+				break
 			for stack in await deck_request('GET', path):
-				if stack.get('id') == int(stack_id):
+				if stack_id is None or stack.get('id') == int(stack_id):
 					count += len(stack.get('cards') or [])
 		return count
 
-	async def board_size(board_id):
+	async def stack_size(board_id, stack_id, count_limit=None):
+		"""Deleting a stack takes every card on it along with it, archived ones included."""
+		return await count_cards(board_id, count_limit, stack_id)
+
+	async def board_size(board_id, count_limit=None):
 		"""Sharing a board exposes every card on it, archived ones included."""
-		count = 1
-		for path in (f'/boards/{int(board_id)}/stacks', f'/boards/{int(board_id)}/stacks/archived'):
-			for stack in await deck_request('GET', path):
-				count += len(stack.get('cards') or [])
-		return count
+		return await count_cards(board_id, count_limit)
 
 	async def find_user_acl(board_id, user_id):
 		"""The entry of a board's access control list that shares it with the user, if any."""
@@ -178,6 +184,16 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""Deck rejects comments over 1000 characters, on update with a bare HTTP 500."""
 		if len(message) > COMMENT_MAX_LENGTH:
 			raise ValueError(f'The comment is {len(message) - COMMENT_MAX_LENGTH} characters too long, including the note about the AI Assistant')
+
+	def parse_due_date(due_date):
+		"""Deck answers a due date it cannot read with a bare HTTP 500, or reads it as some other date."""
+		try:
+			return datetime.fromisoformat(due_date.strip()).isoformat()
+		except ValueError:
+			raise ValueError(
+				f'The due date {due_date!r} is not a valid ISO date; '
+				"use YYYY-MM-DD, e.g. '2024-12-01', or a full ISO datetime, e.g. '2024-12-01T14:00:00+01:00'"
+			) from None
 
 	async def card_update_overwrites(title=None, description=None, due_date=None):
 		"""The title, description and due date it replaces are not kept anywhere; done can simply be toggled back."""
@@ -245,7 +261,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		}))
 
 	@tool
-	@impulse(board_radius)
+	# Only the one user losing access is affected, not everybody else the board is shared with.
+	@impulse(ImpulseRadius.INDIVIDUALS)
 	@destructive
 	# The share can be made again just like it was.
 	@reversibility(Reversibility.REVERSIBLE)
@@ -325,9 +342,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param stack_id: the id of the stack the card should be created in, obtainable with list_boards
 		:param title: The title of the card
 		:param description: Optional description for the card
-		:param due_date: Optional due date in ISO format (YYYY-MM-DD)
+		:param due_date: Optional due date in ISO format (YYYY-MM-DD or a full ISO datetime)
 		:return: the created card with its id
 		"""
+		if due_date:
+			due_date = parse_due_date(due_date)
 		description_with_ai_note = f"{description or ''}\n\nCreated by Nextcloud AI Assistant."
 
 		payload = {
@@ -408,6 +427,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param done: optional - true to mark the card as done, false to mark it as not done
 		:return: the updated card
 		"""
+		if due_date:
+			due_date = parse_due_date(due_date)
 		path = f'/boards/{board_id}/stacks/{stack_id}/cards/{card_id}'
 		card = await deck_request('GET', path)
 		# Deck reads the card by its id alone and then files it under the stack in the
