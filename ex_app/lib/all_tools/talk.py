@@ -21,7 +21,7 @@ from ex_app.lib.all_tools.lib.impulse import (
 async def get_tools(nc: AsyncNextcloudApp):
 
 	async def conversation_radius(conversation_name=None):
-		"""How far a conversation reaches: one person, its participants, or anyone with the link."""
+		"""How far a conversation reaches: only the user, one person, its participants, or anyone with the link."""
 		if conversation_name is None:
 			return ImpulseRadius.EXTERNAL
 		conversations = await nc.talk.get_user_conversations()
@@ -32,6 +32,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if conversation.conversation_type == ConversationType.PUBLIC:
 			# Anyone holding the link can read along, including guests without an account.
 			return ImpulseRadius.EXTERNAL
+		if conversation.conversation_type == ConversationType.NOTE_TO_SELF:
+			# The user is its only participant, nobody else reads along.
+			return ImpulseRadius.SELF
 		if conversation.conversation_type in (ConversationType.ONE_TO_ONE, ConversationType.FORMER):
 			return ImpulseRadius.INDIVIDUALS
 		return ImpulseRadius.GROUP
