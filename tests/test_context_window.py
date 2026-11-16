@@ -27,6 +27,7 @@ from ex_app.lib.context_window import (  # noqa: E402
     CHARS_PER_TOKEN,
     MIN_CONTEXT_BUDGET,
     OLD_TOOL_OUTPUT_MAX_LENGTH,
+    message_size,
     render_transcript,
     select_context,
     split_turns,
@@ -146,6 +147,50 @@ def test_pending_tool_results_share_the_budget():
     assert sum(len(json.dumps(m.content)) for m in selection.model_messages) <= budget_chars
     assert small.content == "tiny"
     assert all(len(m.content) > budget_chars // 4 for m in large)
+    assert selection.kept == messages
+
+
+def test_pending_tool_results_are_omitted_rather_than_exceeding_the_budget():
+    budget = MIN_CONTEXT_BUDGET
+    budget_chars = budget * CHARS_PER_TOKEN
+    # Escaped characters make the results larger than their text
+    big = '"z"\n' * budget_chars
+    call_ids = [f"c{i}" for i in range(12)]
+    messages = [
+        HumanMessage(content="do it", id="h"),
+        AIMessage(content="", tool_calls=[{"name": "lookup", "args": {}, "id": cid} for cid in call_ids], id="a"),
+        *[ToolMessage(content=big, name="lookup", tool_call_id=cid, id=f"t{cid}") for cid in call_ids],
+    ]
+    selection = select_context(messages, budget)
+    assert sum(message_size(m) for m in selection.model_messages) <= budget_chars
+    tools = [m for m in selection.model_messages if m.type == "tool"]
+    # Every tool call still has its result, the oldest ones without their content
+    assert [m.tool_call_id for m in tools] == call_ids
+    assert "result omitted" in tools[0].content
+    assert "result omitted" not in tools[-1].content
+    assert len(tools[-1].content) > OLD_TOOL_OUTPUT_MAX_LENGTH // 4
+    assert selection.kept == messages
+
+
+def test_earlier_tool_results_are_omitted_before_pending_ones():
+    budget = MIN_CONTEXT_BUDGET
+    budget_chars = budget * CHARS_PER_TOKEN
+    big = "z" * budget_chars
+    messages = [HumanMessage(content="do it", id="h")]
+    for n in range(8):
+        messages += [
+            AIMessage(content="", tool_calls=[{"name": "lookup", "args": {}, "id": f"c{n}"}], id=f"a{n}"),
+            ToolMessage(content=big, name="lookup", tool_call_id=f"c{n}", id=f"t{n}"),
+        ]
+    selection = select_context(messages, budget)
+    assert sum(message_size(m) for m in selection.model_messages) <= budget_chars
+    tools = [m for m in selection.model_messages if m.type == "tool"]
+    assert len(tools) == 8
+    assert "result omitted" in tools[0].content
+    assert "call lookup again" in tools[0].content
+    # The result the model has not seen yet is still shown
+    assert "result omitted" not in tools[-1].content
+    assert len(tools[-1].content) > OLD_TOOL_OUTPUT_MAX_LENGTH // 2
     assert selection.kept == messages
 
 

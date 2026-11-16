@@ -10,7 +10,8 @@ characters, as there is no tokenizer for the unknown model either.
   needs every tool result of it to finish its work, except that a single tool result
   gets no more than half the budget. Only if the turn on its own outgrows the budget
   are its earlier tool results shortened and the budget is shared out among the tool
-  results the model has not answered yet.
+  results the model has not answered yet. If that is not enough, tool results are left
+  out, oldest first, as a request over the budget is likely to fail altogether.
 - Tool results of earlier turns are shortened, keeping their beginning and their end.
 - If the conversation still does not fit, whole turns are dropped, oldest first, so a
   tool call is never separated from its result. The caller summarizes them.
@@ -145,10 +146,25 @@ def split_turns(messages: list[BaseMessage]) -> list[list[BaseMessage]]:
 
 
 def _truncate_tool_message(message: BaseMessage, max_chars: int, can_refetch: bool = True) -> BaseMessage:
-	if message.type != 'tool' or not isinstance(message.content, str) or len(message.content) <= max_chars:
+	if message.type != 'tool' or not isinstance(message.content, str) or message_size(message) <= max_chars:
 		return message
-	content = truncate_text(message.content, max_chars, getattr(message, 'name', None), can_refetch)
-	return message.model_copy(update={'content': content})
+	limit = max_chars
+	# Escaping makes a message larger than its text, so it can take a second round
+	for _ in range(2):
+		content = truncate_text(message.content, limit, getattr(message, 'name', None), can_refetch)
+		truncated = message.model_copy(update={'content': content})
+		excess = message_size(truncated) - max_chars
+		if excess <= 0:
+			break
+		limit -= excess
+	return truncated
+
+
+def _omit_tool_message(message: BaseMessage, can_refetch: bool = True) -> BaseMessage:
+	"""Leave out a tool result, keeping the message, as every tool call needs its result"""
+	hint = _omission_hint(getattr(message, 'name', None), can_refetch)
+	omitted = message.model_copy(update={'content': f'[… result omitted to stay within the context window{hint}]'})
+	return omitted if message_size(omitted) < message_size(message) else message
 
 
 def _compact_old_turn(turn: list[BaseMessage]) -> list[BaseMessage]:
@@ -182,14 +198,29 @@ def _compact_current_turn(turn: list[BaseMessage], budget_chars: int) -> list[Ba
 		_truncate_tool_message(message, OLD_TOOL_OUTPUT_MAX_LENGTH) if i < last_ai else message
 		for i, message in enumerate(turn)
 	]
-	# The tool results the model has not answered yet share what is left of the budget
 	pending = [i for i, message in enumerate(compacted) if i > last_ai and message.type == 'tool']
-	available = budget_chars - _turn_size([message for i, message in enumerate(compacted) if i not in pending])
-	shares = _share_out(
-		[message_size(compacted[i]) for i in pending], max(available, 0), OLD_TOOL_OUTPUT_MAX_LENGTH, max_result_chars,
-	)
+	pending_sizes = [message_size(compacted[i]) for i in pending]
+	# The earlier tool results are left out, oldest first, if there is no room for the pending ones otherwise
+	needed = sum(min(size, OLD_TOOL_OUTPUT_MAX_LENGTH) for size in pending_sizes)
+	used = _turn_size(compacted) - sum(pending_sizes)
+	for i, message in enumerate(compacted):
+		if used + needed <= budget_chars:
+			break
+		if i < last_ai and message.type == 'tool':
+			compacted[i] = _omit_tool_message(message)
+			used -= message_size(message) - message_size(compacted[i])
+	# The tool results the model has not answered yet share what is left of the budget
+	shares = _share_out(pending_sizes, max(budget_chars - used, 0), OLD_TOOL_OUTPUT_MAX_LENGTH, max_result_chars)
 	for i, share in zip(pending, shares):
 		compacted[i] = _truncate_tool_message(compacted[i], share, can_refetch=False)
+	# Rather than going over the budget, the pending ones are left out as well, oldest first
+	total = _turn_size(compacted)
+	for i in pending:
+		if total <= budget_chars:
+			break
+		omitted = _omit_tool_message(compacted[i], can_refetch=False)
+		total -= message_size(compacted[i]) - message_size(omitted)
+		compacted[i] = omitted
 	return compacted
 
 
@@ -204,7 +235,10 @@ class ContextSelection:
 
 
 def select_context(messages: list[BaseMessage], budget_tokens: int) -> ContextSelection:
-	"""Pick the part of the conversation that is sent to the model"""
+	"""Pick the part of the conversation that is sent to the model
+
+	It stays within the budget, unless the current turn outgrows it without its tool results.
+	"""
 	budget_chars = max(budget_tokens, MIN_CONTEXT_BUDGET) * CHARS_PER_TOKEN
 	turns = split_turns(list(messages))
 	if not turns:
