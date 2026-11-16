@@ -18,7 +18,7 @@ from ex_app.lib.all_tools.context_chat import get_context_chat_providers
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
-from ex_app.lib.context_window import CHARS_PER_TOKEN, MIN_CONTEXT_BUDGET, conversation_budget, render_transcript, select_context, truncate_text
+from ex_app.lib.context_window import CHARS_PER_TOKEN, MIN_CONTEXT_BUDGET, conversation_budget, render_transcripts, select_context, truncate_text
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.logger import log
@@ -131,6 +131,10 @@ SUMMARY_PROMPT = (
 # In characters. The model is asked for less, but nothing makes it comply, so longer summaries are cut.
 SUMMARY_MAX_LENGTH = 4000
 
+# Each step is a request to the model. A conversation that takes more of them, e.g. one from before
+# conversations were summarized, loses its oldest turns.
+SUMMARY_MAX_STEPS = 4
+
 # Precedes the summary in the message that stands in for the summarized turns
 SUMMARY_MESSAGE_PREFIX = (
 	"[The earlier part of this conversation is no longer shown in full. This is an automatically generated"
@@ -185,23 +189,26 @@ async def react(
 
 	async def summarize(previous_summary: str, messages: list[BaseMessage]) -> str:
 		"""Fold the turns that no longer fit into the context window into the summary"""
-		content = ''
-		if previous_summary:
-			content += "Summary of the conversation so far:\n\n" + previous_summary + "\n\n"
-		# The summarizer gets no tools, only its instructions and the summary so far
-		content += "The conversation continued as follows:\n\n" + render_transcript(
-			messages, conversation_budget(context_budget, len(SUMMARY_PROMPT) + len(content)),
-		)
+		summary = previous_summary
+		# The summarizer gets no tools, only its instructions and the summary so far, at the longest it can get
+		max_chars = conversation_budget(context_budget, len(SUMMARY_PROMPT) + SUMMARY_MAX_LENGTH + 200)
 		summarizer = ChatWithNextcloud(nc=nc)
-		# The summary is no reply to the user, so it is not streamed to them
-		response = await summarizer.ainvoke(
-			[SystemMessage(SUMMARY_PROMPT), HumanMessage(content=content)],
-			{"tags": [TAG_NOSTREAM]},
-		)
-		summary = extract_text_content(response.content).strip()
-		if not summary:
-			raise ValueError("The language model returned an empty summary")
-		return truncate_text(summary, SUMMARY_MAX_LENGTH)
+		# What does not fit into one request is summarized in steps, rather than cutting out its middle
+		for transcript in render_transcripts(messages, max_chars, SUMMARY_MAX_STEPS):
+			content = ''
+			if summary:
+				content += "Summary of the conversation so far:\n\n" + summary + "\n\n"
+			content += "The conversation continued as follows:\n\n" + transcript
+			# The summary is no reply to the user, so it is not streamed to them
+			response = await summarizer.ainvoke(
+				[SystemMessage(SUMMARY_PROMPT), HumanMessage(content=content)],
+				{"tags": [TAG_NOSTREAM]},
+			)
+			summary = extract_text_content(response.content).strip()
+			if not summary:
+				raise ValueError("The language model returned an empty summary")
+			summary = truncate_text(summary, SUMMARY_MAX_LENGTH)
+		return summary
 
 	async def call_model(
 			state: AgentState,

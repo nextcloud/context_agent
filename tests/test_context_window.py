@@ -29,6 +29,7 @@ from ex_app.lib.context_window import (  # noqa: E402
     OLD_TOOL_OUTPUT_MAX_LENGTH,
     message_size,
     render_transcript,
+    render_transcripts,
     select_context,
     split_turns,
     truncate_text,
@@ -237,6 +238,24 @@ def test_render_transcript():
     assert len(transcript) < 3000
 
 
+def test_render_transcripts_keeps_turns_whole():
+    messages = []
+    for n in range(10):
+        messages += tool_turn(n, "y" * 500)
+    transcripts = render_transcripts(messages, 2000, 100)
+    assert len(transcripts) > 1
+    assert all(len(transcript) <= 2000 for transcript in transcripts)
+    # Nothing is cut out, and no turn is split between two texts
+    assert not any("omitted" in transcript for transcript in transcripts)
+    assert all(transcript.startswith("User: question") and "Assistant: answer" in transcript.split("\n\n")[-1] for transcript in transcripts)
+    assert "\n\n".join(transcripts) == render_transcript(messages, 100_000)
+    # Beyond the limit, the oldest turns are left out
+    latest = render_transcripts(messages, 2000, 2)
+    assert latest == transcripts[-2:]
+    # A turn that is too long on its own is still cut
+    assert "omitted" in render_transcripts(tool_turn(0, "y" * 500), 300, 100)[0]
+
+
 def test_graph_replaces_dropped_messages_and_keeps_summary():
     """The update call_model returns once it has summarized the dropped turns"""
     # Without the final answer, which call_model is about to give
@@ -298,7 +317,8 @@ def test_react_summarizes_dropped_turns_without_streaming_the_summary():
         checkpointer = MemorySaver(serde=JsonPlusSerializer())
         graph, _ = await get_graph(answer, [], checkpointer)
         config = {"configurable": {"thread_id": "thread-1"}}
-        for n in range(20):
+        # More than the budget, but the dropped turns still fit into one request to the summarizer
+        for n in range(3):
             await graph.ainvoke({"messages": [HumanMessage(content=f"question {n} " + "q" * 1500)]}, config)
         return agent.export_conversation(checkpointer)
 
@@ -355,6 +375,89 @@ def test_react_summarizes_dropped_turns_without_streaming_the_summary():
     # The summary message is not kept in the state: the history without it, the latest question and the answer
     assert not any("SUMMARY-TEXT" in extract_text_content(m.content) for m in state["messages"])
     assert len(state["messages"]) == len(model_calls[0]["history"]) - 1 + 2
+
+
+def test_react_summarizes_a_long_conversation_in_steps():
+    from ex_app.lib import agent
+    from ex_app.lib.all_tools.lib.impulse import ConfirmationPolicy
+    from ex_app.lib.nc_model import ChatWithNextcloud, Task
+
+    scheduled = []
+
+    async def get_tools(nc):
+        return []
+
+    async def get_confirmation_policy(nc):
+        return ConfirmationPolicy()
+
+    async def get_context_budget(nc):
+        return MIN_CONTEXT_BUDGET
+
+    async def user_timezone_async(nc):
+        return None
+
+    async def schedule_task(self, task_input, prefer_streaming=False):
+        scheduled.append(task_input)
+        if task_input["system_prompt"].startswith("You summarize"):
+            output = f"SUMMARY-{len(scheduled)}"
+        else:
+            output = "final answer"
+        return Task(id=len(scheduled), status="STATUS_SUCCESSFUL", output={"output": output})
+
+    async def answer(state, config):
+        return {"messages": [AIMessage(content="ok " + "w" * 1500)]}
+
+    async def build_token():
+        checkpointer = MemorySaver(serde=JsonPlusSerializer())
+        graph, _ = await get_graph(answer, [], checkpointer)
+        config = {"configurable": {"thread_id": "thread-1"}}
+        # Many times the budget, as in a conversation from before conversations were summarized
+        for n in range(20):
+            await graph.ainvoke({"messages": [HumanMessage(content=f"question {n} " + "q" * 1500)]}, config)
+        return agent.export_conversation(checkpointer)
+
+    patches = [
+        (agent, "get_tools", get_tools),
+        (agent, "get_confirmation_policy", get_confirmation_policy),
+        (agent, "get_context_budget", get_context_budget),
+        (agent, "user_timezone_async", user_timezone_async),
+        (ChatWithNextcloud, "_schedule_task", schedule_task),
+    ]
+    originals = [(obj, name, getattr(obj, name)) for obj, name, _ in patches]
+    for obj, name, value in patches:
+        setattr(obj, name, value)
+    try:
+        token = asyncio.run(build_token())
+        task = {
+            "type": "core:contextagent:interaction",
+            "input": {"input": "latest question", "confirmation": 1, "conversation_token": token},
+        }
+        result = asyncio.run(agent.react(task, AsyncNextcloudApp()))
+    finally:
+        for obj, name, value in originals:
+            setattr(obj, name, value)
+
+    summary_calls = [t for t in scheduled if t["system_prompt"].startswith("You summarize")]
+    model_calls = [t for t in scheduled if t not in summary_calls]
+    assert len(summary_calls) == agent.SUMMARY_MAX_STEPS
+    assert len(model_calls) == 1
+    inputs = [t["input"] for t in summary_calls]
+    # Each request fits, and no turn was cut to make it fit
+    assert all(len(text) <= MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN for text in inputs)
+    assert not any("omitted" in text for text in inputs)
+    # Each step folds the next turns into the summary of the step before
+    assert "Summary of the conversation so far" not in inputs[0]
+    for n, text in enumerate(inputs[1:], start=1):
+        assert text.startswith(f"Summary of the conversation so far:\n\nSUMMARY-{n}\n\n")
+    # The dropped turns are summarized in order up to the first one that is kept, only the oldest are left out
+    asked = [int(line.split()[2]) for text in inputs for line in text.split("\n\n") if line.startswith("User: question ")]
+    kept = json.loads(model_calls[0]["history"][1])["content"]
+    assert asked == list(range(asked[0], asked[-1] + 1))
+    assert asked[0] > 0
+    assert kept.startswith(f"question {asked[-1] + 1} ")
+    # The request to the model gets the summary of the last step
+    assert json.loads(model_calls[0]["history"][0])["content"] == agent.SUMMARY_MESSAGE_PREFIX + f"SUMMARY-{agent.SUMMARY_MAX_STEPS}"
+    assert result["output"] == "final answer"
 
 
 def test_reserved_size_comes_off_the_budget():

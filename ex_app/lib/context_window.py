@@ -305,3 +305,20 @@ def render_transcript(messages: list[BaseMessage], max_chars: int) -> str:
 			content = message.content if isinstance(message.content, str) else extract_text_content(message.content)
 			lines.append(f'Result of {getattr(message, "name", None) or "the tool"}: ' + truncate_text(content, OLD_TOOL_OUTPUT_MAX_LENGTH))
 	return truncate_text('\n\n'.join(lines), max_chars)
+
+
+def render_transcripts(messages: list[BaseMessage], max_chars: int, max_count: int) -> list[str]:
+	"""Write out a part of the conversation as plain texts of at most max_chars each, for it to be summarized in steps
+
+	Turns are kept whole, so nothing is cut out of the middle, unless a single turn is longer
+	than max_chars. If there are more texts than max_count, only the latest ones are returned,
+	as the oldest turns matter the least.
+	"""
+	transcripts: list[str] = []
+	for turn in split_turns(messages):
+		rendered = render_transcript(turn, max_chars)
+		if transcripts and len(transcripts[-1]) + 2 + len(rendered) <= max_chars:
+			transcripts[-1] += '\n\n' + rendered
+		else:
+			transcripts.append(rendered)
+	return transcripts[-max_count:]
