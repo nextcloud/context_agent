@@ -18,7 +18,8 @@ with every request, so they come off the budget first. The conversation gets the
 - If the conversation does not fit, tool results of earlier turns are shortened, keeping
   their beginning and their end, oldest turn first, until it does.
 - If the conversation still does not fit, whole turns are dropped, oldest first, so a
-  tool call is never separated from its result. The caller summarizes them.
+  tool call is never separated from its result. The caller summarizes them. Of the
+  remaining turns, only the tool results that still do not fit are shortened.
 """
 import json
 from dataclasses import dataclass
@@ -176,6 +177,28 @@ def _compact_old_turn(turn: list[BaseMessage]) -> list[BaseMessage]:
 	return [_truncate_tool_message(message, OLD_TOOL_OUTPUT_MAX_LENGTH) for message in turn]
 
 
+def _shorten_until_fits(
+		turns: list[list[BaseMessage]], fixed_size: int, budget_chars: int,
+) -> tuple[list[list[BaseMessage]], list[int], int]:
+	"""Shorten the tool results of earlier turns until they fit into the budget along with fixed_size
+
+	The tool results of the latest turns are the ones most likely to be needed again, so the
+	oldest are shortened first. Returns the turns, their sizes and the total size, which is
+	still over the budget if shortening all of them is not enough.
+	"""
+	shortened = list(turns)
+	sizes = [_turn_size(turn) for turn in turns]
+	total = sum(sizes) + fixed_size
+	for i, turn in enumerate(turns):
+		if total <= budget_chars:
+			break
+		shortened[i] = _compact_old_turn(turn)
+		total -= sizes[i]
+		sizes[i] = _turn_size(shortened[i])
+		total += sizes[i]
+	return shortened, sizes, total
+
+
 def _share_out(sizes: list[int], total: int, floor: int, ceiling: int) -> list[int]:
 	"""Share out a number of characters among texts of the given sizes
 
@@ -259,29 +282,24 @@ def select_context(messages: list[BaseMessage], budget_tokens: int, reserved_cha
 		return ContextSelection([], [], [])
 
 	older, current = turns[:-1], turns[-1]
-	older_compacted = list(older)
 	current_compacted = _compact_current_turn(current, budget_chars)
+	current_size = _turn_size(current_compacted)
 
-	sizes = [_turn_size(turn) for turn in older]
-	total = sum(sizes) + _turn_size(current_compacted)
-	# The tool results of the latest turns are the ones most likely to be needed again, so the oldest are shortened first
-	for i, turn in enumerate(older):
-		if total <= budget_chars:
-			break
-		older_compacted[i] = _compact_old_turn(turn)
-		total -= sizes[i]
-		sizes[i] = _turn_size(older_compacted[i])
-		total += sizes[i]
+	older_compacted, sizes, total = _shorten_until_fits(older, current_size, budget_chars)
 	first_kept = 0
 	if total > budget_chars:
 		while first_kept < len(older) and total > budget_chars * TRIM_TARGET:
 			total -= sizes[first_kept]
 			first_kept += 1
+		# The dropped turns made room, so only what the remaining turns still need is shortened. This is
+		# what the next step makes of them as well, so a tool result is not shortened in one request and
+		# sent in full in the next.
+		older_compacted, _, _ = _shorten_until_fits(older[first_kept:], current_size, budget_chars)
 
 	return ContextSelection(
 		dropped=[message for turn in older[:first_kept] for message in turn],
 		kept=[message for turn in older[first_kept:] for message in turn] + current,
-		model_messages=[message for turn in older_compacted[first_kept:] for message in turn] + current_compacted,
+		model_messages=[message for turn in older_compacted for message in turn] + current_compacted,
 	)
 
 

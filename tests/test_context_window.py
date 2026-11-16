@@ -131,6 +131,49 @@ def test_old_turns_are_dropped_whole_when_over_budget():
     assert selection.kept[-len(tool_turn(0, "")):][0].id == "h29"
 
 
+def test_remaining_turns_are_not_shortened_once_dropping_made_room():
+    budget = MIN_CONTEXT_BUDGET
+    budget_chars = budget * CHARS_PER_TOKEN
+    big = "y" * (OLD_TOOL_OUTPUT_MAX_LENGTH * 3 // 2)
+    messages = []
+    for n in range(6):
+        messages += tool_turn(n, big)
+    messages.append(HumanMessage(content="latest", id="latest"))
+    # Even with all results shortened the conversation does not fit, so turns are dropped
+    selection = select_context(messages, budget)
+    assert selection.dropped
+    remaining = [m for m in selection.model_messages if m.type == "tool"]
+    assert len(remaining) > 1
+    # Without the dropped turns the remaining ones fit in full
+    assert all(m.content == big for m in remaining)
+    assert selection.model_messages == selection.kept
+    assert sum(message_size(m) for m in selection.model_messages) <= budget_chars
+    # The next step, which starts from the turns kept in the state, sends them the same way
+    following = select_context(selection.kept + [AIMessage(content="answer", id="answer")], budget)
+    assert following.dropped == []
+    assert following.model_messages[:len(selection.model_messages)] == selection.model_messages
+
+
+def test_remaining_turns_are_shortened_oldest_first_if_they_still_do_not_fit():
+    budget = MIN_CONTEXT_BUDGET
+    budget_chars = budget * CHARS_PER_TOKEN
+    # Two of these fit into the budget only if one of them is shortened
+    big = "y" * (budget_chars * 5 // 8)
+    messages = []
+    for n in range(6):
+        messages += tool_turn(n, big)
+    messages.append(HumanMessage(content="latest", id="latest"))
+    selection = select_context(messages, budget)
+    assert selection.dropped
+    oldest, newest = [m for m in selection.model_messages if m.type == "tool"]
+    assert "omitted" in oldest.content
+    assert newest.content == big
+    assert sum(message_size(m) for m in selection.model_messages) <= budget_chars
+    following = select_context(selection.kept + [AIMessage(content="answer", id="answer")], budget)
+    assert following.dropped == []
+    assert following.model_messages[:len(selection.model_messages)] == selection.model_messages
+
+
 def test_current_turn_alone_over_budget():
     budget = MIN_CONTEXT_BUDGET
     budget_chars = budget * CHARS_PER_TOKEN
