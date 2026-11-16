@@ -333,3 +333,118 @@ def test_react_summarizes_dropped_turns_without_streaming_the_summary():
     # The summary message is not kept in the state: the history without it, the latest question and the answer
     assert not any("SUMMARY-TEXT" in extract_text_content(m.content) for m in state["messages"])
     assert len(state["messages"]) == len(model_calls[0]["history"]) - 1 + 2
+
+
+def test_reserved_size_comes_off_the_budget():
+    budget = 3 * MIN_CONTEXT_BUDGET
+    messages = []
+    for n in range(12):
+        messages += tool_turn(n, "x" * 1500)
+    messages.append(HumanMessage(content="latest", id="latest"))
+    assert not select_context(messages, budget).dropped
+
+    reserved = MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN
+    selection = select_context(messages, budget, reserved)
+    assert selection.dropped
+    assert sum(message_size(m) for m in selection.model_messages) + reserved <= budget * CHARS_PER_TOKEN
+
+
+def test_conversation_keeps_a_minimum_when_the_rest_takes_up_the_budget():
+    budget = 3 * MIN_CONTEXT_BUDGET
+    messages = tool_turn(0, "x" * 1500) + [HumanMessage(content="latest", id="latest")]
+    selection = select_context(messages, budget, 10 * budget * CHARS_PER_TOKEN)
+    assert not selection.dropped
+    assert selection.model_messages == messages
+
+
+def test_react_counts_instructions_and_tools_towards_the_budget():
+    from langchain_core.tools import tool
+
+    from ex_app.lib import agent
+    from ex_app.lib.all_tools.lib.impulse import ConfirmationPolicy
+    from ex_app.lib.nc_model import ChatWithNextcloud, Task
+
+    budget = 4 * MIN_CONTEXT_BUDGET
+    scheduled = []
+    logged = []
+
+    @tool
+    def big_tool() -> str:
+        """Placeholder"""
+        return ""
+
+    # As large as half the budget
+    big_tool.description = "d" * (2 * MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN)
+
+    async def get_confirmation_policy(nc):
+        return ConfirmationPolicy()
+
+    async def get_context_budget(nc):
+        return budget
+
+    async def user_timezone_async(nc):
+        return None
+
+    async def log(nc, level, content):
+        logged.append(str(content))
+
+    async def schedule_task(self, task_input, prefer_streaming=False):
+        scheduled.append(task_input)
+        output = "SUMMARY-TEXT" if task_input["system_prompt"].startswith("You summarize") else "final answer"
+        return Task(id=len(scheduled), status="STATUS_SUCCESSFUL", output={"output": output})
+
+    async def answer(state, config):
+        return {"messages": [AIMessage(content="ok " + "w" * 1500)]}
+
+    async def build_token():
+        checkpointer = MemorySaver(serde=JsonPlusSerializer())
+        graph, _ = await get_graph(answer, [], checkpointer)
+        config = {"configurable": {"thread_id": "thread-1"}}
+        # About half of the budget, so it fits unless the tools are counted
+        for n in range(5):
+            await graph.ainvoke({"messages": [HumanMessage(content=f"question {n} " + "q" * 1500)]}, config)
+        return agent.export_conversation(checkpointer)
+
+    def run(tools):
+        scheduled.clear()
+        logged.clear()
+
+        async def get_tools(nc):
+            return tools
+
+        patches = [
+            (agent, "get_tools", get_tools),
+            (agent, "get_confirmation_policy", get_confirmation_policy),
+            (agent, "get_context_budget", get_context_budget),
+            (agent, "user_timezone_async", user_timezone_async),
+            (agent, "log", log),
+            (ChatWithNextcloud, "_schedule_task", schedule_task),
+        ]
+        originals = [(obj, name, getattr(obj, name)) for obj, name, _ in patches]
+        for obj, name, value in patches:
+            setattr(obj, name, value)
+        try:
+            token = asyncio.run(build_token())
+            task = {
+                "type": "core:contextagent:interaction",
+                "input": {"input": "latest question", "confirmation": 1, "conversation_token": token},
+            }
+            asyncio.run(agent.react(task, AsyncNextcloudApp()))
+        finally:
+            for obj, name, value in originals:
+                setattr(obj, name, value)
+        return [t for t in scheduled if t["system_prompt"].startswith("You summarize")]
+
+    assert not run([])
+    assert not any("context budget" in line for line in logged)
+
+    assert len(run([big_tool])) == 1
+    request = scheduled[-1]
+    size = len(request["system_prompt"]) + len(request["tools"]) + sum(len(entry) for entry in request["history"]) + len(request["input"])
+    assert size <= budget * CHARS_PER_TOKEN
+    assert not any("context budget" in line for line in logged)
+
+    # Tools that leave less than the minimum for the conversation are reported
+    big_tool.description = "d" * (3 * MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN)
+    run([big_tool])
+    assert any("context budget" in line for line in logged)

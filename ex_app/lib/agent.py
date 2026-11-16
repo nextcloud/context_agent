@@ -18,7 +18,7 @@ from ex_app.lib.all_tools.context_chat import get_context_chat_providers
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
-from ex_app.lib.context_window import CHARS_PER_TOKEN, render_transcript, select_context
+from ex_app.lib.context_window import CHARS_PER_TOKEN, MIN_CONTEXT_BUDGET, conversation_budget, render_transcript, select_context
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.logger import log
@@ -171,6 +171,8 @@ async def react(
 
 	# A model per task, as tasks of different users run concurrently
 	bound_model = ChatWithNextcloud(nc=nc, multimodal=multimodal).bind_tools(tools)
+	# The tool descriptions are sent with every request, so they count towards the context budget
+	tools_size = len(json.dumps(cast(ChatWithNextcloud, bound_model).tools))
 
 	def tool_enabled(tool_name):
 		for tool in tools:
@@ -183,7 +185,10 @@ async def react(
 		content = ''
 		if previous_summary:
 			content += "Summary of the conversation so far:\n\n" + previous_summary + "\n\n"
-		content += "The conversation continued as follows:\n\n" + render_transcript(messages, context_budget * CHARS_PER_TOKEN)
+		# The summarizer gets no tools, only its instructions and the summary so far
+		content += "The conversation continued as follows:\n\n" + render_transcript(
+			messages, conversation_budget(context_budget, len(SUMMARY_PROMPT) + len(content)),
+		)
 		summarizer = ChatWithNextcloud(nc=nc)
 		# The summary is no reply to the user, so it is not streamed to them
 		response = await summarizer.ainvoke(
@@ -272,8 +277,25 @@ At the end of each message to the user, if you have carried out a task or answer
 
 		system_prompt_text += format_output_mode(task['input'].get('output_mode'))
 
-		selection = select_context(state["messages"], context_budget)
+		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
+		system_prompt = SystemMessage(
+			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
+			+ format_user_instructions(task['input'].get('user_instructions'))
+		)
+
 		summary = state.get("summary") or ""
+		# What is sent along with the conversation comes off the budget
+		reserved = len(system_prompt.content) + tools_size
+		if summary:
+			reserved += len(SUMMARY_MESSAGE_PREFIX) + len(summary)
+		if context_budget * CHARS_PER_TOKEN - reserved < MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN:
+			await log(
+				nc, LogLvl.WARNING,
+				f"The instructions and tool descriptions take up about {reserved // CHARS_PER_TOKEN} tokens of the context"
+				f" budget of {context_budget}, so the request to the language model may exceed it."
+				" Raise the budget or disable some tools.",
+			)
+		selection = select_context(state["messages"], context_budget, reserved)
 		update: dict[str, Any] = {"messages": []}
 		if selection.dropped:
 			try:
@@ -289,12 +311,6 @@ At the end of each message to the user, if you have carried out a task or answer
 			# The summary is made from what users and tools wrote, so it is sent as the first message of
 			# the conversation and not as a part of the instructions. It is not kept in the state.
 			model_messages = [HumanMessage(content=SUMMARY_MESSAGE_PREFIX + summary)] + model_messages
-
-		# this is similar to customizing the create_react_agent with state_modifier, but is a lot more flexible
-		system_prompt = SystemMessage(
-			system_prompt_text.replace("{CURRENT_DATE}", current_date).replace("{DATE_SUFFIX}", date_suffix)
-			+ format_user_instructions(task['input'].get('user_instructions'))
-		)
 
 		response = await bound_model.ainvoke([system_prompt] + model_messages, config)
 		# We return a list, because this will get added to the existing list

@@ -3,8 +3,11 @@
 """Fitting a conversation into the language model's context window
 
 The context window of the model behind the TaskProcessing provider is unknown, so the
-conversation is fitted into a budget the admin can configure. Sizes are estimated from
+request is fitted into a budget the admin can configure. Sizes are estimated from
 characters, as there is no tokenizer for the unknown model either.
+
+The instructions, the tool descriptions and the summary of the earlier turns are sent
+with every request, so they come off the budget first. The conversation gets the rest:
 
 - The current turn (from the user's latest message on) is sent in full, as the model
   needs every tool result of it to finish its work, except that a single tool result
@@ -27,8 +30,9 @@ from ex_app.lib.nc_model import extract_file_ids, extract_text_content
 CHARS_PER_TOKEN = 4
 
 CONTEXT_BUDGET_SETTING_ID = 'context_budget'
-# In tokens
-DEFAULT_CONTEXT_BUDGET = 16000
+# In tokens. With all tools enabled, their descriptions alone take up more than 20000.
+DEFAULT_CONTEXT_BUDGET = 40000
+# The conversation gets at least this much, whatever the rest of the request takes up
 MIN_CONTEXT_BUDGET = 2000
 
 # Once the budget is exceeded, the conversation is trimmed down to this share of it.
@@ -234,12 +238,21 @@ class ContextSelection:
 	model_messages: list[BaseMessage]
 
 
-def select_context(messages: list[BaseMessage], budget_tokens: int) -> ContextSelection:
+def conversation_budget(budget_tokens: int, reserved_chars: int = 0) -> int:
+	"""What is left of the budget for the conversation, in characters
+
+	reserved_chars is the size of what is sent along with the conversation.
+	"""
+	return max(budget_tokens * CHARS_PER_TOKEN - reserved_chars, MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN)
+
+
+def select_context(messages: list[BaseMessage], budget_tokens: int, reserved_chars: int = 0) -> ContextSelection:
 	"""Pick the part of the conversation that is sent to the model
 
-	It stays within the budget, unless the current turn outgrows it without its tool results.
+	Together with the reserved_chars sent along with it, it stays within the budget, unless
+	the current turn outgrows it without its tool results or less than the minimum is left.
 	"""
-	budget_chars = max(budget_tokens, MIN_CONTEXT_BUDGET) * CHARS_PER_TOKEN
+	budget_chars = conversation_budget(budget_tokens, reserved_chars)
 	turns = split_turns(list(messages))
 	if not turns:
 		return ContextSelection([], [], [])

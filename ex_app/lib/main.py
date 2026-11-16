@@ -254,12 +254,13 @@ SETTINGS = SettingsForm(
         ),
         SettingsField(
             id=CONTEXT_BUDGET_SETTING_ID,
-            title=_("Maximum length of the conversation sent to the language model, in tokens"),
+            title=_("Maximum size of a request to the language model, in tokens"),
             description=_(
-                "When a conversation grows longer, the oldest messages are replaced by a summary and"
-                " long tool results are shortened. Set this well below the context window of your"
-                " language model, as the instructions and the tool descriptions come on top."
-                " Roughly four characters make one token."
+                "This covers the instructions, the descriptions of the enabled tools and the conversation."
+                " When a conversation no longer fits, the oldest messages are replaced by a summary and"
+                " long tool results are shortened. Set this somewhat below the context window of your"
+                " language model, to leave room for its answer. With all tools enabled, their descriptions"
+                " alone take up more than 20000 tokens. Roughly four characters make one token."
             ),
             type=SettingsFieldType.NUMBER,
             default=DEFAULT_CONTEXT_BUDGET,
