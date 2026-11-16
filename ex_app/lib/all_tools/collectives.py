@@ -154,7 +154,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(new_collective_radius)
 	# Trashing it again undoes the collective itself.
-	@reversibility(Reversibility.REVERSIBLE)
+	@reversibility(Reversibility.IRREVERSIBLE)
 	@item_count(1)
 	async def create_collective(name: str, emoji: Optional[str] = None):
 		"""
