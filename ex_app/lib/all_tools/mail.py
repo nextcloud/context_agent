@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from asyncio import sleep
+from html.parser import HTMLParser
 
 from niquests import ConnectionError, Timeout
 from langchain_core.tools import tool
@@ -9,6 +10,42 @@ from nc_py_api.ex_app import LogLvl
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, impulse, item_count, read_only, reversibility
 from ex_app.lib.logger import log
+
+BLOCK_TAGS = {'p', 'div', 'br', 'tr', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'hr'}
+SKIPPED_TAGS = {'style', 'script', 'head', 'title'}
+
+
+class _HtmlToText(HTMLParser):
+	def __init__(self):
+		super().__init__()
+		self.parts = []
+		self.skip_depth = 0
+
+	def handle_starttag(self, tag, attrs):
+		if tag in SKIPPED_TAGS:
+			self.skip_depth += 1
+		elif tag in BLOCK_TAGS:
+			self.parts.append('\n')
+
+	def handle_endtag(self, tag):
+		if tag in SKIPPED_TAGS:
+			self.skip_depth = max(0, self.skip_depth - 1)
+		elif tag in BLOCK_TAGS:
+			self.parts.append('\n')
+
+	def handle_data(self, data):
+		if self.skip_depth == 0:
+			self.parts.append(data)
+
+
+def html_to_text(html: str) -> str:
+	parser = _HtmlToText()
+	parser.feed(html)
+	lines = [' '.join(line.split()) for line in ''.join(parser.parts).splitlines()]
+	text = '\n'.join(lines)
+	while '\n\n\n' in text:
+		text = text.replace('\n\n\n', '\n\n')
+	return text.strip()
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -83,13 +120,44 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: a list of mails/messages, including timestamps
 		"""
 		return await nc.ocs('GET', f'/ocs/v2.php/apps/mail/ocs/mailboxes/{folder_id}/messages', json={'limit': n_mails})
-		
+
+
+	@tool
+	@impulse(ImpulseRadius.SELF)
+	@read_only
+	async def get_mail(message_id: int):
+		"""
+		Gets a single email message including its full body text
+		:param message_id: The id of the message as integer, this is the databaseId obtainable via list_mails
+		:return: the message with sender, recipients, subject, date, body and attachment names
+		"""
+		message = await nc.ocs('GET', f'/ocs/v2.php/apps/mail/message/{message_id}')
+		body = message.get('body') or ''
+		if message.get('hasHtmlBody'):
+			body = html_to_text(body)
+		return {
+			'id': message.get('id'),
+			'subject': message.get('subject'),
+			'from': message.get('from'),
+			'to': message.get('to'),
+			'cc': message.get('cc'),
+			'replyTo': message.get('replyTo'),
+			'dateInt': message.get('dateInt'),
+			'flags': message.get('flags'),
+			'body': body,
+			'attachments': [
+				{'fileName': a.get('fileName'), 'mime': a.get('mime'), 'size': a.get('size')}
+				for a in message.get('attachments') or []
+			],
+		}
+
 
 	return [
 		send_email,
 		get_mail_account_list,
 		get_mail_folder_list,
 		list_mails,
+		get_mail,
 	]
 
 def get_category_name():
