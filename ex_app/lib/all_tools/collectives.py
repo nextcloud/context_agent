@@ -209,7 +209,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def update_page_content(collective_id: int, page_id: int, content: str):
 		"""
 		Overwrite the Markdown content of a Collectives page.
-		Replaces the entire page body. To append, first read with get_page_content and concatenate.
+		Replaces the entire page body. Always read it with get_page_content right before writing, base
+		your change on that content and make sure it is what you expect. To append, concatenate to it.
 		If another user has the page open in the real-time editor, their session may overwrite this
 		write on save - consider rename_page or trash_page for destructive intent instead.
 		A note saying the page was edited with the help of the AI Assistant is appended

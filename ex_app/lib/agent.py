@@ -6,6 +6,7 @@ from datetime import date, datetime
 from time import monotonic
 from typing import Any, cast
 
+import pytz
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import TAG_NOSTREAM
@@ -13,8 +14,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl, persistent_storage
 
-import pytz
-
+from ex_app.lib.all_tools.context_chat import get_context_chat_providers
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
@@ -216,6 +216,7 @@ Intuit the language the user is using (there is no tool for this, you will need 
 Only use tools if you cannot answer the user without them.
 If you get a link as a tool output, always add the link to your response.
 Do not blindly trust old tool results, the state of the various apps may have changed since the result was generated.
+Before changing or overwriting something that already exists (e.g. a file, a page, a table row, a card), fetch its current content right before writing and base your change on that, not on an earlier tool result, the conversation or the user's description. If the current content differs from what you or the user assumed it to be, do not write; tell the user what changed and ask how to proceed.
 At the end of each message to the user, if you have carried out a task or answered a question, suggest up to three actions for things you can do for the user based on the tools you have available and details of the previous task. For example: If the user wants to know the weather for some location, they might be planning an event, you can suggest to create an event for them, or if they searched for a file, they may want to share it with others, suggest to create a share link for them, if they want a summary of something, you can suggest them to send the summary to somebody.
 """
 		if tool_enabled("duckduckgo_results_json"):
@@ -236,6 +237,10 @@ At the end of each message to the user, if you have carried out a task or answer
 			system_prompt_text += "Always check for the mail account id before requesting a folder list.\n"
 		if tool_enabled("web_fetch"):
 			system_prompt_text += "Use the web_fetch tool to fetch web content. You can fetch the complete page content of a duckduckgo search result using web_fetch as well.\n"
+		if tool_enabled("ask_context_chat"):
+			cc_providers = await get_context_chat_providers(nc, True)
+			if len(cc_providers) > 0:
+				system_prompt_text += f"Available providers in Context Chat are: {cc_providers}. Use these in the Context Chat tools to scope the search to specific types of documents. It is passed in the scope_list when scope_type is \"provider\"."
 		if tool_enabled("parse_nextcloud_url"):
 			# app_cfg.endpoint can be an instance-internal address, so it is only a last resort
 			base_url = await get_absolute_base_url(nc) or nc.app_cfg.endpoint.rstrip('/')

@@ -198,6 +198,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def upload_file(path: str, content: str):
 		"""
 		Upload or create a new file with text content
+		If a file already exists at the path, it is overwritten entirely. Read it with get_file_content right before overwriting and make sure its current content is what you expect.
 		:param path: the path where the file should be created (e.g., "/Documents/myfile.txt")
 		:param content: the text content to write to the file
 		:return: success confirmation
