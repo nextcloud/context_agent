@@ -18,11 +18,16 @@ FORMAT_TASK_TYPES = {
 }
 
 # The slideprepper deck task answers with one file id per selected output
-# format under the "slide_decks" output key, in generation order: the default
-# "all" delivers PowerPoint, HTML and PDF. The links are labeled in that
-# documented order; a file beyond the known formats gets the plain
-# fallback label instead of a guessed one.
-SLIDEPREPPER_OUTPUT_LABELS = ("PowerPoint (pptx)", "HTML", "PDF")
+# format under the "slide_decks" output key, in generation order. That
+# LIST_OF_FILES shape carries no per-file format metadata, so the reply
+# labels can only come from what was requested: "all" delivers one
+# PowerPoint, HTML and PDF file, in that order.
+SLIDEPREPPER_ALL_FORMATS = ("pptx", "html", "pdf")
+SLIDEPREPPER_FORMAT_LABELS = {
+    "pptx": "PowerPoint (pptx)",
+    "html": "HTML",
+    "pdf": "PDF",
+}
 SLIDEPREPPER_FALLBACK_LABEL = "Slide deck"
 
 
@@ -42,8 +47,18 @@ def quoted_formats(formats):
     return ", ".join(f'"{name}"' for name in formats[:-1]) + f' and "{formats[-1]}"'
 
 
-def slideprepper_reply(url, task_id, deck_file_ids) -> str:
-    """A relay instruction line first, then one labeled download link per deck file."""
+def slideprepper_reply(
+    url, task_id, deck_file_ids, formats=SLIDEPREPPER_ALL_FORMATS
+) -> str:
+    """A relay instruction line first, then one labeled download link per deck file.
+
+    The task reports bare file ids, so a file's format is only known from
+    the one-file-per-requested-format contract: the labels are positional
+    while the file count matches the requested format count. Any other
+    count means the task broke that contract, and every link then gets the
+    plain fallback label instead of a guessed format name (the only file
+    of an HTML-only result must not be labeled "PowerPoint (pptx)").
+    """
     # A missing or empty "slide_decks" leaves nothing to link, so fail
     # loudly like the task_processing output gate instead of replying "".
     if not deck_file_ids:
@@ -54,12 +69,15 @@ def slideprepper_reply(url, task_id, deck_file_ids) -> str:
     # so what a compressed reply must not lose comes first: an explicit
     # instruction to keep every link.
     lines = ["The deck was generated. Include every link below in your reply."]
-    for index, file_id in enumerate(deck_file_ids):
-        label = (
-            SLIDEPREPPER_OUTPUT_LABELS[index]
-            if index < len(SLIDEPREPPER_OUTPUT_LABELS)
-            else SLIDEPREPPER_FALLBACK_LABEL
-        )
+    labels = (
+        [
+            SLIDEPREPPER_FORMAT_LABELS.get(fmt, SLIDEPREPPER_FALLBACK_LABEL)
+            for fmt in formats
+        ]
+        if len(deck_file_ids) == len(formats)
+        else [SLIDEPREPPER_FALLBACK_LABEL] * len(deck_file_ids)
+    )
+    for label, file_id in zip(labels, deck_file_ids):
         lines.append(f"{label}: {url}/{task_id}/output-file/{file_id}/download")
     return "\n".join(lines)
 
@@ -115,6 +133,12 @@ async def get_tools(nc: AsyncNextcloudApp):
                     tasktype = "slideprepper:slide_deck_generation"
                     task_input = {
                         "input": input,
+                        # Requested explicitly, not left to the task type's
+                        # registered default: the reply labels are only
+                        # honest when every format is generated, and that
+                        # default lives in another app's registration, free
+                        # to change without this one noticing.
+                        "output_format": "all",
                     }
                     task = await run_task(nc, tasktype, task_input)
                     return slideprepper_reply(url, task.id, task.output.get("slide_decks"))
