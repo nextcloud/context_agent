@@ -62,18 +62,23 @@ class ToolListMiddleware(Middleware):
 				for tool in tools.keys():
 					self.mcp.remove_tool(tool)
 				for tool in nc_tools:
-					tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
-					if tool_action is None:
-						continue
-					tool_name = getattr(tool, "name", None)
-					classification = static_classification(tool)
-					self.mcp.tool(
-						name=tool_name or None,
-						annotations=tool_annotations(classification),
-						meta={IMPULSE_META_KEY: impulse_meta(classification)},
-					)(mcp_tool(tool_action, tool_name=tool_name or None))
+					register_tool(self.mcp, tool)
 				LAST_MCP_TOOL_UPDATE = time.time()
 		return await call_next(context)
+
+
+def register_tool(mcp, tool):
+	"""Expose a LangChain tool on the MCP server, with the hints its markers allow."""
+	tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
+	if tool_action is None:
+		return
+	tool_name = getattr(tool, "name", None)
+	classification = static_classification(tool)
+	mcp.tool(
+		name=tool_name or None,
+		annotations=tool_annotations(classification),
+		meta={IMPULSE_META_KEY: impulse_meta(classification)},
+	)(mcp_tool(tool_action, tool_name=tool_name or None))
 
 # Where the full classification goes in a tool's _meta, for clients that know
 # what to make of it. The standard hints below can only carry part of it.

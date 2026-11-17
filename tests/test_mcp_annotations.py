@@ -24,9 +24,8 @@ from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
 	item_count,
 	read_only,
 	reversibility,
-	static_classification,
 )
-from ex_app.lib.mcp_server import IMPULSE_META_KEY, impulse_meta, tool_annotations  # noqa: E402
+from ex_app.lib.mcp_server import IMPULSE_META_KEY, register_tool  # noqa: E402
 
 
 @tool
@@ -82,12 +81,7 @@ async def unmarked(path: str):
 async def _list_tools():
 	server = FastMCP(name="test")
 	for t in (read_note, share_note, trash_note, write_note, schedule_reading, unmarked):
-		classification = static_classification(t)
-		server.tool(
-			name=t.name,
-			annotations=tool_annotations(classification),
-			meta={IMPULSE_META_KEY: impulse_meta(classification)},
-		)(t.coroutine)
+		register_tool(server, t)
 	async with Client(server) as client:
 		return {t.name: t for t in await client.list_tools()}
 
