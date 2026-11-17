@@ -147,6 +147,9 @@ _ALWAYS_CONFIRM_ATTR = 'impulse_always_confirm'
 _REVERSIBILITY_ATTR = 'impulse_reversibility'
 _ITEM_COUNT_ATTR = 'impulse_item_count'
 _ALWAYS_ALLOW_ATTR = 'impulse_always_allow'
+# The radius passed to impulse() when it is a constant rather than a hook, kept so
+# it can be read without calling anything: see static_classification().
+_STATIC_RADIUS_ATTR = 'impulse_static_radius'
 
 # The parameter an item count hook declares to be told how far to count.
 COUNT_LIMIT_PARAM = 'count_limit'
@@ -205,6 +208,7 @@ def impulse(radius_or_hook):
 		@impulse(_share_radius)
 		async def share(...): ...
 	"""
+	radius = None
 	if callable(radius_or_hook):
 		hook = radius_or_hook
 	else:
@@ -215,6 +219,7 @@ def impulse(radius_or_hook):
 
 	def decorator(tool_func):
 		setattr(tool_func, _ATTR, hook)
+		setattr(tool_func, _STATIC_RADIUS_ATTR, radius)
 		return tool_func
 
 	return decorator
@@ -489,6 +494,59 @@ async def classify_tool_call(tool, tool_args: dict) -> ImpulseRadius:
 	except Exception as e:  # noqa: BLE001 - a hook must never break a tool call
 		print(f"Impulse hook for '{getattr(tool, 'name', tool)}' failed ({e!r}), assuming {DEFAULT_IMPULSE_RADIUS.name}")
 		return DEFAULT_IMPULSE_RADIUS
+
+
+@dataclass(frozen=True)
+class StaticClassification:
+	"""What can be said about a tool before it is called, without running a hook.
+
+	A field is None when the answer depends on the arguments. A tool that carries
+	no marker at all -- an MCP tool, which cannot be decorated -- is described by
+	the worst case, so a client is never told it is harmless because nobody said.
+	"""
+
+	radius: ImpulseRadius | None
+	destroys: bool | None
+	reversibility: Reversibility | None
+	item_count: int | None
+	always: bool = False
+	allowed: bool = False
+
+	@property
+	def read_only(self) -> bool:
+		"""Whether every call only reads: nothing to take back, nothing changes, and
+		nothing that insists on being confirmed anyway.
+		"""
+		return (
+			self.destroys is False and self.reversibility == Reversibility.REVERSIBLE
+			and self.item_count == 0 and not self.always
+		)
+
+
+def static_classification(tool) -> StaticClassification:
+	"""Describe a tool from its markers alone, for clients that have to decide
+	before there are any arguments -- the hints the MCP server hands out.
+	"""
+	tool_action = _tool_action(tool)
+	unmarked = getattr(tool_action, _ATTR, None) is None
+	if unmarked:
+		radius = DEFAULT_IMPULSE_RADIUS
+	else:
+		radius = getattr(tool_action, _STATIC_RADIUS_ATTR, None)
+	# The hooks read a missing destructive marker as False, which is safe there
+	# since the reversibility and count defaults still confirm the call. A client
+	# only reading destructiveHint has no such backstop.
+	destroys = getattr(tool_action, _DESTRUCTIVE_ATTR, unmarked)
+	reversibility_marker = getattr(tool_action, _REVERSIBILITY_ATTR, DEFAULT_REVERSIBILITY)
+	count = getattr(tool_action, _ITEM_COUNT_ATTR, None)
+	return StaticClassification(
+		radius=radius,
+		destroys=None if callable(destroys) else bool(destroys),
+		reversibility=None if callable(reversibility_marker) else reversibility_marker,
+		item_count=None if callable(count) else count,
+		always=is_always_confirmed(tool),
+		allowed=is_always_allowed(tool),
+	)
 
 
 @dataclass(frozen=True)
