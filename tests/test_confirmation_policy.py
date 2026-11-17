@@ -20,16 +20,19 @@ from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
 	ImpulseRadius,
 	Reversibility,
 	always_allow,
+	classify_destructive,
 	classify_item_count,
 	classify_reversibility,
+	classify_tool_call,
 	destructive,
+	from_mcp_annotations,
 	impulse,
 	is_always_allowed,
 	item_count,
 	read_only,
 	reversibility,
 )
-from ex_app.lib.all_tools.mcp import parse_always_allow  # noqa: E402
+from ex_app.lib.all_tools.mcp import parse_always_allow, split_trusted_servers  # noqa: E402
 
 
 @tool
@@ -174,6 +177,53 @@ def test_always_allow_marks_the_tool():
 	always_allow(mcp_like.coroutine)
 	assert is_always_allowed(mcp_like)
 	assert not is_always_allowed(undecorated)
+
+
+def _annotated(annotations):
+	@tool
+	async def mcp_like(path: str):
+		"""Like an MCP tool."""
+
+	from_mcp_annotations(mcp_like.coroutine, annotations)
+	args = {'path': 'x'}
+	return (
+		asyncio.run(classify_tool_call(mcp_like, args)),
+		asyncio.run(classify_destructive(mcp_like, args)),
+		asyncio.run(classify_reversibility(mcp_like, args)),
+		asyncio.run(classify_item_count(mcp_like, args, 11)),
+	)
+
+
+def test_read_only_annotation_runs_without_confirmation():
+	radius, destroys, rev, count = _annotated({'readOnlyHint': True})
+	assert (radius, destroys, rev, count) == (ImpulseRadius.SELF, False, Reversibility.REVERSIBLE, 0)
+	assert not ConfirmationPolicy().needs_confirmation([CallClassification(radius, destroys, rev, count)])
+
+
+def test_missing_annotations_take_the_worst_case_defaults():
+	for annotations in (None, {}, {'readOnlyHint': False}):
+		assert _annotated(annotations) == (ImpulseRadius.EXTERNAL, True, Reversibility.IRREVERSIBLE, None)
+
+
+def test_closed_world_additive_annotation():
+	assert _annotated({'destructiveHint': False, 'openWorldHint': False}) == (
+		ImpulseRadius.GROUP, False, Reversibility.RECOVERABLE, None,
+	)
+	# adding something to the open world, like sending a message, cannot be taken back
+	assert _annotated({'destructiveHint': False}) == (ImpulseRadius.EXTERNAL, False, Reversibility.IRREVERSIBLE, None)
+
+
+def test_split_trusted_servers():
+	config = {
+		'weather': {'url': 'https://w/mcp', 'transport': 'streamable_http', 'trust_annotations': True},
+		'other': {'url': 'https://o/mcp', 'transport': 'streamable_http', 'trust_annotations': 'yes'},
+		'plain': {'url': 'https://p/mcp', 'transport': 'streamable_http'},
+	}
+	cleaned, trusted = split_trusted_servers(config)
+	assert trusted == {'weather'}
+	assert all('trust_annotations' not in c for c in cleaned.values())
+	# the admin's config is left as it was
+	assert config['weather']['trust_annotations'] is True
 
 
 def test_parse_always_allow():

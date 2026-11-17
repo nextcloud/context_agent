@@ -64,7 +64,9 @@ thresholds are set.
 Every tool is expected to answer all of these. A tool that does not -- MCP tools
 cannot be decorated -- or whose hook fails is assumed to be as bad as it can be:
 the widest radius, irreversible, and an unknown number of items. The admin can
-vouch for individual MCP tools instead, which marks them :func:`always_allow`.
+vouch for individual MCP tools instead, which marks them :func:`always_allow`,
+or trust a server's own tool annotations, which :func:`from_mcp_annotations`
+turns into the markers above.
 
 All of them feed a :class:`ConfirmationPolicy`, which compares them against
 their admin-configured thresholds and honours :func:`always_confirm`
@@ -364,6 +366,37 @@ def always_allow(tool_func):
 	"""
 	setattr(tool_func, _ALWAYS_ALLOW_ATTR, True)
 	return tool_func
+
+
+def from_mcp_annotations(tool_func, annotations: dict | None):
+	"""Mark an MCP tool by the annotations its server declares for it.
+
+	Only for servers the admin trusts: annotations are hints the server makes up,
+	and a server that lies about them would get its calls waved through. Hints
+	that are missing take the spec's defaults, which assume the worst:
+
+	- ``readOnlyHint`` reads nothing out to anyone new, like any built-in
+	  :func:`read_only` tool: ``SELF``, nothing destroyed, nothing to count
+	- ``destructiveHint`` (default true) marks it :func:`destructive`
+	- ``openWorldHint`` (default true) reaches ``EXTERNAL``; a closed world
+	  still has an audience nobody can name, so it is ``GROUP``
+
+	A tool that is neither read-only nor known to stay in a closed world and leave
+	things alone is ``IRREVERSIBLE``: a sent message is not destructive either.
+	The hints say nothing about how many items a call touches, so a tool that
+	writes keeps an unknown count, and is still confirmed.
+	"""
+	annotations = annotations or {}
+	if annotations.get('readOnlyHint') is True:
+		return read_only(impulse(ImpulseRadius.SELF)(tool_func))
+	destroys = annotations.get('destructiveHint') is not False
+	open_world = annotations.get('openWorldHint') is not False
+	impulse(ImpulseRadius.EXTERNAL if open_world else ImpulseRadius.GROUP)(tool_func)
+	if destroys:
+		destructive(tool_func)
+	if destroys or open_world:
+		return reversibility(Reversibility.IRREVERSIBLE)(tool_func)
+	return reversibility(Reversibility.RECOVERABLE)(tool_func)
 
 
 def is_always_allowed(tool) -> bool:

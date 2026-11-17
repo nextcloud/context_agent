@@ -276,7 +276,7 @@ SETTINGS = SettingsForm(
 		SettingsField(
             id="mcp_config",
             title=_("MCP Config"),
-            description=_("JSON configuration for the MCP. Structured as {\"service_name\": {\"url\": \"https://service.url\",\"transport\": \"streamable_http\"}}. For more details view the documentation for context_agent."),
+            description=_("JSON configuration for the MCP. Structured as {\"service_name\": {\"url\": \"https://service.url\",\"transport\": \"streamable_http\"}}. Add \"trust_annotations\": true to a service to let the read-only and destructive hints it declares for its tools decide when to ask for confirmation; only do this for services you trust. For more details view the documentation for context_agent."),
             type=SettingsFieldType.TEXT,
             default="",
             placeholder="{\"weather\": {\"url\": \"https://weather.internet/mcp\",\"transport\": \"streamable_http\"}}",
@@ -286,7 +286,7 @@ SETTINGS = SettingsForm(
             title=_("MCP tools that never need confirmation"),
             description=_(
                 "Context Agent cannot tell what an MCP tool does, so it asks the user to confirm every"
-                " call to one. List the names of MCP tools you trust, separated by commas, to let them"
+                " call to one, unless its service is set to trust_annotations in the MCP config. List the names of MCP tools you trust, separated by commas, to let them"
                 " run without asking, or enter * to allow all MCP tools."
             ),
             type=SettingsFieldType.TEXT,
