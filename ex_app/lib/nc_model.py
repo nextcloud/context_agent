@@ -56,6 +56,13 @@ def extract_file_ids(content: Any) -> list[int]:
 	return file_ids
 
 
+def normalize_history_content(content: Any) -> Any:
+	"""Return a plain string or a list of content-part objects, never a mixed list."""
+	if not isinstance(content, list):
+		return content
+	return [{"type": "text", "text": part} if isinstance(part, str) else part for part in content]
+
+
 def build_multimodal_content(text: str, file_ids: list[int] | None = None, task_id: int | None = None) -> list[dict[str, Any]] | str:
 	"""Build multimodal content parts, or plain text when there are no files."""
 	if not file_ids:
@@ -126,21 +133,21 @@ class ChatWithNextcloud(BaseChatModel):
 		history = []
 		for i, message in enumerate(messages):
 			if message.type == 'ai':
-				msg = {"role": "assistant", "content": message.content}
+				msg = {"role": "assistant", "content": normalize_history_content(message.content)}
 				if len(message.tool_calls) > 0:
 					msg['tool_calls'] = message.tool_calls
 				history.append(json.dumps(msg))
 			elif message.type == 'human':
 				if len(messages)-1 != i:
 					# Earlier turns keep file parts in history content.
-					history.append(json.dumps({"role": "human", "content": message.content}))
+					history.append(json.dumps({"role": "human", "content": normalize_history_content(message.content)}))
 				else:
 					# Current turn: text → input, files → input_attachments.
 					task_input['input'] = extract_text_content(message.content)
 					if self.multimodal:
 						task_input['input_attachments'] = extract_file_ids(message.content)
 			elif message.type == 'tool':
-				content = message.content
+				content = normalize_history_content(message.content)
 				if len(messages)-1 != i:
 					history.append(json.dumps({"role": "tool", "content": content, "name": message.name, "tool_call_id": message.tool_call_id}))
 				else:
