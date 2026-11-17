@@ -12,6 +12,7 @@ Runnable standalone (``python tests/test_graph_smoke.py``) or via pytest.
 import asyncio
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 os.environ.setdefault("APP_ID", "context_agent")
@@ -20,7 +21,8 @@ os.environ.setdefault("APP_PORT", "9081")
 os.environ.setdefault("APP_SECRET", "test-secret")
 os.environ.setdefault("APP_VERSION", "2.9.1")
 os.environ.setdefault("NEXTCLOUD_URL", "http://127.0.0.1:8080")
-os.environ.setdefault("APP_PERSISTENT_STORAGE", str(Path(__file__).parent / ".tmp_persistent"))
+os.environ.setdefault("APP_PERSISTENT_STORAGE", tempfile.mkdtemp())
+os.makedirs(os.environ["APP_PERSISTENT_STORAGE"], exist_ok=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
