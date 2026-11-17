@@ -153,9 +153,10 @@ def test_slides_dispatch_marp_task_type_when_registered():
 	assert endpoint == '/ocs/v1.php/taskprocessing/schedule'
 	assert payload['appId'] == 'context_agent'
 	assert payload['type'] == SLIDEPREPPER_TASK_TYPE
-	assert payload['input'] == {'input': 'Deck brief'}
-	# The task type's default output format applies, so none is sent
-	assert 'output_format' not in payload['input']
+	# "all" is requested explicitly: the reply labels below are positional
+	# against the one-file-per-format order, so the selection must not lean
+	# on the task type's registered default.
+	assert payload['input'] == {'input': 'Deck brief', 'output_format': 'all'}
 	# The relay instruction leads; then one labeled link per generated file,
 	# in the task's generation order. No attachments means no image note.
 	assert reply == '\n'.join([
@@ -249,16 +250,39 @@ def test_no_servable_formats_means_no_tools():
 	assert asyncio.run(doc_gen.get_tools(nc)) == []
 
 
-def test_slides_fourth_deck_file_gets_the_fallback_label():
-	# A fourth file is beyond the task's documented output formats, so its
-	# link gets the plain label instead of a guessed format name; the links
-	# start on line two, behind the relay instruction line.
+def test_slides_more_files_than_requested_formats_means_fallback_labels():
+	# Four files against three requested formats breaks the task's
+	# one-file-per-format contract, so no position can be trusted: every
+	# link gets the plain label instead of three guessed format names plus
+	# one fallback; the links start on line two, behind the relay line.
 	nc = _FakeNextcloudApp(task_id=3, deck_file_ids=(77, 78, 79, 80), tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
 	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
 	reply = asyncio.run(generate_document(input='Deck brief', format='slides'))
 	assert reply.splitlines()[0] == 'The deck was generated. Include every link below in your reply.'
-	assert reply.splitlines()[1] == f'PowerPoint (pptx): {NEXTCLOUD_URL}/3/output-file/77/download'
-	assert reply.splitlines()[4] == f'Slide deck: {NEXTCLOUD_URL}/3/output-file/80/download'
+	for line, file_id in zip(reply.splitlines()[1:], (77, 78, 79, 80)):
+		assert line == f'Slide deck: {NEXTCLOUD_URL}/3/output-file/{file_id}/download'
+
+
+def test_slides_single_format_reply_labels_html_not_pptx():
+	# With only one output format selected the task answers a single file,
+	# and the old positional labels called its first file "PowerPoint
+	# (pptx)" whatever it was. The builder now labels from the requested
+	# formats, so an HTML-only deck reads "HTML".
+	reply = doc_gen.slideprepper_reply(NEXTCLOUD_URL, 3, [78], formats=('html',))
+	assert reply.splitlines()[0] == 'The deck was generated. Include every link below in your reply.'
+	assert reply.splitlines()[1] == f'HTML: {NEXTCLOUD_URL}/3/output-file/78/download'
+
+
+def test_slides_fewer_files_than_requested_formats_means_no_format_labels():
+	# The tool requests every format, so a single file back means the task
+	# broke its one-file-per-format contract: the count guard refuses to
+	# guess and the link gets the plain label rather than "PowerPoint
+	# (pptx)" for a file of unknown format.
+	nc = _FakeNextcloudApp(task_id=3, deck_file_ids=(77,), tasktypes={SLIDEPREPPER_TASK_TYPE: {}})
+	generate_document = _tool_coroutine(doc_gen, nc, 'generate_document')
+	reply = asyncio.run(generate_document(input='Deck brief', format='slides'))
+	assert reply.splitlines()[0] == 'The deck was generated. Include every link below in your reply.'
+	assert reply.splitlines()[1] == f'Slide deck: {NEXTCLOUD_URL}/3/output-file/77/download'
 
 
 def test_slides_missing_deck_output_key_raises_a_clear_error():
