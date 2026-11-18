@@ -10,6 +10,7 @@ Exercises the three vendored coupling points without network access:
 Runnable standalone (``python tests/test_graph_smoke.py``) or via pytest.
 """
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -84,6 +85,27 @@ def test_build_task_input_and_task_to_message():
     assert isinstance(message, AIMessage)
     assert message.content == "it is sunny"
     assert message.tool_calls[0]["name"] == "get_weather"
+
+
+def test_build_task_input_never_sends_mixed_list_content():
+    # Streamed AI messages can end up with a mix of str and dict content parts
+    model = ChatWithNextcloud(multimodal=True)
+    task_input = model._build_task_input(
+        [
+            HumanMessage(content=[{"type": "file", "file_id": 1}, "look at this"]),
+            AIMessage(content=["it is ", {"type": "text", "text": "a cat"}]),
+            ToolMessage(content="sunny", name="get_weather", tool_call_id="c1"),
+            HumanMessage(content=[{"type": "file", "file_id": 2}, {"type": "text", "text": "and this?"}]),
+        ]
+    )
+    history = [json.loads(entry) for entry in task_input["history"]]
+    assert history[0]["content"] == [{"type": "file", "file_id": 1}, {"type": "text", "text": "look at this"}]
+    assert history[1]["content"] == [{"type": "text", "text": "it is "}, {"type": "text", "text": "a cat"}]
+    assert history[2]["content"] == "sunny"
+    # Current turn is split into input and attachments, not added to history
+    assert len(history) == 3
+    assert task_input["input"] == "and this?"
+    assert task_input["input_attachments"] == [2]
 
 
 class _FakeNc:
