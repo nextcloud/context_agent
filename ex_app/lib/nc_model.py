@@ -147,6 +147,8 @@ class ChatWithNextcloud(BaseChatModel):
 					if self.multimodal:
 						task_input['input_attachments'] = extract_file_ids(message.content)
 			elif message.type == 'tool':
+				# ToolNode already yields a string or typed content blocks, so this is a safeguard;
+				# don't flatten to text, as that would drop non-text blocks
 				content = normalize_history_content(message.content)
 				if len(messages)-1 != i:
 					history.append(json.dumps({"role": "tool", "content": content, "name": message.name, "tool_call_id": message.tool_call_id}))
