@@ -43,6 +43,7 @@ from ex_app.lib.all_tools.lib.impulse import (
     ImpulseRadius,
     Reversibility,
 )
+from ex_app.lib.all_tools.openapi import APP_STATUS_SETTING_ID, register_settings_form, use_settings_form
 from ex_app.lib.context_window import CONTEXT_BUDGET_SETTING_ID, DEFAULT_CONTEXT_BUDGET
 from ex_app.lib.tools import get_categories
 
@@ -293,8 +294,24 @@ SETTINGS = SettingsForm(
             default="",
             placeholder="get_forecast, get_alerts",
         ),
+        SettingsField(
+            id=APP_STATUS_SETTING_ID,
+            title=_("Offer the APIs of these apps as tools"),
+            description=_(
+                "With the OCS API Viewer app installed, Context Agent detects the apps that publish an"
+                " OpenAPI description and have no tools of their own above, and can call each of their"
+                " endpoints as a tool. Apps show up here once a user they are enabled for has used Context"
+                " Agent. Every endpoint becomes a tool, so check only the apps you need: their descriptions"
+                " count towards the maximum request size. Calls that change something are always confirmed."
+            ),
+            type=SettingsFieldType.MULTI_CHECKBOX,
+            default={},
+            options={},
+        ),
         ]
 )
+# Registered again with a checkbox for each newly detected app
+use_settings_form(SETTINGS)
 
 
 async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
@@ -307,7 +324,7 @@ async def enabled_handler(enabled: bool, nc: AsyncNextcloudApp) -> str:
         app_enabled.set()
         await log(nc, LogLvl.WARNING, f"App enabled: {nc.app_cfg.app_name}")
 
-        await nc.ui.settings.register_form(SETTINGS)
+        await register_settings_form(nc)
         pref_settings = json.loads(await nc.appconfig_ex.get_value('tool_status', default = "{}"))
         for key in categories.keys(): # populate new settings values
             if key not in pref_settings:
