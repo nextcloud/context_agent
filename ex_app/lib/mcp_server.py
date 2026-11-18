@@ -11,6 +11,7 @@ from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 from mcp import types as mt
+from ex_app.lib.all_tools.lib.impulse import StaticClassification, static_classification
 from ex_app.lib.tools import get_tools
 import requests
 
@@ -61,16 +62,63 @@ class ToolListMiddleware(Middleware):
 				for tool in tools.keys():
 					self.mcp.remove_tool(tool)
 				for tool in nc_tools:
-					tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
-					if tool_action is None:
-						continue
-					tool_name = getattr(tool, "name", None)
-					if tool_name:
-						self.mcp.tool(name=tool_name)(mcp_tool(tool_action, tool_name=tool_name))
-					else:
-						self.mcp.tool()(mcp_tool(tool_action))
+					register_tool(self.mcp, tool)
 				LAST_MCP_TOOL_UPDATE = time.time()
 		return await call_next(context)
+
+
+def register_tool(mcp, tool):
+	"""Expose a LangChain tool on the MCP server, with the hints its markers allow."""
+	tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
+	if tool_action is None:
+		return
+	tool_name = getattr(tool, "name", None)
+	classification = static_classification(tool)
+	mcp.tool(
+		name=tool_name or None,
+		annotations=tool_annotations(classification),
+		meta={IMPULSE_META_KEY: impulse_meta(classification)},
+	)(mcp_tool(tool_action, tool_name=tool_name or None))
+
+# Where the full classification goes in a tool's _meta, for clients that know
+# what to make of it. The standard hints below can only carry part of it.
+IMPULSE_META_KEY = "com.nextcloud/impulse"
+
+# What a field of the classification is shown as when it depends on the arguments.
+DYNAMIC = "dynamic"
+
+
+def tool_annotations(classification: StaticClassification) -> mt.ToolAnnotations:
+	"""The MCP hints a tool can honestly give before it is called.
+
+	A hint is only set when it holds for every call; otherwise it is left out and
+	the client assumes the worst, which is what the spec defaults to. The radius
+	has no standard hint -- openWorldHint is about whether the tool talks to the
+	outside world (a web search does), not who gains access to the user's data --
+	so it only goes into the _meta.
+	"""
+	if classification.read_only:
+		return mt.ToolAnnotations(readOnlyHint=True)
+	annotations = mt.ToolAnnotations(readOnlyHint=False)
+	if classification.destroys is False:
+		annotations.destructiveHint = False
+	return annotations
+
+
+def impulse_meta(classification: StaticClassification) -> dict:
+	def show(value):
+		if value is None:
+			return DYNAMIC
+		return value.name.lower() if hasattr(value, "name") else value
+
+	return {
+		"radius": show(classification.radius),
+		"destructive": show(classification.destroys),
+		"reversibility": show(classification.reversibility),
+		"item_count": show(classification.item_count),
+		"always_confirm": classification.always,
+	}
+
 
 # Regenerates the tools with the correct nc object
 def mcp_tool(tool, tool_name: str | None = None):
