@@ -58,19 +58,11 @@ def _omission_hint(tool_name: str | None, can_refetch: bool) -> str:
 	return f'; call {tool_name} again if you need the omitted part'
 
 
-def _truncate_json_list(text: str, max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
-	"""Shorten a JSON list by leaving out items, so the result is still valid JSON
+def _shorten_items(items: list[str], max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
+	"""A JSON list of the given serialized items, shortened to max_chars by leaving out items in the middle
 
-	Returns None if the text is no JSON list or not even a single item fits.
+	Returns None if not even a single item fits.
 	"""
-	try:
-		data = json.loads(text)
-	except (ValueError, TypeError):
-		return None
-	if not isinstance(data, list) or len(data) < 2:
-		return None
-
-	items = [json.dumps(item, ensure_ascii=False) for item in data]
 	compact = '[' + ', '.join(items) + ']'
 	if len(compact) <= max_chars:
 		return compact
@@ -96,11 +88,44 @@ def _truncate_json_list(text: str, max_chars: int, tool_name: str | None, can_re
 	return '[' + ', '.join(head + [marker] + tail) + ']'
 
 
+def _truncate_json_list(text: str, max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
+	"""Shorten a JSON list, or the longest list in a JSON object, by leaving out items, so the result is still valid JSON
+
+	Tools often answer with an object that carries its items in one field, e.g. {"tickets": [...], "count": 10}.
+	Cutting such a result by characters would leave invalid JSON, so the longest list in it is shortened instead
+	and the other fields are kept. Returns None if the text is neither, or not even a single item fits.
+	"""
+	try:
+		data = json.loads(text)
+	except (ValueError, TypeError):
+		return None
+	if isinstance(data, list):
+		if len(data) < 2:
+			return None
+		return _shorten_items([json.dumps(item, ensure_ascii=False) for item in data], max_chars, tool_name, can_refetch)
+	if not isinstance(data, dict):
+		return None
+
+	lists = {key: value for key, value in data.items() if isinstance(value, list) and len(value) >= 2}
+	if not lists:
+		return None
+	items_by_key = {key: [json.dumps(item, ensure_ascii=False) for item in value] for key, value in lists.items()}
+	key = max(items_by_key, key=lambda k: sum(len(item) + 2 for item in items_by_key[k]))
+	# A placeholder that cannot occur in the serialized object, replaced by the shortened list
+	placeholder = '\u0000shortened\u0000'
+	frame = json.dumps({**data, key: placeholder}, ensure_ascii=False)
+	quoted_placeholder = json.dumps(placeholder)
+	shortened = _shorten_items(items_by_key[key], max_chars - (len(frame) - len(quoted_placeholder)), tool_name, can_refetch)
+	if shortened is None:
+		return None
+	return frame.replace(quoted_placeholder, shortened, 1)
+
+
 def truncate_text(text: str, max_chars: int, tool_name: str | None = None, can_refetch: bool = True) -> str:
 	"""Shorten a text to about max_chars, keeping its beginning and its end
 
-	The end is often where the answer is, e.g. the latest entries of a list. JSON lists
-	are shortened by leaving out whole items. The marker says how much was left out and,
+	The end is often where the answer is, e.g. the latest entries of a list. JSON lists,
+	and the longest list in a JSON object, are shortened by leaving out whole items. The marker says how much was left out and,
 	given the tool's name, that the model can call the tool again to see all of it.
 	With can_refetch=False it says that the result is too large instead, for results
 	that would come back shortened the same way.

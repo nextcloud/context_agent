@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 os.environ.setdefault("APP_ID", "context_agent")
@@ -72,6 +73,30 @@ def test_truncate_json_list_stays_valid():
     assert parsed[-1] == data[-1]
     marker = next(item for item in parsed if isinstance(item, str))
     assert "items omitted" in marker
+
+
+def test_truncate_json_object_shortens_its_longest_list():
+    data = {
+        "count": 300,
+        "tickets": [{"id": i, "title": f"ticket {i}"} for i in range(300)],
+        "tags": ["a", "b"],
+        "warning": "w" * 50,
+    }
+    truncated = truncate_text(json.dumps(data), 2000, "list_tickets")
+    assert len(truncated) <= 2000
+    parsed = json.loads(truncated)
+    # the other fields are kept as they are
+    assert (parsed["count"], parsed["tags"], parsed["warning"]) == (300, ["a", "b"], "w" * 50)
+    assert parsed["tickets"][0] == data["tickets"][0]
+    assert parsed["tickets"][-1] == data["tickets"][-1]
+    marker = next(item for item in parsed["tickets"] if isinstance(item, str))
+    assert "items omitted" in marker and "list_tickets" in marker
+
+
+def test_truncate_json_object_without_list_is_cut_as_text():
+    data = {"text": "x" * 5000}
+    truncated = truncate_text(json.dumps(data), 2000)
+    assert "characters omitted" in truncated
 
 
 def test_split_turns():
@@ -619,3 +644,16 @@ def test_react_counts_instructions_and_tools_towards_the_budget():
     big_tool.description = "d" * (3 * MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN)
     run([big_tool])
     assert any("context budget" in line for line in logged)
+
+
+def test_shortening_a_large_json_result_is_fast():
+    # a tool result of about 5 MB: a list of 20,000 tickets with nested fields
+    items = [{"id": i, "title": f"Ticket {i}", "tags": ["sync", "client"], "text": "word " * 40} for i in range(20000)]
+    text = json.dumps({"tickets": items, "count": len(items)})
+    assert len(text) > 5_000_000
+    start = time.perf_counter()
+    result = truncate_text(text, 20000, "list_tickets")
+    # about 0.1 s on a laptop; the generous limit only catches quadratic work, not a slow runner
+    assert time.perf_counter() - start < 5
+    assert len(result) <= 20000
+    json.loads(result)
