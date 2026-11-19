@@ -99,6 +99,24 @@ def test_truncate_json_object_without_list_is_cut_as_text():
     assert "characters omitted" in truncated
 
 
+def test_tool_result_budget_is_shared_with_tasks_of_the_run():
+    from ex_app.lib.context_window import start_tool_result_budget, tool_result_budget
+
+    async def tool():
+        return tool_result_budget()
+
+    async def run():
+        budget = start_tool_result_budget()
+        # tools run in tasks of their own, created after the run started
+        before = await asyncio.create_task(tool())
+        budget.chars = 1234
+        after = await asyncio.create_task(tool())
+        return before, after
+
+    assert asyncio.run(run()) == (None, 1234)
+    assert tool_result_budget() is None
+
+
 def test_split_turns():
     messages = tool_turn(1, "x") + tool_turn(2, "y")
     turns = split_turns(messages)
@@ -629,8 +647,22 @@ def test_react_counts_instructions_and_tools_towards_the_budget():
                 setattr(obj, name, value)
         return [t for t in scheduled if t["system_prompt"].startswith("You summarize")]
 
-    assert not run([])
+    budgets = []
+    original_start = agent.start_tool_result_budget
+
+    def start_tool_result_budget():
+        budget = original_start()
+        budgets.append(budget)
+        return budget
+
+    agent.start_tool_result_budget = start_tool_result_budget
+    try:
+        assert not run([])
+    finally:
+        agent.start_tool_result_budget = original_start
     assert not any("context budget" in line for line in logged)
+    # tools learn what is left for a single result once the instructions and tools are counted
+    assert budgets and 0 < budgets[-1].chars < budget * CHARS_PER_TOKEN // 2
 
     assert len(run([big_tool])) == 1
     request = scheduled[-1]
