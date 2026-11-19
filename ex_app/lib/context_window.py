@@ -22,6 +22,7 @@ with every request, so they come off the budget first. The conversation gets the
   remaining turns, only the tool results that still do not fit are shortened.
 """
 import json
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from langchain_core.messages import AIMessage, BaseMessage
@@ -239,9 +240,40 @@ def _share_out(sizes: list[int], total: int, floor: int, ceiling: int) -> list[i
 	return shares
 
 
-def _compact_current_turn(turn: list[BaseMessage], budget_chars: int) -> list[BaseMessage]:
+def max_tool_result_chars(budget_chars: int) -> int:
+	"""How large a single tool result of the current turn may be before it is shortened"""
 	# A single tool result must not take up the whole budget
-	max_result_chars = budget_chars // 2
+	return budget_chars // 2
+
+
+@dataclass
+class ToolResultBudget:
+	"""The size a tool result can have without being shortened, for tools that can size their answer
+
+	Set by the agent for each request to the model and read by tools while they run, which happens in other
+	tasks of the same run: the object is shared, so they see the value of the latest request.
+	"""
+	chars: int | None = None
+
+
+_tool_result_budget: ContextVar[ToolResultBudget | None] = ContextVar('tool_result_budget', default=None)
+
+
+def start_tool_result_budget() -> ToolResultBudget:
+	"""A budget for the tool calls of the current run, to be updated by the agent"""
+	budget = ToolResultBudget()
+	_tool_result_budget.set(budget)
+	return budget
+
+
+def tool_result_budget() -> int | None:
+	"""How many characters a tool result can have without being shortened, or None outside of a run"""
+	budget = _tool_result_budget.get()
+	return budget.chars if budget is not None else None
+
+
+def _compact_current_turn(turn: list[BaseMessage], budget_chars: int) -> list[BaseMessage]:
+	max_result_chars = max_tool_result_chars(budget_chars)
 	capped = [_truncate_tool_message(message, max_result_chars, can_refetch=False) for message in turn]
 	if _turn_size(capped) <= budget_chars:
 		return capped

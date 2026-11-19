@@ -18,7 +18,16 @@ from ex_app.lib.all_tools.context_chat import get_context_chat_providers
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
 from ex_app.lib.all_tools.nextcloud_links import get_absolute_base_url
 from ex_app.lib.all_tools.skills import list_skills_metadata
-from ex_app.lib.context_window import CHARS_PER_TOKEN, MIN_CONTEXT_BUDGET, conversation_budget, render_transcripts, select_context, truncate_text
+from ex_app.lib.context_window import (
+	CHARS_PER_TOKEN,
+	MIN_CONTEXT_BUDGET,
+	conversation_budget,
+	max_tool_result_chars,
+	render_transcripts,
+	select_context,
+	start_tool_result_budget,
+	truncate_text,
+)
 from ex_app.lib.graph import CONFIRM_TOOLS_NODE, AgentState, get_graph
 from ex_app.lib.jsonplus import JsonPlusSerializer
 from ex_app.lib.logger import log
@@ -180,6 +189,8 @@ async def react(
 	bound_model = ChatWithNextcloud(nc=nc, multimodal=multimodal).bind_tools(tools)
 	# The tool descriptions are sent with every request, so they count towards the context budget
 	tools_size = len(json.dumps(cast(ChatWithNextcloud, bound_model).tools))
+	# Lets tools that can size their answer stay below the size their results are shortened at
+	result_budget = start_tool_result_budget()
 
 	def tool_enabled(tool_name):
 		for tool in tools:
@@ -305,6 +316,7 @@ At the end of each message to the user, if you have carried out a task or answer
 				f" budget of {context_budget}, so the request to the language model may exceed it."
 				" Raise the budget or disable some tools.",
 			)
+		result_budget.chars = max_tool_result_chars(conversation_budget(context_budget, reserved))
 		selection = select_context(state["messages"], context_budget, reserved)
 		update: dict[str, Any] = {"messages": []}
 		if selection.dropped:
