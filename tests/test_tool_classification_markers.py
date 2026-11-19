@@ -36,8 +36,36 @@ class _AllKeys(dict):
 		return True
 
 
+class _AllCapabilities(dict):
+	"""Reports every capability as present, so modules build their optional tools too
+
+	Capabilities a module compares against a value are given here with a real one.
+	"""
+
+	def __init__(self):
+		super().__init__({'integration_zammad': {'ticket_api': 2}})
+
+	def get(self, key, default=None):
+		return super().get(key, self)
+
+	def __getitem__(self, key):
+		return super().get(key, self)
+
+	def __contains__(self, _key):
+		return True
+
+	def __bool__(self):
+		return True
+
+
 class _FakeNextcloudApp(MagicMock):
 	"""Answers what tool modules ask for while building their tools."""
+
+	@property
+	def capabilities(self):
+		async def capabilities():
+			return _AllCapabilities()
+		return capabilities()
 
 	@property
 	def user(self):
