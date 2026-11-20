@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import re
-from urllib.parse import urlparse
+import xml.etree.ElementTree as ET
+from urllib.parse import quote, urlparse
 
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api._exceptions import NextcloudException
@@ -127,6 +128,34 @@ def get_file_id_from_file_url(file_url: str) -> int:
 	if match:
 		return int(match.group(2))
 	raise Exception("Not a valid nextcloud file URL")
+
+
+async def get_file_id_by_path(nc: AsyncNextcloudApp, file_path: str) -> int:
+	"""Resolve a path in the current user's files to its numeric file ID."""
+	if any(segment in ('.', '..') for segment in file_path.split('/')):
+		raise ValueError(f'Invalid path (traversal not allowed): {file_path!r}')
+	user_id = await nc.user
+
+	propfind_body = (
+		'<?xml version="1.0" encoding="UTF-8"?>'
+		'<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
+		'<d:prop><oc:fileid/></d:prop>'
+		'</d:propfind>'
+	)
+	propfind_response = await nc._session._create_adapter(True).request(
+		'PROPFIND',
+		# Escaped, so `#`, `?` and `%` stay part of the name, and `%2e%2e` cannot turn into `..`
+		f"{nc.app_cfg.endpoint}/remote.php/dav/files/{quote(user_id, safe='')}/{quote(file_path.lstrip('/'))}",
+		headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
+		data=propfind_body,
+	)
+	propfind_response.raise_for_status()
+
+	root = ET.fromstring(propfind_response.text)
+	fileid_element = root.find(".//{http://owncloud.org/ns}fileid")
+	if fileid_element is None or not fileid_element.text:
+		raise Exception(f"Could not resolve file ID for path: {file_path}")
+	return int(fileid_element.text)
 
 
 def format_fs_node(fsnode: FsNode) -> dict:

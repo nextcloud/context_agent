@@ -23,6 +23,7 @@ from ex_app.lib.all_tools.lib.files import (
 	count_file_tree,
 	format_fs_node,
 	get_file_content_from_int_link,
+	get_file_id_by_path as resolve_file_id_by_path,
 	get_file_id_from_file_url,
 	trash_enabled,
 )
@@ -288,27 +289,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param file_path: the path of the file/folder (e.g., "/Documents/file.docx")
 		:return: the numeric file ID
 		"""
-		user_id = await nc.user
-
-		propfind_body = (
-			'<?xml version="1.0" encoding="UTF-8"?>'
-			'<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
-			'<d:prop><oc:fileid/></d:prop>'
-			'</d:propfind>'
-		)
-		propfind_response = await nc._session._create_adapter(True).request(
-			'PROPFIND',
-			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{file_path.lstrip('/')}",
-			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
-			data=propfind_body,
-		)
-		propfind_response.raise_for_status()
-
-		root = ET.fromstring(propfind_response.text)
-		fileid_element = root.find(".//{http://owncloud.org/ns}fileid")
-		if fileid_element is None or not fileid_element.text:
-			raise Exception(f"Could not resolve file ID for path: {file_path}")
-		return int(fileid_element.text)
+		return await resolve_file_id_by_path(nc, file_path)
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
