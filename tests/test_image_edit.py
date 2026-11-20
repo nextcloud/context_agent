@@ -100,6 +100,26 @@ def test_file_ids_are_used_as_they_are():
 	], nc.ocs_calls
 
 
+def test_non_ascii_digits_are_paths_not_file_ids():
+	resolved = []
+
+	async def fake_get_file_id_by_path(nc, path):
+		resolved.append(path)
+		return 77
+
+	original = image_edit.get_file_id_by_path
+	image_edit.get_file_id_by_path = fake_get_file_id_by_path
+	try:
+		nc = _FakeNextcloudApp([CORE_TYPE])
+		# Full-width digits: str.isdecimal() is true for them, but they are a name, not a file ID
+		asyncio.run(_edit_image(nc)(images=['\uff12\uff10\uff12\uff14'], prompt='Add a hat'))
+	finally:
+		image_edit.get_file_id_by_path = original
+	assert resolved == ['\uff12\uff10\uff12\uff14'], resolved
+	[scheduled] = _scheduled(nc)
+	assert scheduled['input']['input'] == [77], scheduled
+
+
 def test_available_only_with_the_core_type():
 	assert asyncio.run(image_edit.is_available(_FakeNextcloudApp([CORE_TYPE]))) is True
 	# Before Nextcloud 36 only integration_openai's own type exists; the tool does not use it

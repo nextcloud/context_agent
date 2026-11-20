@@ -13,7 +13,8 @@ TASK_TYPE = 'core:image2image'
 async def _get_file_id(nc: AsyncNextcloudApp, image: str) -> int:
 	"""Resolve a file ID, a Nextcloud file link or a path in the user's files to a file ID."""
 	# Attachments reach the model only as file IDs (integration_openai adds them to the prompt)
-	if image.isdecimal():
+	# ASCII only: isdecimal() alone also accepts e.g. full-width digits, which can be part of a file name
+	if image.isascii() and image.isdecimal():
 		return int(image)
 	if image.startswith(('http://', 'https://')):
 		return get_file_id_from_file_url(image)
