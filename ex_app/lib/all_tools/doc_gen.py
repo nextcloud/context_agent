@@ -50,7 +50,7 @@ def quoted_formats(formats):
 def slideprepper_reply(
     url, task_id, deck_file_ids, formats=SLIDEPREPPER_ALL_FORMATS
 ) -> str:
-    """A relay instruction line first, then one labeled download link per deck file.
+    """Returns a relay instruction line first, then one labeled download link per deck file.
 
     The task reports bare file ids, so a file's format is only known from
     the one-file-per-requested-format contract: the labels are positional
