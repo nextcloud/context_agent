@@ -286,7 +286,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def get_file_id_by_path(file_path: str) -> int:
 		"""
 		Resolve a file or folder path to its Nextcloud file ID.
-		:param file_path: the path of the file/folder (e.g., "/Documents/file.docx")
+		:param file_path: the path of the file/folder (e.g., "/Documents/my file.docx", not URL-encoded)
 		:return: the numeric file ID
 		"""
 		return await resolve_file_id_by_path(nc, file_path)

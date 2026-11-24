@@ -32,6 +32,7 @@ class _FakeNextcloudApp:
 		self.task_id = task_id
 		self.output_file_id = output_file_id
 		self.ocs_calls = []
+		self.app_cfg = type('AppCfg', (), {'endpoint': 'http://nc.example.test'})()
 
 	async def log(self, level, content):
 		"""Sink for run_task's debug logging."""
@@ -40,7 +41,11 @@ class _FakeNextcloudApp:
 		self.ocs_calls.append((method, endpoint, json))
 		if endpoint == '/ocs/v2.php/taskprocessing/tasktypes':
 			return {'types': self.tasktypes}
-		if endpoint == '/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute':
+		if endpoint in (
+			'/ocs/v2.php/apps/app_api/api/v1/info/nextcloud_url/absolute',
+			# Asked by the host check of file links
+			'/ocs/v1.php/apps/app_api/api/v1/info/nextcloud_url/absolute',
+		):
 			return {'absolute_url': NEXTCLOUD_URL}
 		if endpoint == '/ocs/v1.php/taskprocessing/schedule':
 			return {'task': {'id': self.task_id, 'status': 'STATUS_SUCCESSFUL', 'output': {'output': self.output_file_id}}}
@@ -137,11 +142,16 @@ class _FakePropfindApp:
 			'</d:multistatus>'
 		)
 
-		def raise_for_status(self):
-			pass
+		def __init__(self, status_code=207):
+			self.status_code = status_code
 
-	def __init__(self, user_id='admin'):
+		def raise_for_status(self):
+			if self.status_code >= 400:
+				raise AssertionError(f'unexpected raise_for_status for {self.status_code}')
+
+	def __init__(self, user_id='admin', missing_urls=()):
 		self.user_id = user_id
+		self.missing_urls = set(missing_urls)
 		self.urls = []
 		self.app_cfg = type('AppCfg', (), {'endpoint': 'http://nc.example.test'})()
 		app = self
@@ -149,7 +159,7 @@ class _FakePropfindApp:
 		class _Adapter:
 			async def request(self, method, url, **_kwargs):
 				app.urls.append(url)
-				return _FakePropfindApp._Response()
+				return _FakePropfindApp._Response(404 if url in app.missing_urls else 207)
 
 		self._session = type('Session', (), {'_create_adapter': lambda _self, _dav: _Adapter()})()
 
@@ -170,6 +180,109 @@ def test_path_lookup_escapes_special_characters():
 		nc = _FakePropfindApp()
 		assert asyncio.run(files_lib.get_file_id_by_path(nc, path)) == 99
 		assert nc.urls == [expected], (path, nc.urls)
+
+
+def test_already_encoded_path_falls_back_to_the_decoded_name():
+	base = 'http://nc.example.test/remote.php/dav/files/admin'
+	# No file is literally named `my%20file.png`, so the decoded name is tried next
+	nc = _FakePropfindApp(missing_urls=[f'{base}/my%2520file.png'])
+	assert asyncio.run(files_lib.get_file_id_by_path(nc, '/my%20file.png')) == 99
+	assert nc.urls == [f'{base}/my%2520file.png', f'{base}/my%20file.png'], nc.urls
+
+
+def test_not_found_error_names_the_decoded_path_too():
+	base = 'http://nc.example.test/remote.php/dav/files/admin'
+	nc = _FakePropfindApp(missing_urls=[f'{base}/my%2520file.png', f'{base}/my%20file.png'])
+	try:
+		asyncio.run(files_lib.get_file_id_by_path(nc, '/my%20file.png'))
+	except Exception as exc:
+		assert str(exc) == 'File not found: /my%20file.png (also tried the decoded path /my file.png)', exc
+	else:
+		raise AssertionError('expected an exception')
+
+
+def test_literal_percent_name_wins_over_the_decoded_one():
+	base = 'http://nc.example.test/remote.php/dav/files/admin'
+	nc = _FakePropfindApp()
+	assert asyncio.run(files_lib.get_file_id_by_path(nc, '/100%25.png')) == 99
+	assert nc.urls == [f'{base}/100%2525.png'], nc.urls
+
+
+def test_decoded_fallback_rejects_traversal():
+	base = 'http://nc.example.test/remote.php/dav/files/admin'
+	nc = _FakePropfindApp(missing_urls=[f'{base}/x/%252e%252e/secret.jpg'])
+	try:
+		asyncio.run(files_lib.get_file_id_by_path(nc, '/x/%2e%2e/secret.jpg'))
+	except ValueError as exc:
+		assert 'traversal' in str(exc), exc
+	else:
+		raise AssertionError('expected a ValueError')
+	assert nc.urls == [f'{base}/x/%252e%252e/secret.jpg'], nc.urls
+
+
+def test_missing_path_is_reported_once():
+	base = 'http://nc.example.test/remote.php/dav/files/admin'
+	nc = _FakePropfindApp(missing_urls=[f'{base}/nope.png'])
+	try:
+		asyncio.run(files_lib.get_file_id_by_path(nc, '/nope.png'))
+	except Exception as exc:
+		assert 'not found' in str(exc), exc
+	else:
+		raise AssertionError('expected an exception')
+	# Nothing to decode: no second request
+	assert nc.urls == [f'{base}/nope.png'], nc.urls
+
+
+def test_integer_file_ids_are_used_as_they_are():
+	nc = _FakeNextcloudApp([CORE_TYPE])
+	[tool] = asyncio.run(image_edit.get_tools(nc))
+	# Through ainvoke, so the arguments pass the tool's schema validation as in the agent
+	asyncio.run(tool.ainvoke({'images': [2810, '2811'], 'prompt': 'Add a hat'}))
+	[scheduled] = _scheduled(nc)
+	assert scheduled['input']['input'] == [2810, 2811], scheduled
+
+
+def test_boolean_is_not_a_file_id():
+	nc = _FakeNextcloudApp([CORE_TYPE])
+	[tool] = asyncio.run(image_edit.get_tools(nc))
+	try:
+		asyncio.run(tool.ainvoke({'images': [True], 'prompt': 'Add a hat'}))
+	except Exception as exc:
+		assert 'images' in str(exc), exc
+	else:
+		raise AssertionError('expected a validation error')
+	assert _scheduled(nc) == []
+
+
+def test_links_to_other_servers_are_rejected():
+	files_lib._nc_hosts = None
+	nc = _FakeNextcloudApp([CORE_TYPE])
+	try:
+		asyncio.run(_edit_image(nc)(images=['https://other.example.test/index.php/f/12'], prompt='Add a hat'))
+	except ValueError as exc:
+		assert 'Not a file link of this Nextcloud' in str(exc), exc
+	else:
+		raise AssertionError('expected a ValueError')
+	assert _scheduled(nc) == []
+
+
+def test_blank_entries_are_rejected():
+	for blank in ['', '   ']:
+		nc = _FakeNextcloudApp([CORE_TYPE])
+		try:
+			asyncio.run(_edit_image(nc)(images=[blank], prompt='Add a hat'))
+		except ValueError as exc:
+			assert 'Empty image entry' in str(exc), exc
+		else:
+			raise AssertionError(f'expected a ValueError for {blank!r}')
+		assert _scheduled(nc) == []
+
+
+def test_surrounding_spaces_and_upper_case_schemes_are_tolerated():
+	nc = _FakeNextcloudApp([CORE_TYPE])
+	asyncio.run(_edit_image(nc)(images=[' 2810 ', 'HTTPS://nc.example.test/f/12'], prompt='Add a hat'))
+	[scheduled] = _scheduled(nc)
+	assert scheduled['input']['input'] == [2810, 12], scheduled
 
 
 def test_path_lookup_escapes_the_user_id():

@@ -2,21 +2,30 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
+from pydantic import StrictInt
 
-from ex_app.lib.all_tools.lib.files import get_file_id_by_path, get_file_id_from_file_url
+from ex_app.lib.all_tools.lib.files import get_file_id_by_path, get_file_id_from_file_url, is_an_internal_file_link
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 from ex_app.lib.all_tools.lib.task_processing import run_task
 
 TASK_TYPE = 'core:image2image'
 
 
-async def _get_file_id(nc: AsyncNextcloudApp, image: str) -> int:
+async def _get_file_id(nc: AsyncNextcloudApp, image: str | int) -> int:
 	"""Resolve a file ID, a Nextcloud file link or a path in the user's files to a file ID."""
+	# An int file ID is handled like its decimal string
+	image = str(image).strip()
+	if not image:
+		# An empty path would resolve to the user's root folder
+		raise ValueError('Empty image entry: pass a file link, a path or a file ID')
 	# Attachments reach the model only as file IDs (integration_openai adds them to the prompt)
 	# ASCII only: isdecimal() alone also accepts e.g. full-width digits, which can be part of a file name
 	if image.isascii() and image.isdecimal():
 		return int(image)
-	if image.startswith(('http://', 'https://')):
+	if image.lower().startswith(('http://', 'https://')):
+		# The file ID in a link from another server names an unrelated file on this one
+		if not await is_an_internal_file_link(nc, image):
+			raise ValueError(f'Not a file link of this Nextcloud: {image} (expected https://<this Nextcloud>/f/<file ID>)')
 		return get_file_id_from_file_url(image)
 	return await get_file_id_by_path(nc, image)
 
@@ -25,10 +34,11 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
-	async def edit_image(images: list[str], prompt: str) -> str:
+	# StrictInt: a plain int would let pydantic turn true/false into the file IDs 1/0
+	async def edit_image(images: list[str | StrictInt], prompt: str) -> str:
 		"""
 		Edit an existing image in Nextcloud with AI (use generate_image for new images)
-		:param images: one image (several only to combine them), as a file link (e.g. https://host/index.php/f/1234), a path (e.g. "/Photos/cat.jpg") or a file ID
+		:param images: one image (several only to combine them), as a Nextcloud file link (e.g. https://host/index.php/f/1234), a path (e.g. "/Photos/my cat.jpg", not URL-encoded) or a file ID
 		:param prompt: the complete change to make; the image model does not see the conversation
 		:return: a download link to the edited image
 		"""

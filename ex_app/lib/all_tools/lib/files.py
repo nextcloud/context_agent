@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import re
 import xml.etree.ElementTree as ET
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api._exceptions import NextcloudException
@@ -131,11 +131,34 @@ def get_file_id_from_file_url(file_url: str) -> int:
 
 
 async def get_file_id_by_path(nc: AsyncNextcloudApp, file_path: str) -> int:
-	"""Resolve a path in the current user's files to its numeric file ID."""
+	"""Resolve a path in the current user's files to its numeric file ID.
+
+	The path is taken literally first. If no file has that name and the path holds
+	%-escapes (e.g. `my%20file.docx` copied from a URL), the decoded path is tried too.
+	"""
+	_reject_traversal(file_path)
+	user_id = await nc.user
+	file_id = await _propfind_file_id(nc, user_id, file_path)
+	if file_id is not None:
+		return file_id
+	decoded_path = unquote(file_path)
+	if decoded_path == file_path:
+		raise Exception(f"File not found: {file_path}")
+	# Check again: `%2e%2e` decodes to `..`
+	_reject_traversal(decoded_path)
+	file_id = await _propfind_file_id(nc, user_id, decoded_path)
+	if file_id is None:
+		raise Exception(f"File not found: {file_path} (also tried the decoded path {decoded_path})")
+	return file_id
+
+
+def _reject_traversal(file_path: str) -> None:
 	if any(segment in ('.', '..') for segment in file_path.split('/')):
 		raise ValueError(f'Invalid path (traversal not allowed): {file_path!r}')
-	user_id = await nc.user
 
+
+async def _propfind_file_id(nc: AsyncNextcloudApp, user_id: str, file_path: str) -> int | None:
+	"""Return the file ID at the literal path, or None if nothing exists there."""
 	propfind_body = (
 		'<?xml version="1.0" encoding="UTF-8"?>'
 		'<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
@@ -149,6 +172,8 @@ async def get_file_id_by_path(nc: AsyncNextcloudApp, file_path: str) -> int:
 		headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
 		data=propfind_body,
 	)
+	if propfind_response.status_code == 404:
+		return None
 	propfind_response.raise_for_status()
 
 	root = ET.fromstring(propfind_response.text)
