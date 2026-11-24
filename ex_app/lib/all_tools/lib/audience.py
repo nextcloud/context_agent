@@ -14,6 +14,8 @@ user rather than act quietly.
 """
 import xml.etree.ElementTree as ET
 
+from nc_py_api import NextcloudException
+
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius
 
 # How far a share reaches, by Nextcloud share type. Types missing here fall back
@@ -114,7 +116,7 @@ async def mount_type_radius(nc, path) -> ImpulseRadius:
 		if response.status_code == 404:
 			continue
 		if response.status_code != 207:
-			raise ValueError(f'Could not read the mount of {candidate!r}: HTTP {response.status_code}')
+			raise NextcloudException(response.status_code, f'Could not read the mount of {candidate!r}')
 		element = ET.fromstring(response.text).find('.//{http://nextcloud.org/ns}mount-type')
 		mount_type = (element.text or '').strip().lower() if element is not None else ''
 		return MOUNT_TYPE_RADIUS.get(mount_type, ImpulseRadius.SELF)

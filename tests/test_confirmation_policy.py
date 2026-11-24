@@ -9,10 +9,14 @@ import asyncio
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_core.tools import tool  # noqa: E402
+from nc_py_api import NextcloudException  # noqa: E402
 
+import ex_app.lib.all_tools.lib.impulse as impulse_module  # noqa: E402
 from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
 	ALLOWED_CALL,
 	CallClassification,
@@ -25,6 +29,7 @@ from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
 	classify_reversibility,
 	classify_tool_call,
 	destructive,
+	destructive_if,
 	from_mcp_annotations,
 	impulse,
 	is_always_allowed,
@@ -78,6 +83,65 @@ async def undecorated(path: str):
 	"""Like an MCP tool: no markers at all."""
 
 
+class _FailsOnce:
+	"""A lookup the server throttles the first time it is asked."""
+
+	def __init__(self, answer):
+		self.answer = answer
+		self.calls = 0
+
+	async def __call__(self, path=None):
+		self.calls += 1
+		if self.calls == 1:
+			raise NextcloudException(429, 'Too Many Requests')
+		return self.answer
+
+
+_radius_once = _FailsOnce(ImpulseRadius.SELF)
+_destroys_once = _FailsOnce(False)
+
+
+@tool
+@impulse(_radius_once)
+@destructive_if(_destroys_once)
+async def write_private_note(path: str):
+	"""Write into a private folder, with lookups that fail once."""
+
+
+_overloaded_calls = []
+
+
+def _overloaded(path=None):
+	_overloaded_calls.append(path)
+	raise NextcloudException(503, 'Service Unavailable')
+
+
+@tool
+@impulse(_overloaded)
+async def unreachable(path: str):
+	"""A tool whose radius lookup always meets an overloaded server."""
+
+
+_unanswerable_calls = []
+
+
+def _unanswerable(path=None):
+	_unanswerable_calls.append(path)
+	raise ValueError('No path to determine the audience of')
+
+
+@tool
+@impulse(_unanswerable)
+async def unanswerable(path: str):
+	"""A tool whose radius lookup cannot answer, however often it is asked."""
+
+
+@pytest.fixture
+def no_retry_pause(monkeypatch):
+	"""No real pauses: a failing hook is retried at once."""
+	monkeypatch.setattr(impulse_module, 'HOOK_RETRY_DELAY_SECONDS', 0)
+
+
 def _call(radius=ImpulseRadius.SELF, destroys=False, rev=Reversibility.REVERSIBLE, count=1, always=False):
 	return CallClassification(radius, destroys, rev, count, always)
 
@@ -95,6 +159,37 @@ def test_missing_and_failing_hooks_fall_back_to_worst_case():
 	for t in (flaky, undecorated):
 		assert asyncio.run(classify_reversibility(t, {'path': 'x'})) == Reversibility.IRREVERSIBLE
 		assert asyncio.run(classify_item_count(t, {'path': 'x'}, 11)) is None
+
+
+def test_a_hook_the_server_throttles_once_is_retried(no_retry_pause):
+	assert asyncio.run(classify_tool_call(write_private_note, {'path': 'x'})) == ImpulseRadius.SELF
+	assert _radius_once.calls == 2
+	assert asyncio.run(classify_destructive(write_private_note, {'path': 'x'})) is False
+	assert _destroys_once.calls == 2
+
+
+def test_a_hook_that_fails_twice_falls_back_to_external(no_retry_pause):
+	_overloaded_calls.clear()
+	assert asyncio.run(classify_tool_call(unreachable, {'path': 'x'})) == ImpulseRadius.EXTERNAL
+	assert len(_overloaded_calls) == 2
+
+
+def test_a_hook_that_cannot_answer_is_not_retried(no_retry_pause):
+	_unanswerable_calls.clear()
+	assert asyncio.run(classify_tool_call(unanswerable, {'path': 'x'})) == ImpulseRadius.EXTERNAL
+	assert len(_unanswerable_calls) == 1
+
+
+def test_only_unreachable_throttled_or_overloaded_counts_as_transient():
+	from niquests import ConnectionError, Timeout
+	assert impulse_module._is_transient(ConnectionError())
+	assert impulse_module._is_transient(Timeout())
+	assert impulse_module._is_transient(NextcloudException(429))
+	assert impulse_module._is_transient(NextcloudException(502))
+	assert not impulse_module._is_transient(NextcloudException(403))
+	assert not impulse_module._is_transient(NextcloudException(404))
+	assert not impulse_module._is_transient(NextcloudException())
+	assert not impulse_module._is_transient(ValueError('HTTP 429'))
 
 
 def test_small_reversible_self_batch_runs():

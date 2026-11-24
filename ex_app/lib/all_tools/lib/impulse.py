@@ -72,9 +72,13 @@ All of them feed a :class:`ConfirmationPolicy`, which compares them against
 their admin-configured thresholds and honours :func:`always_confirm`
 unconditionally.
 """
+import asyncio
 import inspect
 from dataclasses import dataclass
 from enum import IntEnum
+
+from nc_py_api import NextcloudException
+from niquests import ConnectionError, Timeout
 
 
 class ImpulseRadius(IntEnum):
@@ -104,6 +108,15 @@ class Reversibility(IntEnum):
 # Used when a tool carries no hook at all (MCP tools cannot be decorated) and
 # when a hook fails: assume the widest reach so the user is always asked.
 DEFAULT_IMPULSE_RADIUS = ImpulseRadius.EXTERNAL
+
+# A hook that fails because the server was unreachable, throttled (HTTP 429) or
+# briefly overloaded (HTTP 5xx) is tried once more after this many seconds
+# before its classifier falls back to the worst case. Most hooks ask the server
+# who can reach an item, and such a failure leaves that answer in doubt only for
+# the moment; asking the user about a private file because of it is a false
+# alarm, and an unattended run stops at it. 10s matches the wait after a 429
+# elsewhere in the app. Any other failure goes to the fallback at once.
+HOOK_RETRY_DELAY_SECONDS = 10.0
 
 DEFAULT_IMPULSE_THRESHOLD = ImpulseRadius.INDIVIDUALS
 
@@ -416,14 +429,39 @@ def _tool_action(tool):
 	return getattr(tool, 'coroutine', None) or getattr(tool, 'func', None)
 
 
-async def _run_hook(hook, tool_args: dict, extra: dict | None = None):
-	kwargs = _select_hook_kwargs(hook, tool_args or {})
-	if extra:
-		kwargs.update(_select_hook_kwargs(hook, extra))
+async def _call_hook(hook, kwargs: dict):
 	result = hook(**kwargs)
 	if inspect.isawaitable(result):
 		result = await result
 	return result
+
+
+async def _run_hook(hook, tool_args: dict, extra: dict | None = None):
+	"""Run a hook, and once more after a pause if the server failed it for the moment.
+
+	Any other failure, and a second one, is raised to the classifier, which falls
+	back to the worst case as before.
+	"""
+	kwargs = _select_hook_kwargs(hook, tool_args or {})
+	if extra:
+		kwargs.update(_select_hook_kwargs(hook, extra))
+	try:
+		return await _call_hook(hook, kwargs)
+	except Exception as e:
+		if not _is_transient(e):
+			raise
+		print(f"Hook {getattr(hook, '__name__', hook)!r} failed ({e!r}), trying once more in {HOOK_RETRY_DELAY_SECONDS}s")
+	await asyncio.sleep(HOOK_RETRY_DELAY_SECONDS)
+	return await _call_hook(hook, kwargs)
+
+
+def _is_transient(error: Exception) -> bool:
+	"""Whether the server may answer if asked again shortly: unreachable, throttled or overloaded."""
+	if isinstance(error, (ConnectionError, Timeout)):
+		return True
+	if isinstance(error, NextcloudException):
+		return error.status_code == 429 or error.status_code >= 500
+	return False
 
 
 async def classify_reversibility(tool, tool_args: dict) -> Reversibility:
