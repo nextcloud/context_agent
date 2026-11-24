@@ -28,6 +28,7 @@ from ex_app.lib.context_window import (  # noqa: E402
     CHARS_PER_TOKEN,
     MIN_CONTEXT_BUDGET,
     OLD_TOOL_OUTPUT_MAX_LENGTH,
+    _measure,
     message_size,
     render_transcript,
     render_transcripts,
@@ -91,6 +92,49 @@ def test_truncate_json_object_shortens_its_longest_list():
     assert parsed["tickets"][-1] == data["tickets"][-1]
     marker = next(item for item in parsed["tickets"] if isinstance(item, str))
     assert "items omitted" in marker and "list_tickets" in marker
+
+
+def test_truncate_json_finds_lists_in_nested_objects():
+    data = {"data": {"page": 1, "tickets": [{"id": i, "title": f"ticket {i}"} for i in range(300)]}}
+    truncated = truncate_text(json.dumps(data), 2000, "list_tickets")
+    assert len(truncated) <= 2000
+    parsed = json.loads(truncated)
+    tickets = parsed["data"]["tickets"]
+    assert parsed["data"]["page"] == 1
+    assert (tickets[0], tickets[-1]) == (data["data"]["tickets"][0], data["data"]["tickets"][-1])
+    assert any(isinstance(item, str) and "items omitted" in item for item in tickets)
+
+
+def test_truncate_json_shortens_more_than_one_list():
+    data = {"open": [f"open {i}" for i in range(200)], "closed": [f"closed {i}" for i in range(200)]}
+    truncated = truncate_text(json.dumps(data), 1500)
+    assert len(truncated) <= 1500
+    parsed = json.loads(truncated)
+    for key in ("open", "closed"):
+        assert any("items omitted" in item for item in parsed[key])
+
+
+def test_truncate_json_keeps_text_that_looks_like_a_list():
+    # The shortened list goes back where it was, whatever the other fields contain
+    data = {"note": "[1, 2, 3]", "items": [{"id": i, "text": "[1, 2, 3]"} for i in range(200)]}
+    parsed = json.loads(truncate_text(json.dumps(data), 1500))
+    assert parsed["note"] == "[1, 2, 3]"
+    assert parsed["items"][0] == data["items"][0]
+
+
+def test_truncate_json_skips_lists_in_left_out_items():
+    data = [{"id": i, "tags": [f"tag {k}" for k in range(20)]} for i in range(100)]
+    truncated = truncate_text(json.dumps(data), 1500)
+    assert len(truncated) <= 1500
+    parsed = json.loads(truncated)
+    assert parsed[0] == data[0] and parsed[-1] == data[-1]
+
+
+def test_measured_size_matches_serialized_size():
+    data = {"a": [1, 2.5, None, True, 'ü "q"'], "b": {"c": [], "d": [{"e": "x"}, {}]}, "f": "…"}
+    lists: list = []
+    assert _measure(data, (), lists) == len(json.dumps(data, ensure_ascii=False))
+    assert len(lists) == 2
 
 
 def test_truncate_json_object_without_list_is_cut_as_text():

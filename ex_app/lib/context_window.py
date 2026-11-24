@@ -58,74 +58,82 @@ def _omission_hint(tool_name: str | None, can_refetch: bool) -> str:
 	return f'; call {tool_name} again if you need the omitted part'
 
 
-def _shorten_items(items: list[str], max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
-	"""A JSON list of the given serialized items, shortened to max_chars by leaving out items in the middle
+def _measure(value, path: tuple, lists: list) -> int:
+	"""The length of json.dumps(value, ensure_ascii=False), without serializing it as a whole
 
-	Returns None if not even a single item fits.
+	Collects (size, list, item sizes, path) for every list of two or more items, where path holds
+	(id of the enclosing list, index in it) for each list the value sits in.
 	"""
-	compact = '[' + ', '.join(items) + ']'
-	if len(compact) <= max_chars:
-		return compact
+	if isinstance(value, list):
+		sizes = [_measure(item, (*path, (id(value), i)), lists) for i, item in enumerate(value)]
+		size = 2 + sum(sizes) + 2 * max(len(sizes) - 1, 0)
+		if len(sizes) >= 2:
+			lists.append((size, value, sizes, path))
+		return size
+	if isinstance(value, dict):
+		size = 2 + 2 * max(len(value) - 1, 0)
+		for key, item in value.items():
+			size += len(json.dumps(key, ensure_ascii=False)) + 2 + _measure(item, path, lists)
+		return size
+	return len(json.dumps(value, ensure_ascii=False))
 
-	budget = max_chars - MARKER_RESERVE
-	head: list[str] = []
-	tail: list[str] = []
+
+def _keep_ends(sizes: list[int], budget: int) -> tuple[int, int]:
+	"""How many items to keep from the start and from the end of a list so they fit into budget"""
 	used = 2
-	i, j = 0, len(items) - 1
-	while i <= j and used + len(items[i]) + 2 <= budget * 2 // 3:
-		head.append(items[i])
-		used += len(items[i]) + 2
+	i, j = 0, len(sizes) - 1
+	while i <= j and used + sizes[i] + 2 <= budget * 2 // 3:
+		used += sizes[i] + 2
 		i += 1
-	while j >= i and used + len(items[j]) + 2 <= budget:
-		tail.insert(0, items[j])
-		used += len(items[j]) + 2
+	while j >= i and used + sizes[j] + 2 <= budget:
+		used += sizes[j] + 2
 		j -= 1
-	if not head and not tail:
-		return None
-
-	omitted = j - i + 1
-	marker = json.dumps(f'… {omitted} of {len(items)} items omitted{_omission_hint(tool_name, can_refetch)} …', ensure_ascii=False)
-	return '[' + ', '.join(head + [marker] + tail) + ']'
+	return i, len(sizes) - 1 - j
 
 
-def _truncate_json_list(text: str, max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
-	"""Shorten a JSON list, or the longest list in a JSON object, by leaving out items, so the result is still valid JSON
+def _truncate_json(text: str, max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
+	"""Shorten the lists in a JSON value by leaving out items in their middle, so the result is still valid JSON
 
-	Tools often answer with an object that carries its items in one field, e.g. {"tickets": [...], "count": 10}.
-	Cutting such a result by characters would leave invalid JSON, so the longest list in it is shortened instead
-	and the other fields are kept. Returns None if the text is neither, or not even a single item fits.
+	Tools often answer with an object that carries its items in a field, e.g. {"tickets": [...], "count": 10},
+	possibly nested deeper. Cutting such a result by characters would leave invalid JSON, so its lists are
+	shortened instead, the largest first, until it fits. Everything else is kept.
+	Returns None if the text is not JSON, or shortening its lists is not enough.
 	"""
 	try:
 		data = json.loads(text)
-	except (ValueError, TypeError):
+	except (ValueError, TypeError, RecursionError):
 		return None
-	if isinstance(data, list):
-		if len(data) < 2:
-			return None
-		return _shorten_items([json.dumps(item, ensure_ascii=False) for item in data], max_chars, tool_name, can_refetch)
-	if not isinstance(data, dict):
+	lists: list = []
+	total = _measure(data, (), lists)
+	# Items kept of each shortened list, by their index before shortening
+	kept: dict[int, set[int]] = {}
+	# A list is larger than every list inside it, so lists are shortened before the ones inside them
+	for size, items, sizes, path in sorted(lists, key=lambda entry: entry[0], reverse=True):
+		if total <= max_chars:
+			break
+		if any(list_id in kept and index not in kept[list_id] for list_id, index in path):
+			# The list is inside an item that has been left out
+			continue
+		head, tail = _keep_ends(sizes, max_chars - (total - size) - MARKER_RESERVE)
+		omitted = len(items) - head - tail
+		marker = f'… {omitted} of {len(items)} items omitted{_omission_hint(tool_name, can_refetch)} …'
+		new_size = 2 + sum(sizes[:head]) + sum(sizes[len(sizes) - tail:]) + 2 * (head + tail) \
+			+ len(json.dumps(marker, ensure_ascii=False))
+		if new_size >= size:
+			continue
+		kept[id(items)] = set(range(head)) | set(range(len(items) - tail, len(items)))
+		items[:] = [*items[:head], marker, *items[len(items) - tail:]]
+		total += new_size - size
+	if total > max_chars:
 		return None
-
-	lists = {key: value for key, value in data.items() if isinstance(value, list) and len(value) >= 2}
-	if not lists:
-		return None
-	items_by_key = {key: [json.dumps(item, ensure_ascii=False) for item in value] for key, value in lists.items()}
-	key = max(items_by_key, key=lambda k: sum(len(item) + 2 for item in items_by_key[k]))
-	# A placeholder that cannot occur in the serialized object, replaced by the shortened list
-	placeholder = '\u0000shortened\u0000'
-	frame = json.dumps({**data, key: placeholder}, ensure_ascii=False)
-	quoted_placeholder = json.dumps(placeholder)
-	shortened = _shorten_items(items_by_key[key], max_chars - (len(frame) - len(quoted_placeholder)), tool_name, can_refetch)
-	if shortened is None:
-		return None
-	return frame.replace(quoted_placeholder, shortened, 1)
+	return json.dumps(data, ensure_ascii=False)
 
 
 def truncate_text(text: str, max_chars: int, tool_name: str | None = None, can_refetch: bool = True) -> str:
 	"""Shorten a text to about max_chars, keeping its beginning and its end
 
-	The end is often where the answer is, e.g. the latest entries of a list. JSON lists,
-	and the longest list in a JSON object, are shortened by leaving out whole items. The marker says how much was left out and,
+	The end is often where the answer is, e.g. the latest entries of a list. The lists in JSON,
+	at any depth, are shortened by leaving out whole items. The marker says how much was left out and,
 	given the tool's name, that the model can call the tool again to see all of it.
 	With can_refetch=False it says that the result is too large instead, for results
 	that would come back shortened the same way.
@@ -133,7 +141,7 @@ def truncate_text(text: str, max_chars: int, tool_name: str | None = None, can_r
 	if len(text) <= max_chars:
 		return text
 
-	truncated = _truncate_json_list(text, max_chars, tool_name, can_refetch)
+	truncated = _truncate_json(text, max_chars, tool_name, can_refetch)
 	if truncated is not None:
 		return truncated
 
