@@ -111,7 +111,7 @@ def tool_annotations(classification: StaticClassification) -> mt.ToolAnnotations
 	so it only goes into the _meta.
 	"""
 	if classification.read_only:
-		return mt.ToolAnnotations(readOnlyHint=True)
+		return mt.ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 	annotations = mt.ToolAnnotations(readOnlyHint=False)
 	if classification.destroys is False:
 		annotations.destructiveHint = False

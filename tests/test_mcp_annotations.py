@@ -90,6 +90,7 @@ def test_hints():
 	tools = asyncio.run(_list_tools())
 
 	assert tools['read_note'].annotations.readOnlyHint is True
+	assert tools['read_note'].annotations.destructiveHint is False
 	assert tools['read_note'].meta[IMPULSE_META_KEY] == {
 		'radius': 'self', 'destructive': False, 'reversibility': 'reversible',
 		'item_count': 0, 'always_confirm': False,
