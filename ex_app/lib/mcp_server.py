@@ -11,7 +11,8 @@ from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 from mcp import types as mt
-from ex_app.lib.tools import get_tools
+from ex_app.lib.all_tools.lib.impulse import StaticClassification, static_classification
+from ex_app.lib.tools import TOOL_MODULE_METADATA_KEY, get_tools
 import requests
 
 def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
@@ -43,6 +44,19 @@ class UserAuthMiddleware(Middleware):
 
 LAST_MCP_TOOL_UPDATE = 0
 
+# Modules in all_tools whose tools are not exposed on the MCP server. The tools of
+# the configured MCP servers are only proxied by us; clients can talk to those
+# servers directly, and we would end up serving ourselves if pointed at our own endpoint.
+EXCLUDED_TOOL_MODULES = {"mcp"}
+
+
+def is_exposed(tool) -> bool:
+	return (getattr(tool, "metadata", None) or {}).get(TOOL_MODULE_METADATA_KEY) not in EXCLUDED_TOOL_MODULES
+
+
+async def get_exposed_tools(nc):
+	return [tool for tool in await get_tools(nc) if is_exposed(tool)]
+
 
 class ToolListMiddleware(Middleware):
 	def __init__(self, mcp):
@@ -55,22 +69,69 @@ class ToolListMiddleware(Middleware):
 	) -> list[Tool]:
 		global LAST_MCP_TOOL_UPDATE
 		if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-			nc_tools = await get_tools(context.fastmcp_context.get_state("nextcloud"))
+			nc_tools = await get_exposed_tools(context.fastmcp_context.get_state("nextcloud"))
 			tools = await self.mcp.get_tools()
 			if LAST_MCP_TOOL_UPDATE + 60 < time.time():
 				for tool in tools.keys():
 					self.mcp.remove_tool(tool)
 				for tool in nc_tools:
-					tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
-					if tool_action is None:
-						continue
-					tool_name = getattr(tool, "name", None)
-					if tool_name:
-						self.mcp.tool(name=tool_name)(mcp_tool(tool_action, tool_name=tool_name))
-					else:
-						self.mcp.tool()(mcp_tool(tool_action))
+					register_tool(self.mcp, tool)
 				LAST_MCP_TOOL_UPDATE = time.time()
 		return await call_next(context)
+
+
+def register_tool(mcp, tool):
+	"""Expose a LangChain tool on the MCP server, with the hints its markers allow."""
+	tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
+	if tool_action is None:
+		return
+	tool_name = getattr(tool, "name", None)
+	classification = static_classification(tool)
+	mcp.tool(
+		name=tool_name or None,
+		annotations=tool_annotations(classification),
+		meta={IMPULSE_META_KEY: impulse_meta(classification)},
+	)(mcp_tool(tool_action, tool_name=tool_name or None))
+
+# Where the full classification goes in a tool's _meta, for clients that know
+# what to make of it. The standard hints below can only carry part of it.
+IMPULSE_META_KEY = "com.nextcloud/impulse"
+
+# What a field of the classification is shown as when it depends on the arguments.
+DYNAMIC = "dynamic"
+
+
+def tool_annotations(classification: StaticClassification) -> mt.ToolAnnotations:
+	"""The MCP hints a tool can honestly give before it is called.
+
+	A hint is only set when it holds for every call; otherwise it is left out and
+	the client assumes the worst, which is what the spec defaults to. The radius
+	has no standard hint -- openWorldHint is about whether the tool talks to the
+	outside world (a web search does), not who gains access to the user's data --
+	so it only goes into the _meta.
+	"""
+	if classification.read_only:
+		return mt.ToolAnnotations(readOnlyHint=True, destructiveHint=False)
+	annotations = mt.ToolAnnotations(readOnlyHint=False)
+	if classification.destroys is False:
+		annotations.destructiveHint = False
+	return annotations
+
+
+def impulse_meta(classification: StaticClassification) -> dict:
+	def show(value):
+		if value is None:
+			return DYNAMIC
+		return value.name.lower() if hasattr(value, "name") else value
+
+	return {
+		"radius": show(classification.radius),
+		"destructive": show(classification.destroys),
+		"reversibility": show(classification.reversibility),
+		"item_count": show(classification.item_count),
+		"always_confirm": classification.always,
+	}
+
 
 # Regenerates the tools with the correct nc object
 def mcp_tool(tool, tool_name: str | None = None):
@@ -78,7 +139,7 @@ def mcp_tool(tool, tool_name: str | None = None):
 	async def wrapper(*args, **kwargs):
 		ctx = get_context()
 		nc = ctx.get_state('nextcloud')
-		tools = await get_tools(nc)
+		tools = await get_exposed_tools(nc)
 		invoked_name = tool_name or tool.__name__
 		for t in tools:
 			action = getattr(t, "coroutine", None) or getattr(t, "func", None)
