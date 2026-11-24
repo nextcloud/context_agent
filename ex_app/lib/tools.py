@@ -88,6 +88,10 @@ async def get_confirmation_policy(nc: AsyncNextcloudApp) -> ConfirmationPolicy:
 	)
 
 
+# Key in a tool's metadata naming the module in all_tools it was loaded from
+TOOL_MODULE_METADATA_KEY = "tool_module"
+
+
 @timed_memoize(1*60)
 async def get_tools(nc: AsyncNextcloudApp):
 	directory = dirname(__file__) + '/all_tools'
@@ -118,6 +122,9 @@ async def get_tools(nc: AsyncNextcloudApp):
 				# Tools carry their impulse hooks on the wrapped function; tools without
 				# them (MCP tools cannot be decorated) fall back to the worst case at
 				# classification time, so they always need confirmation.
+				for tool in imported_tools:
+					# Remember where each tool came from, so consumers can filter by it
+					tool.metadata = {**(tool.metadata or {}), TOOL_MODULE_METADATA_KEY: module_name}
 				tools.extend(imported_tools)
 			else:
 				print(f"{function_name} in {module_name} is not callable.")

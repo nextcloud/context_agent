@@ -12,7 +12,7 @@ from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 from mcp import types as mt
 from ex_app.lib.all_tools.lib.impulse import StaticClassification, static_classification
-from ex_app.lib.tools import get_tools
+from ex_app.lib.tools import TOOL_MODULE_METADATA_KEY, get_tools
 import requests
 
 def get_user(authorization_header: str, nc: AsyncNextcloudApp) -> str:
@@ -44,6 +44,19 @@ class UserAuthMiddleware(Middleware):
 
 LAST_MCP_TOOL_UPDATE = 0
 
+# Modules in all_tools whose tools are not exposed on the MCP server. The tools of
+# the configured MCP servers are only proxied by us; clients can talk to those
+# servers directly, and we would end up serving ourselves if pointed at our own endpoint.
+EXCLUDED_TOOL_MODULES = {"mcp"}
+
+
+def is_exposed(tool) -> bool:
+	return (getattr(tool, "metadata", None) or {}).get(TOOL_MODULE_METADATA_KEY) not in EXCLUDED_TOOL_MODULES
+
+
+async def get_exposed_tools(nc):
+	return [tool for tool in await get_tools(nc) if is_exposed(tool)]
+
 
 class ToolListMiddleware(Middleware):
 	def __init__(self, mcp):
@@ -56,7 +69,7 @@ class ToolListMiddleware(Middleware):
 	) -> list[Tool]:
 		global LAST_MCP_TOOL_UPDATE
 		if LAST_MCP_TOOL_UPDATE + 60 < time.time():
-			nc_tools = await get_tools(context.fastmcp_context.get_state("nextcloud"))
+			nc_tools = await get_exposed_tools(context.fastmcp_context.get_state("nextcloud"))
 			tools = await self.mcp.get_tools()
 			if LAST_MCP_TOOL_UPDATE + 60 < time.time():
 				for tool in tools.keys():
@@ -126,7 +139,7 @@ def mcp_tool(tool, tool_name: str | None = None):
 	async def wrapper(*args, **kwargs):
 		ctx = get_context()
 		nc = ctx.get_state('nextcloud')
-		tools = await get_tools(nc)
+		tools = await get_exposed_tools(nc)
 		invoked_name = tool_name or tool.__name__
 		for t in tools:
 			action = getattr(t, "coroutine", None) or getattr(t, "func", None)
