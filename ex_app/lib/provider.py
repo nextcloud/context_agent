@@ -8,6 +8,11 @@ _optional_output_shape = [
 		name="sources",
 		description="Used tools",
 		shape_type=ShapeType.LIST_OF_TEXTS
+	),
+	ShapeDescriptor(
+		name="scheduled_task_ids",
+		description="Ids of the assistant Scheduled Tasks created by this run",
+		shape_type=ShapeType.LIST_OF_NUMBERS
 	)
 ]
 

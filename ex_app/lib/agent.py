@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import date, datetime
 from time import monotonic
 from typing import Any, cast
@@ -157,6 +157,30 @@ def format_output_mode(output_mode: str | None) -> str:
 			" (no headings, bullet or numbered lists, tables, bold or italic text, code blocks or emojis).\n"
 		)
 	return ""
+
+def collect_created_scheduled_task_ids(messages: Sequence[BaseMessage], previous_message_ids: set[str]) -> list[int]:
+	"""The ids of the assistant Scheduled Tasks that this run's tool calls created, for the
+	client that scheduled the run.
+
+	The ``create_scheduled_task`` tool returns the id under the ``scheduled_task_id`` key of a
+	JSON result, which langgraph's tool node stores as the ``ToolMessage`` content. Only the
+	results of this run are read -- ``previous_message_ids`` holds the ids the conversation had
+	before it started -- and only their structured content, never the model's final text.
+	"""
+	created_scheduled_task_ids: list[int] = []
+	for message in messages:
+		if not isinstance(message, ToolMessage) or message.id in previous_message_ids:
+			continue
+		try:
+			parsed_content = json.loads(message.content) if isinstance(message.content, str) else message.content
+		except ValueError:
+			continue
+		if not isinstance(parsed_content, dict):
+			continue
+		created_scheduled_task_id = parsed_content.get('scheduled_task_id')
+		if isinstance(created_scheduled_task_id, int) and created_scheduled_task_id not in created_scheduled_task_ids:
+			created_scheduled_task_ids.append(created_scheduled_task_id)
+	return created_scheduled_task_ids
 
 async def react(
 		task,
@@ -437,12 +461,18 @@ At the end of each message to the user, if you have carried out a task or answer
 		# a consumer can word its confirmation dialog per action.
 		actions = json.dumps(classifications.annotate(last_message.tool_calls))
 
+	created_scheduled_task_ids = collect_created_scheduled_task_ids(
+		state_snapshot.values.get('messages', []), previous_message_ids
+	)
+
 	result = {
 		'output': extract_text_content(last_message.content),
 		'actions': actions,
 		'conversation_token': export_conversation(checkpointer),
 		'sources': source_list,
 	}
+	if created_scheduled_task_ids:
+		result['scheduled_task_ids'] = created_scheduled_task_ids
 	if multimodal:
 		result['output_attachments'] = extract_file_ids(last_message.content)
 	return result

@@ -38,19 +38,22 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param recurrence_rule: An RRule compliant with RFC 5545 that defines the recurrence rule for the Scheduled Task. For example "FREQ=DAILY;INTERVAL=1" to run the Scheduled Task every day, an empty string as the recurrence_rule means the task does not repeat.
 		:param starts_at: A date time string in ISO 8601 format in the user's local time that defines when the Scheduled Task should start. For example "2025-01-01T09:00:00". It is interpreted in the given timezone. If not provided, the Scheduled Task will start immediately.
 		:param timezone: Timezone (e.g., 'America/New_York'). Defaults to the user's profile timezone; used to interpret starts_at. Must be a valid IANA timezone name when supplied.
-		:return:
+		:return: A dict with the id of the created Scheduled Task under the "scheduled_task_id" key. This id is also made available to the client that scheduled the run, so let the user know the Scheduled Task was created but do not ask them to note the id down.
 		"""
 
 		tz = get_timezone(timezone) if timezone is not None else await user_timezone_async(nc)
-		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
+		created = await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
 			'title': title,
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
 			'startsAt': starts_at_timestamp(starts_at, tz) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
 			'timezone': tz
 		})
-
-		return True
+		# the id of the assistant's "assignment" resource that backs the Scheduled Task
+		scheduled_task_id = None
+		if isinstance(created, dict):
+			scheduled_task_id = (created.get('assignment') or {}).get('id')
+		return {'scheduled_task_id': scheduled_task_id}
 
 	@tool
 	@impulse(ImpulseRadius.SELF)
