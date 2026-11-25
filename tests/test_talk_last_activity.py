@@ -89,6 +89,11 @@ def test_last_activity_without_profile_timezone_is_utc():
 	assert conv['last_activity'] == "2026-11-24T07:30+00:00", conv
 
 
+def test_last_activity_with_unknown_profile_timezone_is_utc():
+	conv, = _list(_FakeAsyncNc("Not/AZone", [_read_conversation()]))
+	assert conv['last_activity'] == "2026-11-24T07:30+00:00", conv
+
+
 if __name__ == "__main__":
 	failed = 0
 	for name, fn in sorted(globals().items()):

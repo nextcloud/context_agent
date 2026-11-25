@@ -61,7 +61,10 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		conversations = await nc.talk.get_user_conversations()
 		tz_name = await user_timezone_async(nc)
-		tz = pytz.timezone(tz_name) if tz_name else pytz.utc
+		try:
+			tz = pytz.timezone(tz_name) if tz_name else pytz.utc
+		except pytz.UnknownTimeZoneError:
+			tz = pytz.utc
 		return json.dumps([{
 			'name': conv.display_name,
 			'token': conv.token,
