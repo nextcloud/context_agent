@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+from datetime import datetime
 from typing import Optional
+
+import pytz
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.talk import ConversationType
@@ -16,6 +19,7 @@ from ex_app.lib.all_tools.lib.impulse import (
 	read_only,
 	reversibility,
 )
+from ex_app.lib.all_tools.lib.tz import user_timezone_async
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -53,14 +57,20 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		List all conversations of the current user in the Nextcloud Talk app.
 		Returns conversation names and tokens. The token is needed for other Talk tools.
-		:return: list of conversations with name, token, type, and unread message count
+		:return: list of conversations with name, token, type, unread message count, and last activity (user's timezone)
 		"""
 		conversations = await nc.talk.get_user_conversations()
+		tz_name = await user_timezone_async(nc)
+		try:
+			tz = pytz.timezone(tz_name) if tz_name else pytz.utc
+		except pytz.UnknownTimeZoneError:
+			tz = pytz.utc
 		return json.dumps([{
 			'name': conv.display_name,
 			'token': conv.token,
 			'type': conv.conversation_type,
 			'unread_messages': conv.unread_messages_count,
+			'last_activity': datetime.fromtimestamp(conv.last_activity, tz).isoformat(timespec='minutes'),
 		} for conv in conversations])
 
 	@tool
