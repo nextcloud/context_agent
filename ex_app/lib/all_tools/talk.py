@@ -32,6 +32,8 @@ TYPE_NAMES = {
 
 # Mentions of a group or team: whether they include the user would cost a membership request per message.
 GROUP_MENTION_TYPES = ('user-group', 'group', 'team', 'circle')
+# People and rooms are named in the text already; objects lists only things other tools act on, like files and polls.
+NOT_OBJECTS = ('user', 'guest', 'email', 'call', *GROUP_MENTION_TYPES)
 
 
 def type_name(conversation_type) -> str:
@@ -74,7 +76,7 @@ def shared_objects(message_parameters) -> list:
 	return [
 		{'type': param.get('type'), 'id': param.get('id'), 'name': param.get('name')}
 		for key, param in _parameters(message_parameters).items()
-		if not key.startswith('mention-') and key != 'actor' and param.get('type') not in ('user', 'guest')
+		if not key.startswith('mention-') and param.get('type') not in NOT_OBJECTS
 	]
 
 

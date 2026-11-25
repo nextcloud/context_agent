@@ -187,6 +187,15 @@ def test_shared_file_reads_as_its_name_and_keeps_its_id():
 	assert m['objects'] == [{'type': 'file', 'id': '42', 'name': 'slides.odp'}], m
 
 
+def test_system_message_people_and_groups_are_not_objects():
+	_, m = _one(ConversationType.GROUP, _message('{actor} added group {group}', params={
+		'actor': {'type': 'user', 'id': 'anna', 'name': 'Anna'},
+		'group': {'type': 'group', 'id': 'devs', 'name': 'devs'},
+	}))
+	assert m['message'] == 'Anna added group devs', m
+	assert 'objects' not in m, m
+
+
 def test_plain_message_has_no_objects():
 	_, m = _one(ConversationType.GROUP, _message('hello'))
 	assert 'objects' not in m, m
