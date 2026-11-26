@@ -8,6 +8,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.12.0] - 2026-11-26
+
+### Added
+* feat(mcp): Allow users to connect to custom MCP servers
+* feat(tools): Auto-discovery of nc openAPI endpoints to use as tools
+* feat(talk): Return last activity in list_talk_conversations
+* feat(mcp_server): Expose mcp tool hints
+* feat(agency): Add a core:image2image task that allows for image generation and inpainting
+* feat(mcp): Obey mcp tool hints by imported MCP servers
+* feat: Improve context window curation and truncation
+* feat(collectives): add create_collective and trash_collective tools
+* feat(deck): More deck app tools
+* feat(mail): Add tool to fetch a single mail
+* feat(context_chat): add context chat search tool
+* feat(nc_model): Automatically save output attachments in the user's assistant folder to allow the agent to reference them in future interactions
+* feat: Allow users and admins to override the system prompt
+
+### Fixed
+* fix(tools): Make sure connection pools are closed properly
+* fix(talk): Fall back to UTC for an unknown profile timezone
+* fix(mcp-server): Advertise read_only tools as destructiveHint=False
+* fix(mcp-server): Do not expose imported MCP tools
+* fix(nc_model): Do not send mixed lists as message content
+* fix(collectives): Make create_collective IRREVERSIBLE
+* fix(collectives): classify create/trash_collective with impulse markers
+* fix(talk): Make Note To Self conversations have radius SELF
+* fix(agent): Improve tool rejection instructions
+* fix(context_chat): expose providers in the system prompt
+* fix(agent): Prevent agent from overriding contents that have been changed in the meantime
+* fix(free_busy_finder): Fix timezone handling
+* fix: Update dependencies
+
 ## [2.11.0] - 2026-11-05
 
 ### Added
