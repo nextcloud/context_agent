@@ -299,7 +299,7 @@ def _default(schema: dict):
 def _argument_name(name: str) -> str:
 	# PHP takes lists as "ids[]"
 	name = name.removesuffix('[]')
-	return re.sub(r'[^a-zA-Z0-9_.-]', '_', name)[:MAX_NAME_LENGTH] or '_'
+	return re.sub(r'[^a-zA-Z0-9_-]', '_', name)[:MAX_NAME_LENGTH] or '_'
 
 
 def _tool_name(name: str) -> str:
@@ -332,6 +332,10 @@ async def call_operation(nc: AsyncNextcloudApp, origin: str, operation: Operatio
 	query = {}
 	body = None
 	values = {**operation.defaults, **{key: value for key, value in tool_args.items() if value is not None}}
+	# The tool does not validate its arguments against a schema given as a dict
+	missing = [argument for argument in operation.args_schema.get('required', []) if argument not in values]
+	if missing:
+		raise ValueError(f'Missing required arguments: {", ".join(missing)}')
 	for argument, value in values.items():
 		# Arguments the spec does not know are left out
 		location, name = operation.arguments.get(argument, (None, None))
@@ -352,20 +356,29 @@ async def call_operation(nc: AsyncNextcloudApp, origin: str, operation: Operatio
 		payload = {'data': body} if operation.content_type == FORM_CONTENT_TYPE else {'json': body}
 	method = operation.method.upper()
 	# The spec's paths already start with the web root of the instance
-	response = await nc._session._create_adapter().request(
-		method, origin + path, headers=HEADERS, params=query, **payload,
+	# Redirects are not followed: an API call is never meant to end up at a page such as the login form
+	response = await asyncio.wait_for(
+		nc._session._create_adapter().request(
+			method, origin + path, headers=HEADERS, params=query, allow_redirects=False, **payload,
+		),
+		timeout=REQUEST_TIMEOUT,
 	)
 	try:
 		result = response.json()
 	except ValueError:
 		result = None
 
-	if response.status_code >= 400:
+	meta = {}
+	if isinstance(result, dict) and isinstance(result.get('ocs'), dict):
+		meta = result['ocs'].get('meta') or {}
+	# OCS v1 reports failures with HTTP 200 and the status in the envelope
+	ocs_failed = meta.get('status') not in (None, 'ok')
+	if response.status_code >= 300 or ocs_failed:
 		message = None
 		if isinstance(result, dict):
-			meta = result.get('ocs', {}).get('meta', {}) if isinstance(result.get('ocs'), dict) else {}
 			message = meta.get('message') or result.get('message') or result.get('error')
-		raise ValueError(f'{method} {path} failed with HTTP {response.status_code}: {message or response.reason}')
+		status = f'HTTP {response.status_code}' if response.status_code >= 300 else f'OCS status {meta.get("statuscode")}'
+		raise ValueError(f'{method} {path} failed with {status}: {message or response.reason}')
 
 	if result is None:
 		content_type = response.headers.get('Content-Type', '')

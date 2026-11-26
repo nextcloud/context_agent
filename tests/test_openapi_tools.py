@@ -166,6 +166,40 @@ def test_errors_carry_the_ocs_message():
 		raise AssertionError('expected the call to fail')
 
 
+def _call_fails(nc, operation, tool_args, expected):
+	tool = openapi.make_tool(nc, 'https://cloud.example', operation)
+	try:
+		asyncio.run(tool.ainvoke(tool_args))
+	except ValueError as e:
+		assert expected in str(e), str(e)
+	else:
+		raise AssertionError('expected the call to fail')
+
+
+def test_missing_required_arguments_fail_before_the_request():
+	nc = _FakeNextcloudApp()
+	_call_fails(nc, _operations()['notes_note_update'], {'title': 'Hi'}, 'Missing required arguments: id')
+	assert nc.requests == []
+
+
+def test_ocs_failures_with_http_200_are_errors():
+	url = 'https://cloud.example/ocs/v2.php/apps/notes/api/v1/notes/4'
+	failure = {'ocs': {'meta': {'status': 'failure', 'statuscode': 998, 'message': 'Nope'}, 'data': []}}
+	nc = _FakeNextcloudApp({url: _Response(200, failure)})
+	_call_fails(nc, _operations()['notes_note_get'], {'id': 4}, 'OCS status 998: Nope')
+
+
+def test_redirects_are_errors_and_not_followed():
+	url = 'https://cloud.example/ocs/v2.php/apps/notes/api/v1/notes/4'
+	nc = _FakeNextcloudApp({url: _Response(303, None)})
+	_call_fails(nc, _operations()['notes_note_get'], {'id': 4}, 'HTTP 303')
+	assert nc.requests[0][2]['allow_redirects'] is False
+
+
+def test_argument_names_have_no_dots():
+	assert openapi._argument_name('options.limit') == 'options_limit'
+
+
 def test_only_reads_are_marked():
 	nc = _FakeNextcloudApp()
 	operations = _operations()
