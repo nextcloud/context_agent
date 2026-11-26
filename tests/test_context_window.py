@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 os.environ.setdefault("APP_ID", "context_agent")
@@ -27,6 +28,8 @@ from ex_app.lib.context_window import (  # noqa: E402
     CHARS_PER_TOKEN,
     MIN_CONTEXT_BUDGET,
     OLD_TOOL_OUTPUT_MAX_LENGTH,
+    _shortened_size,
+    _size_tree,
     message_size,
     render_transcript,
     render_transcripts,
@@ -72,6 +75,110 @@ def test_truncate_json_list_stays_valid():
     assert parsed[-1] == data[-1]
     marker = next(item for item in parsed if isinstance(item, str))
     assert "items omitted" in marker
+
+
+def test_truncate_json_object_shortens_its_longest_list():
+    data = {
+        "count": 300,
+        "tickets": [{"id": i, "title": f"ticket {i}"} for i in range(300)],
+        "tags": ["a", "b"],
+        "warning": "w" * 50,
+    }
+    truncated = truncate_text(json.dumps(data), 2000, "list_tickets")
+    assert len(truncated) <= 2000
+    parsed = json.loads(truncated)
+    # the other fields are kept as they are
+    assert (parsed["count"], parsed["tags"], parsed["warning"]) == (300, ["a", "b"], "w" * 50)
+    assert parsed["tickets"][0] == data["tickets"][0]
+    assert parsed["tickets"][-1] == data["tickets"][-1]
+    marker = next(item for item in parsed["tickets"] if isinstance(item, str))
+    assert "items omitted" in marker and "list_tickets" in marker
+
+
+def test_truncate_json_finds_lists_in_nested_objects():
+    data = {"data": {"page": 1, "tickets": [{"id": i, "title": f"ticket {i}"} for i in range(300)]}}
+    truncated = truncate_text(json.dumps(data), 2000, "list_tickets")
+    assert len(truncated) <= 2000
+    parsed = json.loads(truncated)
+    tickets = parsed["data"]["tickets"]
+    assert parsed["data"]["page"] == 1
+    assert (tickets[0], tickets[-1]) == (data["data"]["tickets"][0], data["data"]["tickets"][-1])
+    assert any(isinstance(item, str) and "items omitted" in item for item in tickets)
+
+
+def test_truncate_json_shortens_more_than_one_list():
+    data = {"open": [f"open {i}" for i in range(200)], "closed": [f"closed {i}" for i in range(200)]}
+    truncated = truncate_text(json.dumps(data), 1500)
+    assert len(truncated) <= 1500
+    parsed = json.loads(truncated)
+    for key in ("open", "closed"):
+        assert any("items omitted" in item for item in parsed[key])
+        # every list keeps some of its items, not only the marker
+        assert len(parsed[key]) > 1
+
+
+def test_truncate_json_shortens_inner_lists_before_leaving_out_outer_items():
+    data = [
+        {"project": f"project {k}", "open_tickets": 300,
+         "tickets": [{"id": i, "title": f"ticket {i} of project {k}"} for i in range(300)]}
+        for k in range(2)
+    ]
+    truncated = truncate_text(json.dumps(data), 20000, "list_projects", can_refetch=False)
+    assert len(truncated) <= 20000
+    parsed = json.loads(truncated)
+    assert [(p["project"], p["open_tickets"]) for p in parsed] == [("project 0", 300), ("project 1", 300)]
+    for project, original in zip(parsed, data, strict=True):
+        assert project["tickets"][0] == original["tickets"][0]
+        assert any(isinstance(item, str) and "items omitted" in item for item in project["tickets"])
+
+
+def test_truncate_json_falls_back_to_cutting_characters_if_one_item_per_list_is_too_much():
+    data = [{"id": i, "text": "x" * 500} for i in range(10)]
+    truncated = truncate_text(json.dumps(data), 300)
+    assert len(truncated) <= 300
+    assert truncated.startswith('[{"id": 0, "text": "xxx')
+
+
+def test_truncate_text_cuts_deeply_nested_json_by_characters():
+    # json.loads (in C) accepts deeper nesting than Python's recursion limit
+    text = "[" * 3000 + "1" + "]" * 3000
+    truncated = truncate_text(text, 100)
+    assert len(truncated) <= 100
+
+
+def test_truncate_json_keeps_text_that_looks_like_a_list():
+    # The shortened list goes back where it was, whatever the other fields contain
+    data = {"note": "[1, 2, 3]", "items": [{"id": i, "text": "[1, 2, 3]"} for i in range(200)]}
+    parsed = json.loads(truncate_text(json.dumps(data), 1500))
+    assert parsed["note"] == "[1, 2, 3]"
+    assert parsed["items"][0] == data["items"][0]
+
+
+def test_truncate_json_shortens_lists_inside_kept_items():
+    data = [{"id": i, "tags": [f"tag {k}" for k in range(20)]} for i in range(100)]
+    truncated = truncate_text(json.dumps(data), 1500)
+    assert len(truncated) <= 1500
+    parsed = json.loads(truncated)
+    assert (parsed[0]["id"], parsed[-1]["id"]) == (0, 99)
+    assert parsed[0]["tags"][0] == "tag 0"
+
+
+def test_measured_size_matches_serialized_size():
+    data = {"a": [1, 2.5, None, True, 'ü "q"'], "b": {"c": [], "d": [{"e": "x"}, {}]}, "f": "…"}
+    tree, size = _size_tree(data)
+    assert size == _shortened_size(tree, None)[0] == len(json.dumps(data, ensure_ascii=False))
+    # the planned size of a shortened result is its real size
+    for share in (0.0, 0.3, 0.7):
+        data = {"a": [{"b": [f"item {i}" for i in range(50)]} for _ in range(20)], "c": "x"}
+        tree, size = _size_tree(data)
+        planned, _ = _shortened_size(tree, share, "; hint", apply=True)
+        assert planned == len(json.dumps(data, ensure_ascii=False))
+
+
+def test_truncate_json_object_without_list_is_cut_as_text():
+    data = {"text": "x" * 5000}
+    truncated = truncate_text(json.dumps(data), 2000)
+    assert "characters omitted" in truncated
 
 
 def test_split_turns():
@@ -619,3 +726,16 @@ def test_react_counts_instructions_and_tools_towards_the_budget():
     big_tool.description = "d" * (3 * MIN_CONTEXT_BUDGET * CHARS_PER_TOKEN)
     run([big_tool])
     assert any("context budget" in line for line in logged)
+
+
+def test_shortening_a_large_json_result_is_fast():
+    # a tool result of about 5 MB: a list of 20,000 tickets with nested fields
+    items = [{"id": i, "title": f"Ticket {i}", "tags": ["sync", "client"], "text": "word " * 40} for i in range(20000)]
+    text = json.dumps({"tickets": items, "count": len(items)})
+    assert len(text) > 5_000_000
+    start = time.perf_counter()
+    result = truncate_text(text, 20000, "list_tickets")
+    # about 0.1 s on a laptop; the generous limit only catches quadratic work, not a slow runner
+    assert time.perf_counter() - start < 5
+    assert len(result) <= 20000
+    json.loads(result)
