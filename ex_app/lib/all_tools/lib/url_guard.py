@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""SSRF protection helpers for the `web_fetch` tool.
+"""SSRF protection helpers for the `web_fetch` tool and the MCP servers of users.
 
 The function :func:`assert_public_url` refuses these URLs:
 - A URL that does not use the HTTP or the HTTPS scheme.
@@ -9,7 +9,7 @@ The function :func:`assert_public_url` refuses these URLs:
   metadata address `169.254.169.254` and the mDNS names that end with `.local`.
 
 The class :class:`PublicAddressResolver` applies the same address check when the
-HTTP client connects.
+niquests client connects, and :class:`PublicNetworkBackend` does so for httpx.
 
 This is a hard limit. It does not change with the content of the conversation.
 """
@@ -21,6 +21,7 @@ import socket
 import typing
 from urllib.parse import urlsplit
 
+import httpcore
 from niquests.packages.urllib3.contrib.resolver._async.system import SystemResolver
 
 
@@ -123,6 +124,37 @@ class PublicAddressResolver(SystemResolver):
 			if not _is_public_ip(record[4][0]):
 				raise socket.gaierror(f"refused: '{name}' resolves to a non-public address")
 		return records
+
+
+class PublicNetworkBackend(httpcore.AnyIOBackend):
+	"""An httpcore network backend that connects only to public addresses.
+
+	This is the httpx counterpart of :class:`PublicAddressResolver`. The backend
+	resolves the host itself, refuses it if one of its addresses is not public, and
+	connects to an address it examined. Thus a DNS server cannot send a public
+	address to :func:`assert_public_url` and an internal address to the connection.
+
+	TLS still verifies the certificate against the host name, because httpcore takes
+	the name for SNI from the URL and not from the address it connected to.
+	"""
+
+	async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+		try:
+			addresses = await _resolve_all(host)
+		except socket.gaierror as e:
+			raise httpcore.ConnectError(f"could not resolve host '{host}'") from e
+		if not addresses:
+			raise httpcore.ConnectError(f"host '{host}' did not resolve to any address")
+		for address in addresses:
+			if not _is_public_ip(address):
+				raise httpcore.ConnectError(f"refused: '{host}' resolves to a non-public address")
+		error = None
+		for address in dict.fromkeys(addresses):
+			try:
+				return await super().connect_tcp(address, port, timeout, local_address, socket_options)
+			except httpcore.ConnectError as e:
+				error = e
+		raise error
 
 
 async def assert_public_url(url: str) -> None:
