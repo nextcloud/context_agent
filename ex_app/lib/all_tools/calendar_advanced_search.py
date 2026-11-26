@@ -29,6 +29,7 @@ from ex_app.lib.all_tools.lib.calendar_search import (
     validate_search,
 )
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 MAX_CONCURRENT_CALENDAR_QUERIES = 4
 MAX_PROCESSED_OCCURRENCES_PER_SEARCH = 250_000
@@ -361,7 +362,8 @@ async def is_available(nc: AsyncNextcloudApp):
 
 async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCollection], int]:
     """Follow CalDAV principal discovery to the current user's event calendars."""
-    principal_response = await nc._session.adapter_dav.request(
+    principal_response = await nc_dav_request(
+        nc,
         "PROPFIND",
         "/",
         headers=_dav_headers("0"),
@@ -370,7 +372,8 @@ async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCol
     _require_success(principal_response, {207}, "current_user_principal")
     principal_path = _same_origin_dav_path(nc, parse_current_user_principal(principal_response.text))
 
-    home_response = await nc._session.adapter_dav.request(
+    home_response = await nc_dav_request(
+        nc,
         "PROPFIND",
         principal_path,
         headers=_dav_headers("0"),
@@ -379,7 +382,8 @@ async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCol
     _require_success(home_response, {207}, "calendar_home")
     home_path = _same_origin_dav_path(nc, parse_calendar_home(home_response.text))
 
-    calendars_response = await nc._session.adapter_dav.request(
+    calendars_response = await nc_dav_request(
+        nc,
         "PROPFIND",
         home_path,
         headers=_dav_headers("1"),
@@ -391,7 +395,8 @@ async def _list_event_calendars(nc: AsyncNextcloudApp) -> tuple[list[CalendarCol
 
 async def _calendar_report(nc: AsyncNextcloudApp, calendar: CalendarCollection, body: str) -> str:
     request_path = _same_origin_dav_path(nc, calendar.href)
-    response = await nc._session.adapter_dav.request(
+    response = await nc_dav_request(
+        nc,
         "REPORT",
         request_path,
         headers=_dav_headers("1"),

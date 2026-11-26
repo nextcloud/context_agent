@@ -7,6 +7,7 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.audience import share_type_radius
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.session import nc_request
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -15,7 +16,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	BOOKMARKS_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
 
 	async def bookmarks_get(path):
-		response = await nc._session._create_adapter(False).request('GET', f"{BOOKMARKS_API}{path}", headers=BOOKMARKS_HEADERS)
+		response = await nc_request(nc, 'GET', f"{BOOKMARKS_API}{path}", headers=BOOKMARKS_HEADERS)
 		payload = response.json()
 		if payload.get('status') != 'success':
 			raise ValueError(f'Bookmarks API said {payload.get("status")!r} for {path}')
@@ -63,7 +64,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if tags:
 			params['tags[]'] = tags
 
-		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, params=params)
@@ -78,7 +79,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param search_term: text to search for in bookmark titles, urls, and descriptions
 		:return: list of matching bookmarks
 		"""
-		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, params={'search': search_term})
@@ -111,7 +112,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if folder_id is not None:
 			payload['folders'] = [folder_id]
 
-		response = await nc._session._create_adapter(False).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark", headers={
+		response = await nc_request(nc, 'POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json=payload)
@@ -145,7 +146,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if folders is not None:
 			payload['folders'] = folders
 
-		response = await nc._session._create_adapter(False).request('PUT', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark/{bookmark_id}", headers={
+		response = await nc_request(nc, 'PUT', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark/{bookmark_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json=payload)
@@ -162,7 +163,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param bookmark_id: the id of the bookmark to delete (obtainable via list_bookmarks)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter(False).request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark/{bookmark_id}", headers={
+		response = await nc_request(nc, 'DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/bookmark/{bookmark_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -176,7 +177,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all bookmark folders
 		:return: list of folders with their id, title, and parent folder
 		"""
-		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/folder", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/folder", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -199,7 +200,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if parent_folder_id is not None:
 			payload['parent_folder'] = parent_folder_id
 
-		response = await nc._session._create_adapter(False).request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/folder", headers={
+		response = await nc_request(nc, 'POST', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/folder", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json=payload)
@@ -213,7 +214,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all bookmark tags with usage counts
 		:return: list of tags with the number of bookmarks using each tag
 		"""
-		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/tag", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/bookmarks/public/rest/v2/tag", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})

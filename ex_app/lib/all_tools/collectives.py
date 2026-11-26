@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 # Nextcloud Circles member types (same values as in circles.py)
 TYPE_GROUP = 2
@@ -235,7 +236,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		page = page_resp['page'] if isinstance(page_resp, dict) and 'page' in page_resp else page_resp
 		user_id = await nc.user
 		url = await _page_webdav_url(user_id, page)
-		response = await nc._session._create_adapter(True).request('GET', url, headers={
+		response = await nc_dav_request(nc, 'GET', url, headers={
 			'Accept': 'text/markdown',
 		})
 		if response.status_code == 404:
@@ -302,7 +303,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		url = await _page_webdav_url(user_id, page)
 		body = _strip_ai_disclaimer(content).rstrip()
 		stamped = f"{body}\n\n{_AI_DISCLAIMER}\n" if body else f"{_AI_DISCLAIMER}\n"
-		response = await nc._session._create_adapter(True).request('PUT', url, headers={
+		response = await nc_dav_request(nc, 'PUT', url, headers={
 			'Content-Type': 'text/markdown',
 		}, data=stamped)
 		response.raise_for_status()

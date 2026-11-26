@@ -15,6 +15,7 @@ user rather than act quietly.
 import xml.etree.ElementTree as ET
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 # How far a share reaches, by Nextcloud share type. Types missing here fall back
 # to the widest radius on purpose.
@@ -101,11 +102,11 @@ async def mount_type_radius(nc, path) -> ImpulseRadius:
 	is not there yet.
 	"""
 	user_id = await nc.user
-	adapter = nc._session._create_adapter(True)
 	# Deepest first, then the user's root, which always resolves.
 	candidates = sorted(path_and_parents(path), key=len, reverse=True) + ['']
 	for candidate in candidates:
-		response = await adapter.request(
+		response = await nc_dav_request(
+			nc,
 			'PROPFIND',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{candidate.lstrip('/')}",
 			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},

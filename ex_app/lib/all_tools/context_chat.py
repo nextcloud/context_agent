@@ -11,6 +11,7 @@ from nc_py_api import AsyncNextcloudApp
 from ex_app.lib.all_tools.lib.decorator import timed_memoize
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
 from ex_app.lib.all_tools.lib.task_processing import run_task
+from ex_app.lib.all_tools.lib.session import nc_request
 
 LOGGER = logging.getLogger(__name__)
 CC_PROVIDERS_TTL = 60 * 60  # 1h
@@ -27,7 +28,7 @@ class CcProvider(pydantic.BaseModel):
 @timed_memoize(CC_PROVIDERS_TTL)
 async def _fetch_context_chat_providers(nc: AsyncNextcloudApp) -> list[CcProvider]:
 	try:
-		response = await nc._session._create_adapter(False).request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/context_chat/providers", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})

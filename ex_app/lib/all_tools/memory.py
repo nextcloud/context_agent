@@ -7,7 +7,6 @@ import logging
 import os
 from urllib.parse import quote, unquote
 
-import niquests
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api._exceptions import NextcloudExceptionNotFound
@@ -25,6 +24,7 @@ from ex_app.lib.all_tools.lib.impulse import (
 	reversibility,
 )
 from ex_app.lib.all_tools.lib.task_processing import run_task
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 from ex_app.lib.logger import log
 
 # The agent only looks at the memory files inside the Memories folder and considers that
@@ -120,7 +120,7 @@ def __validate_memory_path(path: str, memories_folder_path: str, *, only_allow_f
 	return (quote(full_path, safe='/'), decoded.lstrip('/'))
 
 
-async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquests.AsyncSession, memories_folder_path: str, user_id: str, scoped_path: str):
+async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, memories_folder_path: str, user_id: str, scoped_path: str):
 	"""
 	Ensures all necessary folders exist for the given scoped_path (relative to the user's DAV root).
 	First checks and recursively creates the base memories folder, then checks and creates
@@ -129,7 +129,8 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 	base_memories_path = quote(memories_folder_path, safe='/')
 
 	# Ensure base memories folder exists
-	propfind = await adapter.request(
+	propfind = await nc_dav_request(
+		nc,
 		'PROPFIND',
 		f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{base_memories_path}",
 		headers={'Depth': '0'},
@@ -138,7 +139,7 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 		base_parts = [p for p in base_memories_path.split('/') if p]
 		for i in range(1, len(base_parts) + 1):
 			folder_path = '/'.join(base_parts[:i])
-			r = await adapter.request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{folder_path}")
+			r = await nc_dav_request(nc, 'MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{folder_path}")
 			if r.status_code not in (200, 201, 405):  # 405 = already exists
 				raise RuntimeError(f'Failed to create base memory folder {folder_path}: {r.status_code}')
 
@@ -149,7 +150,8 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 		return  # file is in the memories root, no subfolder needed
 
 	full_subfolder_path = quote(f"{memories_folder_path}/{'/'.join(scoped_folder_parts)}", safe='/')
-	propfind = await adapter.request(
+	propfind = await nc_dav_request(
+		nc,
 		'PROPFIND',
 		f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_subfolder_path}",
 		headers={'Depth': '0'},
@@ -159,7 +161,7 @@ async def __create_folders_if_not_exists(nc: AsyncNextcloudApp, adapter: niquest
 		all_parts = base_parts + [quote(p, safe='') for p in scoped_folder_parts]
 		for i in range(len(base_parts) + 1, len(all_parts) + 1):
 			folder_path = '/'.join(all_parts[:i])
-			r = await adapter.request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{folder_path}")
+			r = await nc_dav_request(nc, 'MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{folder_path}")
 			if r.status_code not in (200, 201, 405):  # 405 = already exists
 				raise RuntimeError(f'Failed to create memory subfolder {folder_path}: {r.status_code}')
 
@@ -264,7 +266,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 
 		# let the user-scoped request errors reach the agent, although it leaks the full path of the memory
 		user_id = await nc.user
-		response = await nc._session._create_adapter(True).request(
+		response = await nc_dav_request(
+			nc,
 			'GET',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
 			headers={"Content-Type": "application/json"},
@@ -298,12 +301,12 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return {'error': 'Invalid memory path given'}
 
 		user_id = await nc.user
-		adapter = nc._session._create_adapter(True)
 
 		# Ensure all parent folders exist
-		await __create_folders_if_not_exists(nc, adapter, memories_folder_path, user_id, scoped_path)
+		await __create_folders_if_not_exists(nc, memories_folder_path, user_id, scoped_path)
 
-		response = await adapter.request(
+		response = await nc_dav_request(
+			nc,
 			'PUT',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
 			headers={"Content-Type": "text/markdown"},
@@ -337,7 +340,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return {'error': 'Invalid memory path given'}
 
 		user_id = await nc.user
-		await nc._session._create_adapter(True).request(
+		await nc_dav_request(
+			nc,
 			'DELETE',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
 		)
@@ -363,7 +367,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			return {'error': 'Invalid memory path given'}
 
 		user_id = await nc.user
-		await nc._session._create_adapter(True).request(
+		await nc_dav_request(
+			nc,
 			'DELETE',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{full_path}",
 		)

@@ -7,6 +7,7 @@ from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.files import trash_enabled
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.session import nc_request
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -24,7 +25,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param category: optional category to filter recipes
 		:return: list of recipes with their id, name, and basic info
 		"""
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -46,7 +47,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		if '/' in search_term or '\\' in search_term:
 			raise ValueError("Search term cannot contain slashes.")
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/search/{search_term}", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/search/{search_term}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -61,7 +62,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param recipe_id: the id of the recipe (obtainable via list_recipes or search_recipes)
 		:return: complete recipe information
 		"""
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes/{recipe_id}", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes/{recipe_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -101,7 +102,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		if category:
 			recipe_data['recipeCategory'] = category
 
-		response = await nc._session._create_adapter().request('POST', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes", headers={
+		response = await nc_request(nc, 'POST', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		}, json=recipe_data)
@@ -119,7 +120,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param recipe_id: the id of the recipe to delete (obtainable via list_recipes)
 		:return: confirmation of deletion
 		"""
-		response = await nc._session._create_adapter().request('DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes/{recipe_id}", headers={
+		response = await nc_request(nc, 'DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/recipes/{recipe_id}", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})
@@ -133,7 +134,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all recipe categories
 		:return: list of category names
 		"""
-		response = await nc._session._create_adapter().request('GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/categories", headers={
+		response = await nc_request(nc, 'GET', f"{nc.app_cfg.endpoint}/index.php/apps/cookbook/api/v1/categories", headers={
 			"Content-Type": "application/json",
 			"OCS-APIREQUEST": "true",
 		})

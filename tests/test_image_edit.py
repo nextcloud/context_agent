@@ -161,7 +161,7 @@ class _FakePropfindApp:
 				app.urls.append(url)
 				return _FakePropfindApp._Response(404 if url in app.missing_urls else 207)
 
-		self._session = type('Session', (), {'_create_adapter': lambda _self, _dav: _Adapter()})()
+		self._session = type('Session', (), {'adapter_dav': _Adapter()})()
 
 	@property
 	async def user(self):

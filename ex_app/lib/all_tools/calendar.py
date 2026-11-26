@@ -20,6 +20,7 @@ from ex_app.lib.all_tools.lib.audience import principal_radius
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
 from ex_app.lib.all_tools.lib.tz import get_timezone, user_timezone
 from ex_app.lib.all_tools.lib.freebusy_finder import find_available_slots, freebusy_range
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 
 EMAIL_ADDRESS = re.compile(r'[^\s@:;,<>"]+@[^\s@:;,<>"]+')
@@ -44,7 +45,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		everything put into it. Both are read off the calendar's DAV properties.
 		"""
 		user_id = await nc.user
-		response = await nc._session._create_adapter(True).request(
+		response = await nc_dav_request(
+			nc,
 			'PROPFIND',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{user_id}/",
 			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
@@ -234,7 +236,7 @@ DTEND:{DTEND}
 END:VCALENDAR
 """.replace('{ATTENDEES}', attendees).replace('{DTSTART}', dtstart).replace('{DTEND}', dtend)
 			username = ncSync._session.user
-			response = ncSync._session._create_adapter(True).request('POST',
+			response = ncSync._session.adapter_dav.request('POST',
 																	   f"{nc.app_cfg.endpoint}/remote.php/dav/calendars/{username}/outbox/",
 																	   headers={
 																		   "Content-Type": "text/calendar; charset=utf-8",
