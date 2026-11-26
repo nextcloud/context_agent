@@ -29,6 +29,9 @@ youtube-search = "^2.1.2"
 uvicorn = "^0.40"
 fastmcp = "^2.14"
 niquests = "^3.17.0"
+# The MCP servers of users replace a private attribute of httpx to check addresses; see mcp.public_http_client
+httpx = ">=0.28.1,<0.29"
+httpcore = ">=1.0.9,<1.1"
 ddgs = "^9.13.1"
 
 [build-system]
