@@ -27,6 +27,7 @@ from ex_app.lib.all_tools.lib.files import (
 	get_file_id_from_file_url,
 	trash_enabled,
 )
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 
 def _validate_path(path: str) -> str:
@@ -117,7 +118,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_path(file_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
-		response = await nc._session._create_adapter(True).request('GET', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{file_path}", headers={
+		response = await nc_dav_request(nc, 'GET', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{file_path}", headers={
 			"Content-Type": "application/json",
 		})
 
@@ -207,7 +208,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
-		response = await nc._session._create_adapter(True).request('PUT', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
+		response = await nc_dav_request(nc, 'PUT', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
 			"Content-Type": "text/plain",
 		}, data=content)
 
@@ -227,7 +228,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
-		response = await nc._session._create_adapter(True).request('MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
+		response = await nc_dav_request(nc, 'MKCOL', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
 			"Content-Type": "application/json",
 		})
 
@@ -250,7 +251,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_path(destination_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
-		response = await nc._session._create_adapter(True).request('MOVE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
+		response = await nc_dav_request(nc, 'MOVE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
 			"Destination": f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{destination_path}",
 		})
 
@@ -273,7 +274,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_path(destination_path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
-		response = await nc._session._create_adapter(True).request('COPY', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
+		response = await nc_dav_request(nc, 'COPY', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path}", headers={
 			"Destination": f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{destination_path}",
 		})
 
@@ -318,7 +319,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'</d:basicsearch>'
 			'</d:searchrequest>'
 		)
-		search_response = await nc._session._create_adapter(True).request(
+		search_response = await nc_dav_request(
+			nc,
 			'SEARCH',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/",
 			headers={"Content-Type": "text/xml; charset=utf-8"},
@@ -358,7 +360,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			'<d:prop><oc:fileid/></d:prop>'
 			'</d:propfind>'
 		)
-		propfind_response = await nc._session._create_adapter(True).request(
+		propfind_response = await nc_dav_request(
+			nc,
 			'PROPFIND',
 			f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{source_path.lstrip('/')}",
 			headers={"Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
@@ -397,7 +400,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		_validate_path(path)
 		user_id = (await nc.ocs('GET', '/ocs/v2.php/cloud/user'))["id"]
 
-		response = await nc._session._create_adapter(True).request('DELETE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
+		response = await nc_dav_request(nc, 'DELETE', f"{nc.app_cfg.endpoint}/remote.php/dav/files/{user_id}/{path}", headers={
 			"Content-Type": "application/json",
 		})
 

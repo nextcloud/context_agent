@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 import vobject
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, impulse, read_only
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -42,7 +43,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: a dictionary with the person's email, phone and address
 		"""
 		username = await nc._session.user
-		response = await nc._session._create_adapter(True).request('PROPFIND', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/", headers={
+		response = await nc_dav_request(nc, 'PROPFIND', f"{nc.app_cfg.endpoint}/remote.php/dav/addressbooks/users/{username}/", headers={
 			"Content-Type": "application/xml; charset=utf-8",
 		})
 		namespace = {"DAV": "DAV:"}  # Define the namespace
@@ -70,7 +71,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	  </C:filter>
 	</C:addressbook-query>
 	""".replace('{NAME}', escape(name))
-			response = await nc._session._create_adapter(True).request('REPORT', f"{nc.app_cfg.endpoint}{link}", headers={
+			response = await nc_dav_request(nc, 'REPORT', f"{nc.app_cfg.endpoint}{link}", headers={
 				"Content-Type": "application/xml; charset=utf-8",
 				"Depth": "1",
 			}, data=xml_body)

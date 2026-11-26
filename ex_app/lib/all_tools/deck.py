@@ -9,6 +9,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, destructive_if, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.session import nc_request
 
 # Resolving a card to its board costs one request per board the user can see, so
 # the map is kept per user and out here, rather than in the get_tools closure that
@@ -53,7 +54,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	DECK_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
 
 	async def deck_request(method, path, payload=None):
-		response = await nc._session._create_adapter().request(method, f"{DECK_API}{path}", headers=DECK_HEADERS, json=payload)
+		response = await nc_request(nc, method, f"{DECK_API}{path}", headers=DECK_HEADERS, json=payload)
 		if response.status_code >= 400:
 			# Deck explains what went wrong in a JSON body; pass that on rather than
 			# letting the caller trip over an error object where it expected a card.

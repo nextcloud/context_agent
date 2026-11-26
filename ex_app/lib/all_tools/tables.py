@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.session import nc_request
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -14,7 +15,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	TABLES_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
 
 	async def tables_get(path):
-		response = await nc._session._create_adapter().request('GET', f"{TABLES_API}{path}", headers=TABLES_HEADERS)
+		response = await nc_request(nc, 'GET', f"{TABLES_API}{path}", headers=TABLES_HEADERS)
 		return response.json()
 
 	async def table_share_radius(table_id):
@@ -95,7 +96,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		List all tables available to the current user in the Nextcloud Tables app
 		:return: list of tables with their id, title, emoji, ownership, and column/row counts
 		"""
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'GET', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 		)
@@ -118,7 +120,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			payload['emoji'] = emoji
 		if template is not None:
 			payload['template'] = template
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'POST', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			json=payload,
@@ -145,7 +148,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			payload['emoji'] = emoji
 		if archived is not None:
 			payload['archived'] = archived
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'PUT', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			json=payload,
@@ -163,7 +167,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param table_id: the id of the table to delete (obtainable with list_tables)
 		:return: the deleted table
 		"""
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 		)
@@ -180,7 +185,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param table_id: the id of the table (obtainable with list_tables)
 		:return: list of columns with their id, title, type, subtype, and configuration
 		"""
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'GET', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}/columns",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 		)
@@ -291,7 +297,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			payload['usergroupSelectTeams'] = usergroup_select_teams
 		if usergroup_show_user_status is not None:
 			payload['usergroupShowUserStatus'] = usergroup_show_user_status
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'POST', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}/columns",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			json=payload,
@@ -352,7 +359,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			payload['usergroupSelectTeams'] = usergroup_select_teams
 		if usergroup_show_user_status is not None:
 			payload['usergroupShowUserStatus'] = usergroup_show_user_status
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'PUT', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/columns/{column_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			json=payload,
@@ -370,7 +378,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param column_id: the id of the column to delete (obtainable with list_columns)
 		:return: the deleted column
 		"""
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/columns/{column_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 		)
@@ -396,7 +405,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 			params['limit'] = limit
 		if offset is not None:
 			params['offset'] = offset
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'GET', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}/rows",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			params=params,
@@ -430,7 +440,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:return: the created row
 		"""
 		parsed_data = json.loads(data)
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'POST', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/tables/{table_id}/rows",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			json={'data': parsed_data},
@@ -464,7 +475,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		payload = {'data': parsed_data}
 		if view_id is not None:
 			payload['viewId'] = view_id
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'PUT', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/rows/{row_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 			json=payload,
@@ -482,7 +494,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 		:param row_id: the id of the row to delete (obtainable with list_rows)
 		:return: the deleted row
 		"""
-		response = await nc._session._create_adapter().request(
+		response = await nc_request(
+			nc,
 			'DELETE', f"{nc.app_cfg.endpoint}/index.php/apps/tables/api/1/rows/{row_id}",
 			headers={"Content-Type": "application/json", "OCS-APIREQUEST": "true"},
 		)

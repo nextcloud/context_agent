@@ -10,6 +10,7 @@ from nc_py_api.ex_app import LogLvl
 from nc_py_api.files.files_async import AsyncFilesAPI, FsNode
 
 from ex_app.lib.logger import log
+from ex_app.lib.all_tools.lib.session import nc_dav_request
 
 # todo: add multimodal support for the multimodal task type. That type needs a different
 # maximum size.
@@ -165,7 +166,8 @@ async def _propfind_file_id(nc: AsyncNextcloudApp, user_id: str, file_path: str)
 		'<d:prop><oc:fileid/></d:prop>'
 		'</d:propfind>'
 	)
-	propfind_response = await nc._session._create_adapter(True).request(
+	propfind_response = await nc_dav_request(
+		nc,
 		'PROPFIND',
 		# Escaped, so `#`, `?` and `%` stay part of the name, and `%2e%2e` cannot turn into `..`
 		f"{nc.app_cfg.endpoint}/remote.php/dav/files/{quote(user_id, safe='')}/{quote(file_path.lstrip('/'))}",
