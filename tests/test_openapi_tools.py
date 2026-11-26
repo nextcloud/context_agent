@@ -121,7 +121,9 @@ class _FakeNextcloudApp:
 			self.requests.append((method, url, request_kwargs))
 			return responses.get(url) or _Response(200, {'ocs': {'meta': {}, 'data': {'ok': True}}})
 
-		self._session._create_adapter.return_value.request = request
+		adapter = self._session._create_adapter.return_value
+		adapter.request = request
+		adapter.__aenter__.return_value = adapter
 
 		async def get_value(key, default=None):
 			return self.config.get(key, default)

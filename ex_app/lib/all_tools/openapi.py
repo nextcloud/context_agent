@@ -130,10 +130,11 @@ def _load_json_object(value) -> dict:
 
 
 async def _viewer_request(nc: AsyncNextcloudApp, path: str = ''):
-	response = await asyncio.wait_for(
-		nc._session._create_adapter().request('GET', f'{nc.app_cfg.endpoint}{VIEWER_PATH}{path}', headers=HEADERS),
-		timeout=REQUEST_TIMEOUT,
-	)
+	async with nc._session._create_adapter() as adapter:
+		response = await asyncio.wait_for(
+			adapter.request('GET', f'{nc.app_cfg.endpoint}{VIEWER_PATH}{path}', headers=HEADERS),
+			timeout=REQUEST_TIMEOUT,
+		)
 	if response.status_code != 200:
 		raise ValueError(f'ocs_api_viewer answered {VIEWER_PATH}{path} with HTTP {response.status_code}')
 	return response.json()
@@ -357,12 +358,11 @@ async def call_operation(nc: AsyncNextcloudApp, origin: str, operation: Operatio
 	method = operation.method.upper()
 	# The spec's paths already start with the web root of the instance
 	# Redirects are not followed: an API call is never meant to end up at a page such as the login form
-	response = await asyncio.wait_for(
-		nc._session._create_adapter().request(
-			method, origin + path, headers=HEADERS, params=query, allow_redirects=False, **payload,
-		),
-		timeout=REQUEST_TIMEOUT,
-	)
+	async with nc._session._create_adapter() as adapter:
+		response = await asyncio.wait_for(
+			adapter.request(method, origin + path, headers=HEADERS, params=query, allow_redirects=False, **payload),
+			timeout=REQUEST_TIMEOUT,
+		)
 	try:
 		result = response.json()
 	except ValueError:
