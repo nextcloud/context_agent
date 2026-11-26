@@ -28,7 +28,8 @@ from ex_app.lib.context_window import (  # noqa: E402
     CHARS_PER_TOKEN,
     MIN_CONTEXT_BUDGET,
     OLD_TOOL_OUTPUT_MAX_LENGTH,
-    _measure,
+    _shortened_size,
+    _size_tree,
     message_size,
     render_transcript,
     render_transcripts,
@@ -112,6 +113,37 @@ def test_truncate_json_shortens_more_than_one_list():
     parsed = json.loads(truncated)
     for key in ("open", "closed"):
         assert any("items omitted" in item for item in parsed[key])
+        # every list keeps some of its items, not only the marker
+        assert len(parsed[key]) > 1
+
+
+def test_truncate_json_shortens_inner_lists_before_leaving_out_outer_items():
+    data = [
+        {"project": f"project {k}", "open_tickets": 300,
+         "tickets": [{"id": i, "title": f"ticket {i} of project {k}"} for i in range(300)]}
+        for k in range(2)
+    ]
+    truncated = truncate_text(json.dumps(data), 20000, "list_projects", can_refetch=False)
+    assert len(truncated) <= 20000
+    parsed = json.loads(truncated)
+    assert [(p["project"], p["open_tickets"]) for p in parsed] == [("project 0", 300), ("project 1", 300)]
+    for project, original in zip(parsed, data, strict=True):
+        assert project["tickets"][0] == original["tickets"][0]
+        assert any(isinstance(item, str) and "items omitted" in item for item in project["tickets"])
+
+
+def test_truncate_json_falls_back_to_cutting_characters_if_one_item_per_list_is_too_much():
+    data = [{"id": i, "text": "x" * 500} for i in range(10)]
+    truncated = truncate_text(json.dumps(data), 300)
+    assert len(truncated) <= 300
+    assert truncated.startswith('[{"id": 0, "text": "xxx')
+
+
+def test_truncate_text_cuts_deeply_nested_json_by_characters():
+    # json.loads (in C) accepts deeper nesting than Python's recursion limit
+    text = "[" * 3000 + "1" + "]" * 3000
+    truncated = truncate_text(text, 100)
+    assert len(truncated) <= 100
 
 
 def test_truncate_json_keeps_text_that_looks_like_a_list():
@@ -122,19 +154,25 @@ def test_truncate_json_keeps_text_that_looks_like_a_list():
     assert parsed["items"][0] == data["items"][0]
 
 
-def test_truncate_json_skips_lists_in_left_out_items():
+def test_truncate_json_shortens_lists_inside_kept_items():
     data = [{"id": i, "tags": [f"tag {k}" for k in range(20)]} for i in range(100)]
     truncated = truncate_text(json.dumps(data), 1500)
     assert len(truncated) <= 1500
     parsed = json.loads(truncated)
-    assert parsed[0] == data[0] and parsed[-1] == data[-1]
+    assert (parsed[0]["id"], parsed[-1]["id"]) == (0, 99)
+    assert parsed[0]["tags"][0] == "tag 0"
 
 
 def test_measured_size_matches_serialized_size():
     data = {"a": [1, 2.5, None, True, 'ü "q"'], "b": {"c": [], "d": [{"e": "x"}, {}]}, "f": "…"}
-    lists: list = []
-    assert _measure(data, (), lists) == len(json.dumps(data, ensure_ascii=False))
-    assert len(lists) == 2
+    tree, size = _size_tree(data)
+    assert size == _shortened_size(tree, None)[0] == len(json.dumps(data, ensure_ascii=False))
+    # the planned size of a shortened result is its real size
+    for share in (0.0, 0.3, 0.7):
+        data = {"a": [{"b": [f"item {i}" for i in range(50)]} for _ in range(20)], "c": "x"}
+        tree, size = _size_tree(data)
+        planned, _ = _shortened_size(tree, share, "; hint", apply=True)
+        assert planned == len(json.dumps(data, ensure_ascii=False))
 
 
 def test_truncate_json_object_without_list_is_cut_as_text():

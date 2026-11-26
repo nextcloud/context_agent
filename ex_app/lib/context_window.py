@@ -58,24 +58,22 @@ def _omission_hint(tool_name: str | None, can_refetch: bool) -> str:
 	return f'; call {tool_name} again if you need the omitted part'
 
 
-def _measure(value, path: tuple, lists: list) -> int:
-	"""The length of json.dumps(value, ensure_ascii=False), without serializing it as a whole
+def _size_tree(value) -> tuple:
+	"""The sizes of a parsed JSON value, so shortening can be planned without serializing it again
 
-	Collects (size, list, item sizes, path) for every list of two or more items, where path holds
-	(id of the enclosing list, index in it) for each list the value sits in.
+	Returns the node and the serialized size. A scalar node is its serialized length,
+	a dict node [fixed size, child nodes], a list node [the list, child nodes, its size].
 	"""
 	if isinstance(value, list):
-		sizes = [_measure(item, (*path, (id(value), i)), lists) for i, item in enumerate(value)]
+		children, sizes = zip(*(_size_tree(item) for item in value), strict=True) if value else ((), ())
 		size = 2 + sum(sizes) + 2 * max(len(sizes) - 1, 0)
-		if len(sizes) >= 2:
-			lists.append((size, value, sizes, path))
-		return size
+		return [value, list(children), size], size
 	if isinstance(value, dict):
-		size = 2 + 2 * max(len(value) - 1, 0)
-		for key, item in value.items():
-			size += len(json.dumps(key, ensure_ascii=False)) + 2 + _measure(item, path, lists)
-		return size
-	return len(json.dumps(value, ensure_ascii=False))
+		fixed = 2 + 2 * max(len(value) - 1, 0) + sum(len(json.dumps(key, ensure_ascii=False)) + 2 for key in value)
+		children, sizes = zip(*(_size_tree(item) for item in value.values()), strict=True) if value else ((), ())
+		return [fixed, list(children)], fixed + sum(sizes)
+	size = len(json.dumps(value, ensure_ascii=False))
+	return size, size
 
 
 def _keep_ends(sizes: list[int], budget: int) -> tuple[int, int]:
@@ -91,42 +89,74 @@ def _keep_ends(sizes: list[int], budget: int) -> tuple[int, int]:
 	return i, len(sizes) - 1 - j
 
 
+def _shortened_size(node, share: float | None, hint: str = '', apply: bool = False) -> tuple[int, int]:
+	"""The serialized size of a node once every list in it is shortened to share of its original size
+
+	Returns the size and how much of it the markers take up. Inner lists are shortened first, and their
+	markers do not count against the share of the lists around them, so a list only leaves out whole items
+	if shortening the lists inside them is not enough. Every list keeps at least one item.
+	With share None, nothing is shortened. With apply, the lists are shortened in place.
+	"""
+	if isinstance(node, int):
+		return node, 0
+	if len(node) == 2:
+		results = [_shortened_size(child, share, hint, apply) for child in node[1]]
+		return node[0] + sum(size for size, _ in results), sum(markers for _, markers in results)
+	items, children, original = node
+	results = [_shortened_size(child, share, hint, apply) for child in children]
+	sizes = [size for size, _ in results]
+	size = 2 + sum(sizes) + 2 * max(len(sizes) - 1, 0)
+	markers = sum(markers for _, markers in results)
+	if share is None or len(sizes) < 2 or size - markers <= share * original:
+		return size, markers
+	# The marker is no longer than with every item left out
+	longest_marker = len(json.dumps(f'… {len(sizes)} of {len(sizes)} items omitted{hint} …', ensure_ascii=False)) + 2
+	# Items are chosen by their size without the markers inside them
+	head, tail = _keep_ends([size - inner for size, inner in results], int(share * original) - longest_marker)
+	if head + tail == 0:
+		head = 1
+	omitted = len(sizes) - head - tail
+	marker_size = len(json.dumps(f'… {omitted} of {len(sizes)} items omitted{hint} …', ensure_ascii=False)) + 2
+	kept = results[:head] + results[len(results) - tail:]
+	new_size = sum(size for size, _ in kept) + 2 * len(kept) + marker_size
+	if new_size >= size:
+		return size, markers
+	if apply:
+		marker = f'… {omitted} of {len(sizes)} items omitted{hint} …'
+		items[:] = [*items[:head], marker, *items[len(items) - tail:]]
+	return new_size, sum(markers for _, markers in kept) + marker_size
+
+
 def _truncate_json(text: str, max_chars: int, tool_name: str | None, can_refetch: bool) -> str | None:
 	"""Shorten the lists in a JSON value by leaving out items in their middle, so the result is still valid JSON
 
 	Tools often answer with an object that carries its items in a field, e.g. {"tickets": [...], "count": 10},
 	possibly nested deeper. Cutting such a result by characters would leave invalid JSON, so its lists are
-	shortened instead, the largest first, until it fits. Everything else is kept.
-	Returns None if the text is not JSON, or shortening its lists is not enough.
+	shortened instead, each to the same share of its size, the largest share that fits. Everything else is kept.
+	Returns None if the text is not JSON, or it does not fit even with one item left in every list.
 	"""
+	hint = _omission_hint(tool_name, can_refetch)
 	try:
 		data = json.loads(text)
+		tree, _ = _size_tree(data)
+		if _shortened_size(tree, 0.0, hint)[0] > max_chars:
+			return None
+		# The largest share that fits, close enough once the result uses most of max_chars
+		low, high = 0.0, 1.0
+		for _ in range(12):
+			share = (low + high) / 2
+			size = _shortened_size(tree, share, hint)[0]
+			if size <= max_chars:
+				low = share
+				if size >= max_chars * 0.95:
+					break
+			else:
+				high = share
+		_shortened_size(tree, low, hint, apply=True)
+		return json.dumps(data, ensure_ascii=False)
 	except (ValueError, TypeError, RecursionError):
+		# Nesting deeper than Python's recursion limit is cut by characters instead
 		return None
-	lists: list = []
-	total = _measure(data, (), lists)
-	# Items kept of each shortened list, by their index before shortening
-	kept: dict[int, set[int]] = {}
-	# A list is larger than every list inside it, so lists are shortened before the ones inside them
-	for size, items, sizes, path in sorted(lists, key=lambda entry: entry[0], reverse=True):
-		if total <= max_chars:
-			break
-		if any(list_id in kept and index not in kept[list_id] for list_id, index in path):
-			# The list is inside an item that has been left out
-			continue
-		head, tail = _keep_ends(sizes, max_chars - (total - size) - MARKER_RESERVE)
-		omitted = len(items) - head - tail
-		marker = f'… {omitted} of {len(items)} items omitted{_omission_hint(tool_name, can_refetch)} …'
-		new_size = 2 + sum(sizes[:head]) + sum(sizes[len(sizes) - tail:]) + 2 * (head + tail) \
-			+ len(json.dumps(marker, ensure_ascii=False))
-		if new_size >= size:
-			continue
-		kept[id(items)] = set(range(head)) | set(range(len(items) - tail, len(items)))
-		items[:] = [*items[:head], marker, *items[len(items) - tail:]]
-		total += new_size - size
-	if total > max_chars:
-		return None
-	return json.dumps(data, ensure_ascii=False)
 
 
 def truncate_text(text: str, max_chars: int, tool_name: str | None = None, can_refetch: bool = True) -> str:
