@@ -38,6 +38,9 @@ TOOL_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 USER_TOOL_PREFIX = 'mcp_user_'
 USER_TOOL_SEPARATOR = '__'
 USER_SERVER_METADATA_KEY = 'user_mcp_server'
+# The prefix, the key and the separator come out of the 64 characters of a tool name, so
+# a short key leaves room for the tool's own name: 41 characters with this limit.
+MAX_USER_SERVER_KEY_LENGTH = 12
 HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$")
 # Headers that would change how the request is framed or routed, not just authorize it
 FORBIDDEN_HEADERS = {'host', 'content-length', 'transfer-encoding', 'connection', 'upgrade', 'te', 'trailer'}
@@ -106,6 +109,10 @@ async def get_user_tools(nc: AsyncNextcloudApp):
 			return await build_user_connection(server)
 		except UserServerRejected as e:
 			await log(nc, LogLvl.WARNING, f"Skipping an MCP server of user {await nc.user}: {e}")
+			return None
+		except Exception as e:
+			# Whatever the user entered, it must not take the other servers and tools down with it
+			await log(nc, LogLvl.WARNING, f"Skipping an MCP server of user {await nc.user}: {e!r}")
 			return None
 
 	connections = {}
@@ -188,12 +195,19 @@ async def build_user_connection(server) -> tuple[str, dict]:
 	key = server_key(server.get('name'))
 
 	url = server.get('url')
-	if not isinstance(url, str) or urlsplit(url).scheme != 'https':
+	try:
+		# urlsplit raises a ValueError for a URL it cannot parse, and so does reading the port
+		is_https = isinstance(url, str) and urlsplit(url).scheme == 'https' and urlsplit(url).port != 0
+	except ValueError:
+		raise UserServerRejected(f"'{key}' has a malformed URL")
+	if not is_https:
 		raise UserServerRejected(f"'{key}' needs an https URL")
 	try:
 		await assert_public_url(url)
 	except BlockedUrlError as e:
 		raise UserServerRejected(f"'{key}': {e}")
+	except ValueError:
+		raise UserServerRejected(f"'{key}' has a malformed URL")
 
 	headers = server.get('headers') or {}
 	if not isinstance(headers, dict):
@@ -224,7 +238,7 @@ def server_key(name) -> str:
 	the characters tool names allow. Keep in sync with McpServersService::serverKey()
 	in the assistant app, which refuses names that would give two servers one key.
 	"""
-	key = re.sub(r'[^A-Za-z0-9]+', '_', str(name or '')).lower().strip('_')[:20].strip('_')
+	key = re.sub(r'[^A-Za-z0-9]+', '_', str(name or '')).lower().strip('_')[:MAX_USER_SERVER_KEY_LENGTH].strip('_')
 	if not key:
 		raise UserServerRejected("the server has no usable name")
 	return key
@@ -243,8 +257,9 @@ def public_http_client(
 	and get around the check.
 	"""
 	transport = httpx.AsyncHTTPTransport(trust_env=False)
-	# httpx has no way to pass a network backend, so its pool is replaced by an
-	# equivalent one that uses ours. The pool is private to httpx (pinned in
+	# httpx has no way to pass a network backend, so its pool is replaced by one that
+	# uses ours. The new pool has the connection limits of httpcore, not those of httpx,
+	# which is plenty for one MCP server. The pool is private to httpx (pinned in
 	# pyproject.toml): if it moves, no client is made rather than one without the check.
 	if not isinstance(getattr(transport, '_pool', None), httpcore.AsyncConnectionPool):
 		raise RuntimeError("cannot install the address check in this httpx version")

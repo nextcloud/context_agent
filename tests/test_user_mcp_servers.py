@@ -24,6 +24,7 @@ from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
 	classify_tool_call,
 	is_always_allowed,
 )
+from ex_app.lib.all_tools.lib import url_guard  # noqa: E402
 from ex_app.lib.all_tools.lib.url_guard import PublicNetworkBackend  # noqa: E402
 
 PUBLIC_URL = 'https://1.1.1.1/mcp'
@@ -58,6 +59,35 @@ def test_connection_is_rebuilt_from_url_and_headers_only():
 	}
 
 
+def test_server_key_leaves_room_for_the_tool_name():
+	key = mcp.server_key('A very long name for a server')
+	assert key == 'a_very_long'
+	assert len(key) <= mcp.MAX_USER_SERVER_KEY_LENGTH
+	name = f"{mcp.USER_TOOL_PREFIX}{'k' * mcp.MAX_USER_SERVER_KEY_LENGTH}{mcp.USER_TOOL_SEPARATOR}{'t' * 41}"
+	assert mcp.TOOL_NAME_PATTERN.match(name)
+
+
+def test_backend_tries_the_next_address_after_a_timeout():
+	attempts = []
+
+	async def resolve(host):
+		return ['1.1.1.1', '1.0.0.1']
+
+	async def connect(self, host, port, *args, **kwargs):
+		attempts.append(host)
+		if host == '1.1.1.1':
+			raise httpcore.ConnectTimeout('no answer')
+		return 'stream'
+
+	originals = (url_guard._resolve_all, httpcore.AnyIOBackend.connect_tcp)
+	url_guard._resolve_all, httpcore.AnyIOBackend.connect_tcp = resolve, connect
+	try:
+		assert asyncio.run(PublicNetworkBackend().connect_tcp('example.com', 443)) == 'stream'
+	finally:
+		url_guard._resolve_all, httpcore.AnyIOBackend.connect_tcp = originals
+	assert attempts == ['1.1.1.1', '1.0.0.1']
+
+
 def test_refused_servers():
 	assert _rejected('https://1.1.1.1/mcp')
 	assert _rejected({'name': 'a', 'url': 'http://1.1.1.1/mcp'})
@@ -66,6 +96,10 @@ def test_refused_servers():
 	assert _rejected({'name': 'a', 'url': 'https://[::ffff:10.0.0.1]/mcp'})
 	assert _rejected({'name': 'a', 'url': 'https://localhost/mcp'})
 	assert _rejected({'name': '!!!', 'url': PUBLIC_URL})
+	# URLs that urlsplit cannot parse
+	assert _rejected({'name': 'a', 'url': 'https://[::1/mcp'})
+	assert _rejected({'name': 'a', 'url': 'https://1.1.1.1:99999/mcp'})
+	assert _rejected({'name': 'a', 'url': 'https://1.1.1.1:x/mcp'})
 	assert _rejected({'name': 'a', 'url': PUBLIC_URL, 'headers': ['Authorization']})
 	assert _rejected({'name': 'a', 'url': PUBLIC_URL, 'headers': {'Host': 'internal'}})
 	assert _rejected({'name': 'a', 'url': PUBLIC_URL, 'headers': {'X-A': 'b\r\nX-B: c'}})
@@ -170,6 +204,8 @@ def test_user_tools():
 			{'name': ' WEATHER!', 'url': 'https://1.0.0.1/mcp'},
 			{'name': 'broken', 'url': PUBLIC_URL},
 			{'name': 'internal', 'url': 'https://10.0.0.1/mcp'},
+			# a URL that cannot be parsed costs only its own server
+			{'name': 'malformed', 'url': 'https://[::1/mcp'},
 		]})
 		tools = asyncio.run(mcp.get_user_tools(nc))
 		# the second server with the same key, the broken and the internal server are left out,
@@ -207,6 +243,8 @@ def test_user_tools():
 
 if __name__ == '__main__':
 	test_connection_is_rebuilt_from_url_and_headers_only()
+	test_server_key_leaves_room_for_the_tool_name()
+	test_backend_tries_the_next_address_after_a_timeout()
 	test_refused_servers()
 	test_backend_refuses_internal_addresses()
 	test_user_tools()

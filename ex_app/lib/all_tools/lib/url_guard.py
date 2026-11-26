@@ -152,7 +152,8 @@ class PublicNetworkBackend(httpcore.AnyIOBackend):
 		for address in dict.fromkeys(addresses):
 			try:
 				return await super().connect_tcp(address, port, timeout, local_address, socket_options)
-			except httpcore.ConnectError as e:
+			except (httpcore.ConnectError, httpcore.ConnectTimeout) as e:
+				# An address that does not answer must not hide one that does
 				error = e
 		raise error
 
