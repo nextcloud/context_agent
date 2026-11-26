@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -30,14 +31,19 @@ TYPE_NAMES = {
 	ConversationType.NOTE_TO_SELF: 'note-to-self',
 }
 
-# Mentions of a group or team: whether they include the user would cost a membership request per message.
-GROUP_MENTION_TYPES = ('user-group', 'group', 'team', 'circle')
-# People and rooms are named in the text already; objects lists only things other tools act on, like files and polls.
-NOT_OBJECTS = ('user', 'guest', 'email', 'call', *GROUP_MENTION_TYPES)
+# Talk names mention parameters after the mention: mention-group1, mention-team1. The parameter type is not
+# reliable for teams: Talk falls back to 'highlight' when the Teams app cannot resolve the team.
+# Whether a group or team includes the user would cost a membership request per message.
+GROUP_MENTION_PREFIXES = ('mention-group', 'mention-team')
+# Only things other tools act on. People, groups, rooms and 'highlight' (deleted users, phone callers,
+# thread titles) are named in the text already.
+OBJECT_TYPES = ('file', 'talk-poll', 'deck-card', 'geo-location')
+PLACEHOLDER = re.compile(r'\{([^{}]+)\}')
 
 
-def type_name(conversation_type) -> str:
-	return TYPE_NAMES.get(conversation_type, 'group')
+def type_name(conversation_type: ConversationType) -> str:
+	# nc_py_api rejects unknown room types when reading conversation_type; the test checks every member is named.
+	return TYPE_NAMES[conversation_type]
 
 
 def _parameters(message_parameters) -> dict:
@@ -47,13 +53,19 @@ def _parameters(message_parameters) -> dict:
 
 def resolve_mentions(message: str, message_parameters) -> str:
 	"""Replace each {placeholder} with what the user sees: @name for mentions, the name for files and other objects."""
-	for key, param in _parameters(message_parameters).items():
+	params = _parameters(message_parameters)
+
+	# One pass, so a name that contains a placeholder (a file called "{mention-user1}.pdf") is not replaced again.
+	def substitute(match):
+		key = match.group(1)
+		param = params.get(key)
+		if param is None:
+			return match.group(0)
 		if key.startswith('mention-'):
-			name = '@all' if param.get('type') == 'call' else f"@{param.get('name', param.get('id', ''))}"
-		else:
-			name = param.get('name', key)
-		message = message.replace(f'{{{key}}}', name)
-	return message
+			return '@all' if param.get('type') == 'call' else f"@{param.get('name', param.get('id', ''))}"
+		return param.get('name', key)
+
+	return PLACEHOLDER.sub(substitute, message)
 
 
 def mentions_user(message_parameters, user_id: str):
@@ -66,7 +78,7 @@ def mentions_user(message_parameters, user_id: str):
 		# A federated user may share the local id; 'server' marks them as someone else.
 		if kind == 'call' or (kind == 'user' and param.get('id') == user_id and not param.get('server')):
 			return True
-		if kind in GROUP_MENTION_TYPES:
+		if key.startswith(GROUP_MENTION_PREFIXES):
 			group = True
 	return 'group' if group else False
 
@@ -76,7 +88,7 @@ def shared_objects(message_parameters) -> list:
 	return [
 		{'type': param.get('type'), 'id': param.get('id'), 'name': param.get('name')}
 		for key, param in _parameters(message_parameters).items()
-		if not key.startswith('mention-') and param.get('type') not in NOT_OBJECTS
+		if not key.startswith('mention-') and param.get('type') in OBJECT_TYPES
 	]
 
 
@@ -183,7 +195,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 			mentions_you: true if it mentions the user or @all, "group" if it mentions a group or team, else false;
 			reply_to: display name of the author of the message this one replies to, or null;
 			reply_to_you: true if it replies to a message of the user;
-			objects: files, polls and other shared objects with their ids, if any;
+			objects: shared files, polls (type talk-poll), deck cards and locations with their ids, if any;
 			is_replyable and reactions
 		"""
 		conversations = await nc.talk.get_user_conversations()
@@ -328,7 +340,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Get the current state and results of a poll
 		:param conversation_name: The name of the conversation (obtainable via list_talk_conversations)
-		:param poll_id: The id of the poll (obtainable from create_poll or from message parameters in list_messages_in_conversation)
+		:param poll_id: The id of the poll (obtainable from create_poll, or as the id of an objects entry of type talk-poll in list_messages_in_conversation)
 		:return: poll data including question, options (0-based, e.g. [0] refers to the first option, [2] refers to the third option, etc.), votes, status, and who voted
 		"""
 		token = await _get_token(conversation_name)

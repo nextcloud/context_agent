@@ -196,6 +196,60 @@ def test_system_message_people_and_groups_are_not_objects():
 	assert 'objects' not in m, m
 
 
+def test_highlight_parameters_are_not_objects():
+	_, m = _one(ConversationType.GROUP, _message('{actor} removed {user}', params={
+		'actor': {'type': 'highlight', 'id': 'deleted_users', 'name': 'Deleted user'},
+		'user': {'type': 'highlight', 'id': '+491701234567', 'name': 'Phone caller'},
+	}))
+	assert m['message'] == 'Deleted user removed Phone caller', m
+	assert 'objects' not in m, m
+
+
+def test_unresolved_team_mention_counts_as_group():
+	# Talk falls back to type 'highlight' when the Teams app cannot resolve the team.
+	_, m = _one(ConversationType.GROUP, _message('{mention-team1} please check', params={
+		'mention-team1': {'type': 'highlight', 'id': 'sales-team-id', 'name': 'sales-team-id'},
+	}))
+	assert m['mentions_you'] == 'group', m
+
+
+def test_team_mention_counts_as_group():
+	_, m = _one(ConversationType.GROUP, _message('{mention-team1} please check', params={
+		'mention-team1': {'type': 'circle', 'id': 'sales-team-id', 'name': 'Sales'},
+	}))
+	assert m['message'] == '@Sales please check', m
+	assert m['mentions_you'] == 'group', m
+
+
+def test_poll_is_an_object_with_its_id():
+	_, m = _one(ConversationType.GROUP, _message('{object}', params={
+		'actor': {'type': 'user', 'id': 'anna', 'name': 'Anna'},
+		'object': {'type': 'talk-poll', 'id': '7', 'name': 'Lunch?'},
+	}))
+	assert m['message'] == 'Lunch?', m
+	assert m['objects'] == [{'type': 'talk-poll', 'id': '7', 'name': 'Lunch?'}], m
+
+
+def test_placeholders_in_names_are_not_replaced_again():
+	_, m = _one(ConversationType.GROUP, _message('{file} for {mention-user1}', params={
+		'file': {'type': 'file', 'id': '42', 'name': '{mention-user1}.pdf'},
+		'mention-user1': {'type': 'user', 'id': USER, 'name': 'Ben Bauer'},
+	}))
+	assert m['message'] == '{mention-user1}.pdf for @Ben Bauer', m
+
+
+def test_unknown_placeholder_is_left_alone():
+	_, m = _one(ConversationType.GROUP, _message('literal {braces} stay', params={
+		'mention-user1': {'type': 'user', 'id': 'carl', 'name': 'Carl'},
+	}))
+	assert m['message'] == 'literal {braces} stay', m
+
+
+def test_every_conversation_type_has_a_name():
+	# nc_py_api rejects unknown room types itself; this catches a new member it adds before we name it.
+	assert set(talk.TYPE_NAMES) == set(ConversationType), set(ConversationType) - set(talk.TYPE_NAMES)
+
+
 def test_plain_message_has_no_objects():
 	_, m = _one(ConversationType.GROUP, _message('hello'))
 	assert 'objects' not in m, m
