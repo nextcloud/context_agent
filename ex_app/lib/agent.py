@@ -340,7 +340,11 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	graph, classifications = await get_graph(call_model, tools, checkpointer, policy)
 
-	state_snapshot = graph.get_state(graph_config)
+	# A copy per task, as tasks run concurrently. Tools can read the id of the task they run for from their config.
+	# The key starts with "__" so that langgraph does not copy it into the metadata of the checkpoints in the conversation token.
+	task_graph_config = {**graph_config, "configurable": {**graph_config["configurable"], "__ocp_task_id": task.get('id')}}
+
+	state_snapshot = graph.get_state(task_graph_config)
 
 	## if the next step is a tool call
 	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
@@ -398,7 +402,7 @@ At the end of each message to the user, if you have carried out a task or answer
 		last_stream_update = now
 		last_reported_stream_state = stream_state
 
-	async for event in graph.astream(new_input, graph_config, stream_mode=stream_mode):
+	async for event in graph.astream(new_input, task_graph_config, stream_mode=stream_mode):
 		if isinstance(event, tuple):
 			mode, payload = event
 		else:
@@ -429,7 +433,7 @@ At the end of each message to the user, if you have carried out a task or answer
 
 	await report_stream_state(force=True)
 
-	state_snapshot = graph.get_state(graph_config)
+	state_snapshot = graph.get_state(task_graph_config)
 	actions = ''
 	if state_snapshot.next == (CONFIRM_TOOLS_NODE, ):
 		# Each call carries the impulse radius it reaches, whether it destroys

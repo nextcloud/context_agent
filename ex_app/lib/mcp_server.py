@@ -10,6 +10,7 @@ from nc_py_api import AsyncNextcloudApp, NextcloudApp
 from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
+from langchain_core.tools.base import _get_runnable_config_param
 from mcp import types as mt
 from ex_app.lib.all_tools.lib.impulse import StaticClassification, static_classification
 from ex_app.lib.tools import TOOL_MODULE_METADATA_KEY, get_tools
@@ -135,8 +136,14 @@ def impulse_meta(classification: StaticClassification) -> dict:
 
 # Regenerates the tools with the correct nc object
 def mcp_tool(tool, tool_name: str | None = None):
+	# LangChain fills in this argument with the run's config. Found the same way LangChain does, so both agree on it.
+	config_param = _get_runnable_config_param(tool)
+
 	@wraps(tool)
 	async def wrapper(*args, **kwargs):
+		if config_param is not None:
+			# There is no run for MCP calls; this also replaces anything a client sends for it
+			kwargs[config_param] = {"configurable": {}}
 		ctx = get_context()
 		nc = ctx.get_state('nextcloud')
 		tools = await get_exposed_tools(nc)
@@ -154,4 +161,9 @@ def mcp_tool(tool, tool_name: str | None = None):
 					return await result
 				return result
 		raise RuntimeError("Tool not found")
+	# MCP clients must not see the config argument
+	signature = inspect.signature(tool)
+	wrapper.__signature__ = signature.replace(parameters=[
+		param for param in signature.parameters.values() if param.name != config_param
+	])
 	return wrapper

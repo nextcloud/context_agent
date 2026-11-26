@@ -3,6 +3,7 @@
 import datetime
 
 import pytz
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
@@ -26,7 +27,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@always_confirm
 	@reversibility(Reversibility.REVERSIBLE)
 	@item_count(1)
-	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, timezone: str|None = None, starts_at: None|str = None):
+	async def create_scheduled_task(title: str, prompt: str, recurrence_rule: str, timezone: str|None = None, starts_at: None|str = None, config: RunnableConfig = None):
 		"""
 		Create a Scheduled Task for the assistant that will be carried out autonomously.
 		The user will still have to approve sensitive actions.
@@ -42,13 +43,19 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 
 		tz = get_timezone(timezone) if timezone is not None else await user_timezone_async(nc)
-		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json={
+		assignment = {
 			'title': title,
 			'prompt': prompt,
 			'recurrence': recurrence_rule,
 			'startsAt': starts_at_timestamp(starts_at, tz) if starts_at is not None else datetime.datetime.now(datetime.UTC).timestamp(),
 			'timezone': tz
-		})
+		}
+		# The task this is created in; calls through the MCP server have none.
+		# config is annotated as RunnableConfig and not RunnableConfig|None, as LangChain only injects it for that exact type.
+		origin_task_id = (config or {}).get('configurable', {}).get('__ocp_task_id')
+		if origin_task_id is not None:
+			assignment['originTaskId'] = origin_task_id
+		await nc.ocs('POST', f'/ocs/v2.php/apps/assistant/assignments', json=assignment)
 
 		return True
 
