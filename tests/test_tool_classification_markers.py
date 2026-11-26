@@ -23,9 +23,10 @@ from ex_app.lib.tools import get_tool_module  # noqa: E402
 
 TOOLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ex_app', 'lib', 'all_tools')
 
-# MCP tools come from remote servers and cannot be decorated; they are confirmed
-# as the worst case by design.
-UNMARKABLE_MODULES = {'mcp'}
+# MCP tools come from remote servers and cannot be decorated, and the tools
+# generated from OpenAPI specs only know which of their calls read; the rest are
+# confirmed as the worst case by design.
+UNMARKABLE_MODULES = {'mcp', 'openapi'}
 
 
 class _AllKeys(dict):
