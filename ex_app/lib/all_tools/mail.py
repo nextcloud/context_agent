@@ -1,14 +1,18 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from asyncio import sleep
+from datetime import datetime
 from html.parser import HTMLParser
+from typing import Optional
 
+import pytz
 from niquests import ConnectionError, Timeout
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 from nc_py_api.ex_app import LogLvl
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, impulse, item_count, read_only, reversibility
+from ex_app.lib.all_tools.lib.tz import profile_timezone, since_timestamp, user_timezone_async
 from ex_app.lib.logger import log
 
 BLOCK_TAGS = {'p', 'div', 'br', 'tr', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'hr'}
@@ -46,6 +50,14 @@ def html_to_text(html: str) -> str:
 	while '\n\n\n' in text:
 		text = text.replace('\n\n\n', '\n\n')
 	return text.strip()
+
+
+def _with_received_at(messages: list, tz) -> list:
+	"""Add when the mail server received each message, in tz, next to the Unix timestamp Mail sends."""
+	for message in messages:
+		if message.get('dateInt'):
+			message['received_at'] = datetime.fromtimestamp(message['dateInt'], tz).isoformat()
+	return messages
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -112,14 +124,22 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
-	async def list_mails(folder_id: int, n_mails: int = 30):
+	async def list_mails(folder_id: int, n_mails: int = 30, since: Optional[str] = None):
 		"""
-		Lists all messages in a mailbox folder
+		Lists all messages in a mailbox folder, newest first
 		:param folder_id: The id of the folder to list as integer, obtainable via get_mail_folder_list
-		:param n_mails: The number of mails to receive. Optional, default is 30
-		:return: a list of mails/messages, including timestamps
+		:param n_mails: The number of mails to receive (at most 100). Optional, default is 30
+		:param since: Optional ISO datetime; only list mails the mail server received at or after it.
+			Without a UTC offset it is read in the user's timezone.
+		:return: a list of mails/messages, each with received_at: when the mail server received it,
+			in the user's timezone
 		"""
-		return await nc.ocs('GET', f'/ocs/v2.php/apps/mail/ocs/mailboxes/{folder_id}/messages', json={'limit': n_mails})
+		tz_name = await user_timezone_async(nc)
+		params = {'limit': n_mails}
+		if since:
+			params['filter'] = f'start:{since_timestamp("since", since, tz_name)}'
+		messages = await nc.ocs('GET', f'/ocs/v2.php/apps/mail/ocs/mailboxes/{folder_id}/messages', json=params)
+		return _with_received_at(messages, profile_timezone(tz_name) or pytz.utc)
 
 
 	@tool

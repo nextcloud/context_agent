@@ -33,6 +33,31 @@ async def user_timezone_async(nc) -> str | None:
 		return None
 
 
+def profile_timezone(timezone: str | None):
+	"""The pytz timezone for a profile timezone name, or None when it is unset or unknown."""
+	try:
+		return pytz.timezone(timezone) if timezone else None
+	except pytz.UnknownTimeZoneError:
+		return None
+
+
+def since_timestamp(name: str, value: str, timezone: str | None) -> int:
+	"""Unix timestamp of the ISO datetime a tool got as parameter name, read in timezone when it has no UTC offset."""
+	try:
+		parsed = datetime.fromisoformat(value.strip())
+	except ValueError:
+		raise ValueError(f"{name} {value!r} is not an ISO datetime; use e.g. '2024-12-01T14:00:00+01:00'") from None
+	if parsed.tzinfo is None:
+		tz = profile_timezone(timezone)
+		if tz is None:
+			raise ValueError(
+				f"{name} {value!r} has no UTC offset and the user's profile has no timezone; "
+				"add the offset, e.g. '2024-12-01T14:00:00+01:00'"
+			)
+		parsed = tz.localize(parsed)
+	return int(parsed.timestamp())
+
+
 def starts_at_timestamp(starts_at: str, timezone: str | None) -> int:
 	parsed = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
 	if parsed.tzinfo is None or parsed.utcoffset() is None:
