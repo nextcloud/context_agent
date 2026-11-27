@@ -303,14 +303,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 				continue
 			for card in stack.get('cards', []):
 				labels = []
-				for label in card.get('labels', []):
+				for label in card.get('labels') or []:
 					labels.append({
 						'id': label['id'],
 						'title': label['title'],
 						'color': label['color'],
 					})
 				assignees = []
-				for assignment in card.get('assignedUsers', []):
+				for assignment in card.get('assignedUsers') or []:
 					participant = assignment.get('participant', {})
 					assignees.append({
 						'uid': participant.get('uid'),
