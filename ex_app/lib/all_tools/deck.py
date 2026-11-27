@@ -4,12 +4,16 @@ import asyncio
 import json
 import time
 from datetime import datetime, timezone
+from email.utils import formatdate
 from typing import Optional
+
+import pytz
 from langchain_core.tools import tool
 from nc_py_api import AsyncNextcloudApp
 
 from ex_app.lib.all_tools.lib.impulse import ImpulseRadius, Reversibility, destructive, destructive_if, impulse, item_count, read_only, reversibility
 from ex_app.lib.all_tools.lib.session import nc_request
+from ex_app.lib.all_tools.lib.tz import user_timezone_async
 
 # Resolving a card to its board costs one request per board the user can see, so
 # the map is kept per user and out here, rather than in the get_tools closure that
@@ -48,13 +52,41 @@ def _forget_stale_card_radii(now: float) -> None:
 		del _card_radii[user_id]
 
 
+def _profile_timezone(tz_name: Optional[str]):
+	"""The pytz timezone of the user's profile, or None when it is unset or unknown."""
+	try:
+		return pytz.timezone(tz_name) if tz_name else None
+	except pytz.UnknownTimeZoneError:
+		return None
+
+
+def _parse_modified_since(value: str, profile_tz) -> int:
+	"""Turn an ISO datetime into a Unix timestamp, reading it in profile_tz when it has no UTC offset."""
+	try:
+		parsed = datetime.fromisoformat(value.strip())
+	except ValueError:
+		raise ValueError(
+			f"modified_since {value!r} is not an ISO datetime; use e.g. '2024-12-01T14:00:00+01:00'"
+		) from None
+	if parsed.tzinfo is None:
+		if profile_tz is None:
+			raise ValueError(
+				f"modified_since {value!r} has no UTC offset and the user's profile has no timezone; "
+				"add the offset, e.g. '2024-12-01T14:00:00+01:00'"
+			)
+		parsed = profile_tz.localize(parsed)
+	return int(parsed.timestamp())
+
+
 async def get_tools(nc: AsyncNextcloudApp):
 
 	DECK_API = f"{nc.app_cfg.endpoint}/index.php/apps/deck/api/v1.0"
 	DECK_HEADERS = {"Content-Type": "application/json", "OCS-APIREQUEST": "true"}
 
-	async def deck_request(method, path, payload=None):
-		response = await nc_request(nc, method, f"{DECK_API}{path}", headers=DECK_HEADERS, json=payload)
+	async def deck_request(method, path, payload=None, headers=None):
+		response = await nc_request(
+			nc, method, f"{DECK_API}{path}", headers={**DECK_HEADERS, **(headers or {})}, json=payload,
+		)
 		if response.status_code >= 400:
 			# Deck explains what went wrong in a JSON body; pass that on rather than
 			# letting the caller trip over an error object where it expected a card.
@@ -283,25 +315,52 @@ async def get_tools(nc: AsyncNextcloudApp):
 	@tool
 	@impulse(ImpulseRadius.SELF)
 	@read_only
-	async def list_board_cards(board_id: int, stack_id: Optional[int] = None, archived: bool = False):
+	async def list_board_cards(
+		board_id: int,
+		stack_id: Optional[int] = None,
+		archived: bool = False,
+		modified_since: Optional[str] = None,
+		include_description: bool = True,
+	):
 		"""
 		List all cards in a Deck board with their metadata.
 		Each card includes its id and stack_id (needed for the other card tools, e.g. update_card, move_card, add_card_comment),
-		title, description, stack, labels, assignees, due date, archived status, and done status.
+		title, description, stack, labels, assignees, due date, archived status, done status,
+		and when it was last modified.
 		Use this tool to find cards when the agent only knows a card by name or context, not by id.
 		Archived cards are only listed when archived is true.
 		:param board_id: the id of the board (obtainable with list_boards)
 		:param stack_id: optional - filter to cards in this specific stack only (obtainable with list_boards)
 		:param archived: optional - true to list the archived cards instead of the active ones (default false)
-		:return: list of cards with id, title, description, stack_id, stack_title, labels, assignees, due_date, archived, done, comments_count
+		:param modified_since: optional - ISO datetime; only list cards modified after it, newest first.
+			Without a UTC offset it is read in the user's timezone.
+		:param include_description: optional - false to leave out the card descriptions, which can be long
+			(default true)
+		:return: list of cards with id, title, description, stack_id, stack_title, labels, assignees, due_date,
+			archived, done, comments_count, last_modified
 		"""
-		stacks = await deck_request('GET', f"/boards/{board_id}/stacks/archived" if archived else f"/boards/{board_id}/stacks")
+		profile_tz = _profile_timezone(await user_timezone_async(nc))
+		since = None
+		headers = None
+		if modified_since:
+			since = _parse_modified_since(modified_since, profile_tz)
+			# Deck only honours this header for the active cards; the filter below covers the archived ones.
+			headers = {'If-Modified-Since': formatdate(since, usegmt=True)}
+
+		stacks = await deck_request(
+			'GET',
+			f"/boards/{board_id}/stacks/archived" if archived else f"/boards/{board_id}/stacks",
+			headers=headers,
+		)
 
 		cards = []
 		for stack in stacks:
 			if stack_id is not None and stack['id'] != stack_id:
 				continue
 			for card in stack.get('cards', []):
+				last_modified = card.get('lastModified') or 0
+				if since is not None and last_modified <= since:
+					continue
 				labels = []
 				for label in card.get('labels') or []:
 					labels.append({
@@ -316,7 +375,8 @@ async def get_tools(nc: AsyncNextcloudApp):
 						'uid': participant.get('uid'),
 						'displayname': participant.get('displayname'),
 					})
-				cards.append({
+				modified_at = datetime.fromtimestamp(last_modified, profile_tz or pytz.utc) if last_modified else None
+				entry = {
 					'id': card['id'],
 					'title': card['title'],
 					'description': card.get('description', ''),
@@ -328,8 +388,14 @@ async def get_tools(nc: AsyncNextcloudApp):
 					'archived': card.get('archived', False),
 					'done': card.get('done'),
 					'comments_count': card.get('commentsCount', 0),
-				})
-		return json.dumps(cards)
+					'last_modified': modified_at.isoformat() if modified_at else None,
+				}
+				if not include_description:
+					del entry['description']
+				cards.append((last_modified, entry))
+		if since is not None:
+			cards.sort(key=lambda c: c[0], reverse=True)
+		return json.dumps([entry for _, entry in cards])
 
 	@tool
 	@impulse(board_radius)
