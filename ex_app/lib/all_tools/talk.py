@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -20,6 +21,79 @@ from ex_app.lib.all_tools.lib.impulse import (
 	reversibility,
 )
 from ex_app.lib.all_tools.lib.tz import user_timezone_async
+
+TYPE_NAMES = {
+	ConversationType.ONE_TO_ONE: 'one-to-one',
+	ConversationType.GROUP: 'group',
+	ConversationType.PUBLIC: 'public',
+	ConversationType.CHANGELOG: 'changelog',
+	ConversationType.FORMER: 'former one-to-one',
+	ConversationType.NOTE_TO_SELF: 'note-to-self',
+}
+
+# Talk names mention parameters after the mention: mention-group1, mention-team1. The parameter type is not
+# reliable for teams: Talk falls back to 'highlight' when the Teams app cannot resolve the team.
+# Whether a group or team includes the user would cost a membership request per message.
+GROUP_MENTION_PREFIXES = ('mention-group', 'mention-team')
+# Only things other tools act on. People, groups, rooms and 'highlight' (deleted users, phone callers,
+# thread titles) are named in the text already.
+OBJECT_TYPES = ('file', 'talk-poll', 'deck-card', 'geo-location')
+PLACEHOLDER = re.compile(r'\{([^{}]+)\}')
+
+
+def type_name(conversation_type: ConversationType) -> str:
+	# nc_py_api rejects unknown room types when reading conversation_type; the test checks every member is named.
+	return TYPE_NAMES[conversation_type]
+
+
+def _parameters(message_parameters) -> dict:
+	# Talk sends an empty JSON list instead of an object when a message has no parameters.
+	return message_parameters if isinstance(message_parameters, dict) else {}
+
+
+def resolve_mentions(message: str, message_parameters) -> str:
+	"""Replace each {placeholder} with what the user sees: @name for mentions, the name for files and other objects."""
+	params = _parameters(message_parameters)
+
+	# One pass, so a name that contains a placeholder (a file called "{mention-user1}.pdf") is not replaced again.
+	def substitute(match):
+		key = match.group(1)
+		param = params.get(key)
+		if param is None:
+			return match.group(0)
+		if key.startswith('mention-'):
+			return '@all' if param.get('type') == 'call' else f"@{param.get('name', param.get('id', ''))}"
+		return param.get('name', key)
+
+	return PLACEHOLDER.sub(substitute, message)
+
+
+def mentions_user(message_parameters, user_id: str):
+	"""True if the message mentions the user or @all, 'group' if it mentions a group or team, else False."""
+	group = False
+	for key, param in _parameters(message_parameters).items():
+		if not key.startswith('mention-'):
+			continue
+		kind = param.get('type')
+		# A federated user may share the local id; 'server' marks them as someone else.
+		if kind == 'call' or (kind == 'user' and param.get('id') == user_id and not param.get('server')):
+			return True
+		if key.startswith(GROUP_MENTION_PREFIXES):
+			group = True
+	return 'group' if group else False
+
+
+def shared_objects(message_parameters) -> list:
+	"""Files, polls, deck cards and other objects in a message, with the ids other tools need."""
+	return [
+		{'type': param.get('type'), 'id': param.get('id'), 'name': param.get('name')}
+		for key, param in _parameters(message_parameters).items()
+		if not key.startswith('mention-') and param.get('type') in OBJECT_TYPES
+	]
+
+
+def is_user(actor_type, actor_id, user_id: str) -> bool:
+	return actor_type == 'users' and actor_id == user_id
 
 
 async def get_tools(nc: AsyncNextcloudApp):
@@ -57,7 +131,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		List all conversations of the current user in the Nextcloud Talk app.
 		Returns conversation names and tokens. The token is needed for other Talk tools.
-		:return: list of conversations with name, token, type, unread message count, and last activity (user's timezone)
+		:return: list of conversations with name, token, type (one-to-one, group, public, note-to-self, changelog, former one-to-one), unread message count, and last activity (user's timezone)
 		"""
 		conversations = await nc.talk.get_user_conversations()
 		tz_name = await user_timezone_async(nc)
@@ -68,7 +142,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		return json.dumps([{
 			'name': conv.display_name,
 			'token': conv.token,
-			'type': conv.conversation_type,
+			'type': type_name(conv.conversation_type),
 			'unread_messages': conv.unread_messages_count,
 			'last_activity': datetime.fromtimestamp(conv.last_activity, tz).isoformat(timespec='minutes'),
 		} for conv in conversations])
@@ -109,22 +183,52 @@ async def get_tools(nc: AsyncNextcloudApp):
 	async def list_messages_in_conversation(conversation_name: str, n_messages: int = 30):
 		"""
 		List messages of a conversation in the Nextcloud Talk app.
-		Each message includes its id (needed for reactions and replies) and whether it can be replied to.
+		In a group or public conversation, "you" in a message means the user only when mentions_you or reply_to_you is true.
 		:param conversation_name: The name of the conversation (obtainable via list_talk_conversations)
 		:param n_messages: The number of messages to receive
-		:return: list of messages with id, timestamp, actor, message text, and reply status
+		:return: the conversation name, its type, the user's id (you_are), and messages, each with:
+			id (needed for reactions and replies);
+			timestamp;
+			actor and actor_id of the author;
+			by_you: true if the user wrote it;
+			message: text with mentions shown as @name;
+			mentions_you: true if it mentions the user or @all, "group" if it mentions a group or team, else false;
+			reply_to: display name of the author of the message this one replies to, or null;
+			reply_to_you: true if it replies to a message of the user;
+			objects: shared files, polls (type talk-poll), deck cards and locations with their ids, if any;
+			is_replyable and reactions
 		"""
 		conversations = await nc.talk.get_user_conversations()
 		conversation = {conv.display_name: conv for conv in conversations}[conversation_name]
 		messages = await nc.talk.receive_messages(conversation, False, n_messages)
-		return json.dumps([{
-			'id': m.message_id,
-			'timestamp': m.timestamp,
-			'actor': m.actor_display_name,
-			'message': m.message,
-			'is_replyable': m.is_replyable,
-			'reactions': m.reactions,
-		} for m in messages])
+		user_id = await nc.user
+
+		def to_dict(m):
+			parent = m.parent if isinstance(m.parent, dict) else {}
+			entry = {
+				'id': m.message_id,
+				'timestamp': m.timestamp,
+				'actor': m.actor_display_name,
+				'actor_id': m.actor_id,
+				'by_you': is_user(m.actor_type, m.actor_id, user_id),
+				'message': resolve_mentions(m.message, m.message_parameters),
+				'mentions_you': mentions_user(m.message_parameters, user_id),
+				'reply_to': parent.get('actorDisplayName'),
+				'reply_to_you': is_user(parent.get('actorType'), parent.get('actorId'), user_id),
+				'is_replyable': m.is_replyable,
+				'reactions': m.reactions,
+			}
+			objects = shared_objects(m.message_parameters)
+			if objects:
+				entry['objects'] = objects
+			return entry
+
+		return json.dumps({
+			'conversation': conversation.display_name,
+			'type': type_name(conversation.conversation_type),
+			'you_are': user_id,
+			'messages': [to_dict(m) for m in messages],
+		})
 
 	# --- Reactions ---
 
@@ -236,7 +340,7 @@ async def get_tools(nc: AsyncNextcloudApp):
 		"""
 		Get the current state and results of a poll
 		:param conversation_name: The name of the conversation (obtainable via list_talk_conversations)
-		:param poll_id: The id of the poll (obtainable from create_poll or from message parameters in list_messages_in_conversation)
+		:param poll_id: The id of the poll (obtainable from create_poll, or as the id of an objects entry of type talk-poll in list_messages_in_conversation)
 		:return: poll data including question, options (0-based, e.g. [0] refers to the first option, [2] refers to the third option, etc.), votes, status, and who voted
 		"""
 		token = await _get_token(conversation_name)
