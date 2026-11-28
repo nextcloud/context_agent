@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastmcp import Client, FastMCP  # noqa: E402
-from langchain_core.tools import tool  # noqa: E402
+from langchain_core.tools import StructuredTool, tool  # noqa: E402
 
 from ex_app.lib.all_tools.lib.impulse import (  # noqa: E402
 	ImpulseRadius,
@@ -78,9 +78,25 @@ async def unmarked(path: str):
 	"""Carries no markers, like an MCP tool."""
 
 
+async def dynamic_action(**tool_args):
+	return tool_args['query']
+
+
+dynamic_tool = StructuredTool(
+	name='dynamic_search',
+	description='Search a dynamically discovered app.',
+	args_schema={
+		'type': 'object',
+		'properties': {'query': {'type': 'string'}},
+		'required': ['query'],
+	},
+	coroutine=dynamic_action,
+)
+
+
 async def _list_tools():
 	server = FastMCP(name="test")
-	for t in (read_note, share_note, trash_note, write_note, schedule_reading, unmarked):
+	for t in (read_note, share_note, trash_note, write_note, schedule_reading, unmarked, dynamic_tool):
 		register_tool(server, t)
 	async with Client(server) as client:
 		return {t.name: t for t in await client.list_tools()}
@@ -119,6 +135,12 @@ def test_hints():
 	assert tools['unmarked'].meta[IMPULSE_META_KEY] == {
 		'radius': 'external', 'destructive': True, 'reversibility': 'irreversible',
 		'item_count': 'dynamic', 'always_confirm': False,
+	}
+
+	# Dynamically discovered OpenAPI tools declare a schema on StructuredTool
+	# while their callable accepts **kwargs. FastMCP must use the declared schema.
+	assert tools['dynamic_search'].inputSchema == {
+		'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query'],
 	}
 
 

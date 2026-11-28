@@ -9,7 +9,7 @@ from fastmcp.server.dependencies import get_context
 from nc_py_api import AsyncNextcloudApp, NextcloudApp
 from fastmcp.server.middleware import Middleware, MiddlewareContext, CallNext
 from fastmcp.server.dependencies import get_http_headers
-from fastmcp.tools import Tool
+from fastmcp.tools import FunctionTool, Tool
 from mcp import types as mt
 from ex_app.lib.all_tools.lib.impulse import StaticClassification, static_classification
 from ex_app.lib.tools import TOOL_MODULE_METADATA_KEY, get_tools
@@ -80,6 +80,16 @@ class ToolListMiddleware(Middleware):
 		return await call_next(context)
 
 
+def _explicit_parameters(tool) -> dict | None:
+	"""Return a LangChain tool's declared JSON input schema, when available."""
+	schema = getattr(tool, "args_schema", None)
+	if isinstance(schema, dict):
+		return schema
+	if hasattr(schema, "model_json_schema"):
+		return schema.model_json_schema()
+	return None
+
+
 def register_tool(mcp, tool):
 	"""Expose a LangChain tool on the MCP server, with the hints its markers allow."""
 	tool_action = getattr(tool, "coroutine", None) or getattr(tool, "func", None)
@@ -87,11 +97,28 @@ def register_tool(mcp, tool):
 		return
 	tool_name = getattr(tool, "name", None)
 	classification = static_classification(tool)
+	annotations = tool_annotations(classification)
+	meta = {IMPULSE_META_KEY: impulse_meta(classification)}
+	wrapped = mcp_tool(tool_action, tool_name=tool_name or None)
+	parameters = _explicit_parameters(tool)
+	if parameters is not None and any(
+			parameter.kind is inspect.Parameter.VAR_KEYWORD
+			for parameter in inspect.signature(wrapped).parameters.values()
+	):
+		mcp.add_tool(FunctionTool(
+			name=tool_name or tool_action.__name__,
+			description=getattr(tool, "description", None),
+			parameters=parameters,
+			annotations=annotations,
+			meta=meta,
+			fn=wrapped,
+		))
+		return
 	mcp.tool(
 		name=tool_name or None,
-		annotations=tool_annotations(classification),
-		meta={IMPULSE_META_KEY: impulse_meta(classification)},
-	)(mcp_tool(tool_action, tool_name=tool_name or None))
+		annotations=annotations,
+		meta=meta,
+	)(wrapped)
 
 # Where the full classification goes in a tool's _meta, for clients that know
 # what to make of it. The standard hints below can only carry part of it.
